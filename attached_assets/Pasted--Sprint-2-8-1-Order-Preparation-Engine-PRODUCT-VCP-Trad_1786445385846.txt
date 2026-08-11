@@ -1,0 +1,3260 @@
+# Sprint 2.8.1 — Order Preparation Engine
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.8 — Broker-Assisted Execution
+
+CURRENT SPRINT:
+2.8.1 — Order Preparation Engine
+
+PREREQUISITES COMPLETED:
+
+✓ Research + Trade Planning v1.0
+✓ Release Certification framework
+✓ Trade Plan Workspace
+✓ Trade Monitoring & Lifecycle Intelligence
+✓ Execution Architecture
+✓ Global Execution Kill Switch
+✓ Broker Preflight
+✓ Execution Audit Events
+✓ Read-only Broker Execution Adapter
+✓ Legacy order routes protected by BROKER_EXECUTION_ENABLED
+
+CURRENT SAFETY STATE:
+
+BROKER_EXECUTION_ENABLED defaults FALSE.
+
+Sprint 2.8.1 MUST NOT change that default.
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+The execution pipeline is:
+
+Saved Trade Plan
+        ↓
+Current Lifecycle Validation
+        ↓
+Execution Preflight
+        ↓
+Order Preparation
+        ↓
+Future Equity / Options Order Preview
+        ↓
+Future Final Validation
+        ↓
+Future Explicit Confirmation
+        ↓
+Future Broker Submission
+
+Sprint 2.8.1 implements ONLY:
+
+ORDER PREPARATION.
+
+It transforms approved INPUT DATA from a PASSING CURRENT PREFLIGHT into a
+structured NON-EXECUTABLE ORDER DRAFT.
+
+It MUST NOT:
+
+submit an order
+
+place an order
+
+replace an order
+
+cancel an order
+
+call a broker order endpoint
+
+create an executable broker payload
+
+======================================================================
+PERMANENT EXECUTION RULE
+======================================================================
+
+Order Preparation may describe what a future broker order COULD contain.
+
+Order Preparation is NOT:
+
+broker authorization
+
+user confirmation
+
+order submission
+
+execution
+
+fill
+
+position creation
+
+The existence of an OrderDraft must never cause broker mutation.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker submission
+- broker POST order call
+- Tradier placeOrder
+- TradeStation placeOrder
+- order cancellation
+- order replacement
+- automated trading
+- autonomous trading
+- one-click submission
+- final confirmation workflow
+- fill tracking
+- order polling
+- position creation from fills
+- execution status monitoring
+- actual-vs-plan tracking
+- trade journal
+- automatic limit-price adjustment
+- smart routing
+- algorithmic execution
+- market-impact model
+- tax optimization
+- recommendation logic
+
+DO NOT change:
+
+- Opportunity Intelligence
+- Trade Planning methodology
+- Equity Planning
+- Options Strategy Matching
+- Contract Research
+- Risk Analysis
+- Trade Plan snapshots
+- Lifecycle methodology
+- Execution Preflight safety rules
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a canonical Order Preparation Engine that takes:
+
+User-owned Saved Trade Plan
++
+Current PASSING ExecutionPreflightResult
++
+Selected Broker Account
++
+Selected Structure
++
+Current authoritative quote/reference data
++
+User-selected order preferences
+        ↓
+Canonical OrderDraft
+        ↓
+Future 2.8.2 / 2.8.3 Preview
+
+The engine should answer:
+
+"If this research plan were later converted into a broker order, what
+would the structured order draft contain?"
+
+It must NOT answer:
+
+"Submit this trade."
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+ExecutionPreflightResult
+
+ExecutionCapability
+
+ExecutionPolicy
+
+execution_preflights
+
+execution_audit_events
+
+TradePlan
+
+trade_plans
+
+trade_plan_versions
+
+EquityPlanningScenario
+
+OptionsContractResearchResult
+
+TradeRiskScenarioResult
+
+all existing broker order types
+
+POST /api/broker/orders
+
+legacy broker order routes
+
+Tradier order interfaces
+
+TradeStation order interfaces
+
+existing InstaTrade
+
+existing order ticket components
+
+existing order preview components
+
+existing quantity handling
+
+existing action/side enums
+
+existing time-in-force enums
+
+existing market/limit order models
+
+existing stop-order models
+
+existing multi-leg order data structures
+
+existing order validation
+
+existing client order IDs
+
+existing broker order IDs
+
+existing idempotency support
+
+existing duplicate-submit prevention
+
+existing account-selection UX
+
+existing market-hours utilities
+
+existing price rounding / tick-size handling
+
+existing option OCC symbol handling
+
+existing option leg models
+
+Operations Manual
+
+Platform Health
+
+Structured Logging
+
+Report before coding:
+
+A. Existing order-domain types
+B. Existing equity order structures
+C. Existing options order structures
+D. Existing multi-leg order structures
+E. Existing quantity semantics
+F. Existing side/action terminology
+G. Existing TIF models
+H. Existing pricing fields
+I. Existing broker payload builders
+J. Existing broker-mutating methods
+K. Existing order ticket UI
+L. Existing validation logic
+M. Existing idempotency logic
+N. Legacy components safe to reuse
+O. Legacy components to isolate
+P. Provider differences
+Q. Compliance-sensitive wording
+
+Do not code until audit complete.
+
+======================================================================
+2. CLASSIFY EXISTING ORDER COMPONENTS
+======================================================================
+
+Every discovered order-related component must be classified:
+
+SAFE DOMAIN TYPE
+
+SAFE VALIDATION UTILITY
+
+SAFE PRESENTATION COMPONENT
+
+REQUIRES REFACTOR BEFORE REUSE
+
+2.8.1 ORDER PREPARATION COMPONENT
+
+2.8.2 EQUITY PREVIEW COMPONENT
+
+2.8.3 OPTIONS PREVIEW COMPONENT
+
+2.8.5 SUBMISSION COMPONENT
+
+LEGACY / ISOLATE
+
+Do not silently reuse broker submission code.
+
+======================================================================
+3. CANONICAL ORDER DRAFT MODEL
+======================================================================
+
+Create canonical shared type.
+
+Suggested:
+
+OrderDraft {
+  id
+  userId
+  tradePlanId
+  preflightId
+
+  brokerProvider
+  brokerAccountRef
+
+  instrumentType
+  structureType
+
+  status
+
+  legs[]
+
+  quantityContext
+  pricingContext
+  timeInForceContext
+
+  capitalContext
+  riskContext
+
+  quoteSnapshot
+  freshness
+
+  validation
+
+  warnings[]
+  blockers[]
+
+  preparationFingerprint
+  createdAt
+  expiresAt
+
+  methodologyVersion
+}
+
+Status values:
+
+DRAFT
+
+VALID
+
+REQUIRES_REVIEW
+
+EXPIRED
+
+INVALID
+
+Never:
+
+SUBMITTED
+
+FILLED
+
+APPROVED
+
+READY_TO_TRADE
+
+======================================================================
+4. ORDER DRAFT IS NON-EXECUTABLE
+======================================================================
+
+Mandatory field/property or marker:
+
+executable: false
+
+or equivalent canonical semantics.
+
+No OrderDraft returned by Sprint 2.8.1 can be directly passed into a broker
+adapter submit method.
+
+Add type separation.
+
+Prefer:
+
+OrderDraft
+
+vs future:
+
+ConfirmedOrderIntent
+
+vs future:
+
+BrokerSubmissionRequest
+
+Never reuse one type for all three stages.
+
+======================================================================
+5. TYPE-LEVEL SAFETY
+======================================================================
+
+Architect types so:
+
+OrderDraft cannot satisfy future BrokerSubmissionRequest interface.
+
+Do not simply add:
+
+status = draft
+
+to an already executable broker request type.
+
+This separation is mandatory.
+
+======================================================================
+6. ORDER DRAFT SOURCE
+======================================================================
+
+Order Preparation MUST require:
+
+tradePlanId
+
+preflightId
+
+Both must:
+
+belong to authenticated user
+
+refer to same Trade Plan
+
+be current
+
+not be expired
+
+preflight overall status must satisfy current preparation policy
+
+No:
+
+symbol-only order drafting.
+
+======================================================================
+7. PREFLIGHT REQUIREMENT
+======================================================================
+
+A draft cannot be prepared from:
+
+FAIL
+
+UNAVAILABLE
+
+EXECUTION_DISABLED
+
+preflight.
+
+For:
+
+REQUIRES_REVIEW
+
+default:
+
+do NOT prepare draft unless current policy explicitly permits a preview
+state.
+
+Preferred:
+
+return blocker requiring user review.
+
+Document exact rule.
+
+======================================================================
+8. PREFLIGHT EXPIRY
+======================================================================
+
+If:
+
+now > preflight.validUntil
+
+Order Preparation must fail:
+
+PREFLIGHT_EXPIRED
+
+User must rerun preflight.
+
+Do not silently reuse old PASS.
+
+======================================================================
+9. TRADE PLAN VERSION VALIDATION
+======================================================================
+
+Order draft must reference exact:
+
+tradePlanId
+
+tradePlanVersion
+
+If Trade Plan changed after preflight:
+
+invalidate preflight/order preparation.
+
+Return:
+
+TRADE_PLAN_VERSION_CHANGED
+
+No silent remapping.
+
+======================================================================
+10. LIFECYCLE VERSION / FRESHNESS
+======================================================================
+
+If lifecycle state changed materially after preflight:
+
+Order Preparation must fail/review.
+
+Examples:
+
+CURRENT → THESIS_INVALIDATED
+
+CURRENT → DATA_STALE
+
+CURRENT → REQUIRES_REVIEW
+
+Preflight must be rerun.
+
+Do not trust old lifecycle state.
+
+======================================================================
+11. ORDER INSTRUMENT TYPES
+======================================================================
+
+Support canonical:
+
+EQUITY
+
+OPTION
+
+MULTI_LEG_OPTION
+
+Do NOT implement futures/crypto unless currently supported and explicitly
+in roadmap.
+
+======================================================================
+12. EQUITY ORDER DRAFT
+======================================================================
+
+For an equity Trade Plan prepare a draft containing:
+
+symbol
+
+instrumentType = EQUITY
+
+sideIntent
+
+scenarioQuantity
+
+brokerAccountRef
+
+referenceQuote
+
+pricing preference
+
+time-in-force preference
+
+estimatedNotional
+
+capital context
+
+warnings
+
+Do not call broker.
+
+Do not call it an order submission request.
+
+======================================================================
+13. EQUITY SIDE INTENT
+======================================================================
+
+Side must come from user-selected Trade Plan semantics.
+
+Possible canonical draft intent:
+
+OPEN_LONG
+
+ADD_TO_LONG
+
+REDUCE_LONG
+
+CLOSE_LONG
+
+But be careful:
+
+current Trade Plan architecture may not yet support close/reduce scenarios.
+
+For Sprint 2.8.1 prefer only currently supported opening research scenarios.
+
+Do NOT infer side merely from ticker.
+
+Do NOT generate SELL intent unless source Trade Plan explicitly represents
+that user-selected scenario.
+
+Audit first.
+
+======================================================================
+14. OPTIONS SINGLE-LEG DRAFT
+======================================================================
+
+For:
+
+Long Call
+
+Long Put
+
+Cash-Secured Put
+
+Covered Call
+
+Protective Put
+
+etc.
+
+Create research-derived order leg structure.
+
+Example:
+
+OrderDraftLeg {
+  instrumentType
+  contractSymbol
+  optionType
+  expiration
+  strike
+
+  legIntent
+
+  ratio
+  contractCount
+
+  quoteReference
+}
+
+Use non-broker-specific canonical leg semantics.
+
+======================================================================
+15. MULTI-LEG OPTION DRAFT
+======================================================================
+
+For spreads:
+
+preserve exact user-selected Contract Research Candidate.
+
+No leg substitution.
+
+No strike optimization.
+
+No expiration optimization.
+
+No strategy-family switch.
+
+Validate:
+
+leg count
+
+strike ordering
+
+expiration consistency
+
+ratio
+
+contract availability
+
+provider multi-leg capability from preflight
+
+======================================================================
+16. CANONICAL LEG INTENTS
+======================================================================
+
+Use canonical semantics such as:
+
+OPEN_LONG
+
+OPEN_SHORT_COVERED
+
+OPEN_SHORT_SECURED
+
+CLOSE_LONG
+
+CLOSE_SHORT
+
+or equivalent architecture-approved terms.
+
+Do not equate research LONG/SHORT leg labels directly with broker BUY/SELL
+without explicit transformation.
+
+2.8.1 should define the canonical mapping.
+
+Provider-specific BUY_TO_OPEN etc. belongs in future provider translation.
+
+======================================================================
+17. NO NAKED SHORT CREATION
+======================================================================
+
+Critical.
+
+Order Preparation must never transform:
+
+Covered Call
+
+into uncovered short call.
+
+Cash-Secured Put
+
+into unsecured naked put.
+
+If coverage/cash validation from preflight is missing or stale:
+
+draft fails.
+
+Do not downgrade safety classification.
+
+======================================================================
+18. QUANTITY
+======================================================================
+
+Quantity must derive from explicit user-selected planning context.
+
+For equity:
+
+scenario shares selected by user / saved plan.
+
+For options:
+
+contract count selected by user if currently supported.
+
+Do not infer increased size from:
+
+buying power
+
+portfolio value
+
+conviction
+
+research score
+
+AI.
+
+======================================================================
+19. QUANTITY CONFIRMATION
+======================================================================
+
+If current architecture only stores hypothetical sizing and user has not
+explicitly selected a quantity for order preparation:
+
+require user input now.
+
+Label:
+
+Order Draft Quantity
+
+User must choose.
+
+Do NOT automatically convert "hypothetical scenario size" into future order
+quantity without explicit acknowledgement.
+
+This distinction is important.
+
+======================================================================
+20. QUANTITY LIMITS
+======================================================================
+
+Validate:
+
+positive integer shares/contracts where provider requires.
+
+Fractional shares only if provider/account capability explicitly supports.
+
+Options contract count:
+
+integer > 0.
+
+Do not permit:
+
+0
+
+negative
+
+NaN
+
+extreme overflow values
+
+======================================================================
+21. USER ORDER PREFERENCES
+======================================================================
+
+Create canonical input.
+
+Suggested:
+
+OrderPreparationPreferences {
+  quantity
+  orderTypePreference
+  timeInForcePreference
+  limitPricePreference?
+  allowExtendedHours?
+}
+
+Do not support advanced types not yet validated.
+
+Client may choose preferences.
+
+Server validates.
+
+======================================================================
+22. ORDER TYPES — CURRENT SPRINT
+======================================================================
+
+Architect for:
+
+MARKET
+
+LIMIT
+
+Potential future:
+
+STOP
+
+STOP_LIMIT
+
+But only enable types supported by current roadmap/provider capability.
+
+Strong recommendation for 2.8.1:
+
+prepare MARKET and LIMIT semantics only at domain level.
+
+No broker submission.
+
+2.8.2/2.8.3 will define preview behavior.
+
+======================================================================
+23. MARKET ORDER WARNING
+======================================================================
+
+If MARKET preference exists:
+
+display warning:
+
+"Market orders do not guarantee an execution price. The final execution
+price may differ from currently displayed quotes."
+
+Do not imply current quote = fill.
+
+======================================================================
+24. LIMIT ORDER DRAFT
+======================================================================
+
+Allow user-specified limit reference.
+
+But do NOT automatically optimize price.
+
+Possible:
+
+limitPrice
+
+source:
+
+USER_SELECTED
+
+REFERENCE_MIDPOINT
+
+REFERENCE_BID
+
+REFERENCE_ASK
+
+If user chooses reference midpoint:
+
+it remains a draft reference.
+
+No fill guarantee.
+
+======================================================================
+25. NO AUTO LIMIT CHASING
+======================================================================
+
+Do not implement:
+
+improve order every X seconds
+
+walk limit
+
+chase fill
+
+smart midpoint adjustment
+
+Those belong to future execution algorithms, if ever approved.
+
+======================================================================
+26. TIME IN FORCE
+======================================================================
+
+Canonical values initially:
+
+DAY
+
+GTC
+
+Only if provider/account/instrument supports.
+
+Potential:
+
+IOC
+
+FOK
+
+GTD
+
+should remain future unless currently required.
+
+Validate capabilities.
+
+No arbitrary unsupported TIF.
+
+======================================================================
+27. OPTIONS TIF
+======================================================================
+
+Audit provider behavior.
+
+Do not assume GTC valid for every options structure/provider.
+
+Return blocker/warning if capability unknown.
+
+======================================================================
+28. EXTENDED HOURS
+======================================================================
+
+Do NOT enable automatically.
+
+For equity draft:
+
+allowExtendedHours defaults FALSE.
+
+Only present if provider supports and future policy permits.
+
+Options generally do not use normal equity extended-hours semantics.
+
+Document.
+
+======================================================================
+29. MARKET HOURS CONTEXT
+======================================================================
+
+Carry current:
+
+OPEN
+
+CLOSED
+
+PRE_MARKET
+
+AFTER_HOURS
+
+UNKNOWN
+
+into draft context.
+
+It affects warnings.
+
+Do not block draft creation solely because market closed unless methodology
+requires it.
+
+Future submission must revalidate.
+
+======================================================================
+30. PRICE ROUNDING
+======================================================================
+
+Audit existing tick-size/precision rules.
+
+For equity limit price:
+
+normalize safely.
+
+For options:
+
+respect option price increment rules where known.
+
+Do not invent universal penny increments.
+
+If provider/instrument increment unknown:
+
+return limitation or defer exact provider translation to later sprint.
+
+======================================================================
+31. QUOTE SNAPSHOT
+======================================================================
+
+OrderDraft must reference current authoritative quote data used during
+preparation.
+
+Store:
+
+timestamp
+
+bid
+
+ask
+
+midpoint
+
+last if applicable
+
+provider
+
+freshness status
+
+For options:
+
+each leg quote.
+
+Do not store raw full chain.
+
+======================================================================
+32. QUOTE EXPIRATION
+======================================================================
+
+OrderDraft expiration should be short.
+
+Suggested:
+
+expiresAt
+
+based on shortest critical freshness window.
+
+If expired:
+
+cannot progress to preview/confirmation without revalidation.
+
+======================================================================
+33. ORDER DRAFT FINGERPRINT
+======================================================================
+
+Create deterministic:
+
+preparationFingerprint
+
+Include normalized:
+
+userId
+
+tradePlanId
+
+tradePlanVersion
+
+preflightId
+
+provider
+
+account reference
+
+instrument/structure
+
+legs
+
+quantity
+
+order type preference
+
+TIF
+
+limit reference if present
+
+Do NOT include:
+
+secrets
+
+tokens
+
+raw user session
+
+======================================================================
+34. FINGERPRINT PURPOSE
+======================================================================
+
+Fingerprint is for:
+
+change detection
+
+idempotency preparation
+
+future duplicate-submit protection
+
+It is NOT yet a broker client order ID.
+
+Document distinction.
+
+======================================================================
+35. DRAFT CHANGE DETECTION
+======================================================================
+
+If user changes:
+
+quantity
+
+limit reference
+
+TIF
+
+account
+
+selected draft preferences
+
+create new fingerprint.
+
+Future confirmation becomes invalid.
+
+No confirmation exists yet, but architecture should prepare for it.
+
+======================================================================
+36. DRAFT PERSISTENCE
+======================================================================
+
+Create minimal persistence.
+
+Suggested:
+
+order_drafts
+
+Fields:
+
+id
+user_id
+trade_plan_id
+trade_plan_version
+preflight_id
+provider
+account_ref
+instrument_type
+structure_type
+draft_json
+fingerprint
+status
+created_at
+expires_at
+updated_at
+
+No broker order ID.
+
+No execution status.
+
+No fill data.
+
+======================================================================
+37. ACCOUNT REF STORAGE
+======================================================================
+
+Prefer internal/masked stable account reference.
+
+Do not persist raw broker credentials.
+
+If full provider account ID is operationally required:
+
+store securely in server-owned domain data, never logs/client unnecessarily.
+
+Audit current convention.
+
+======================================================================
+38. ORDER DRAFT AUDIT EVENTS
+======================================================================
+
+Extend ExecutionAuditEvent types:
+
+ORDER_DRAFT_STARTED
+
+ORDER_DRAFT_CREATED
+
+ORDER_DRAFT_UPDATED
+
+ORDER_DRAFT_INVALIDATED
+
+ORDER_DRAFT_EXPIRED
+
+No:
+
+ORDER_SUBMITTED
+
+from 2.8.1.
+
+======================================================================
+39. APPEND-ONLY AUDIT
+======================================================================
+
+Audit events append-only.
+
+Do not rewrite preparation history.
+
+Safe metadata only.
+
+======================================================================
+40. ORDER DRAFT VALIDATION
+======================================================================
+
+Create deterministic validation.
+
+Suggested:
+
+OrderDraftValidation {
+  valid
+
+  planValid
+  preflightValid
+  lifecycleValid
+  accountValid
+  quoteValid
+  quantityValid
+  structureValid
+  orderTypeSupported
+  timeInForceSupported
+  priceValid
+
+  blockers[]
+  warnings[]
+}
+
+======================================================================
+41. BLOCKERS
+======================================================================
+
+Canonical preparation blockers may include:
+
+PREFLIGHT_MISSING
+
+PREFLIGHT_EXPIRED
+
+PREFLIGHT_NOT_PASSING
+
+TRADE_PLAN_VERSION_CHANGED
+
+LIFECYCLE_CHANGED
+
+QUOTE_STALE
+
+ACCOUNT_CHANGED
+
+ACCOUNT_UNAVAILABLE
+
+QUANTITY_REQUIRED
+
+INVALID_QUANTITY
+
+ORDER_TYPE_UNSUPPORTED
+
+TIF_UNSUPPORTED
+
+LIMIT_PRICE_REQUIRED
+
+INVALID_LIMIT_PRICE
+
+STRUCTURE_INVALID
+
+CONTRACT_UNAVAILABLE
+
+COVERAGE_NO_LONGER_VALID
+
+BUYING_POWER_CHANGED
+
+EXECUTION_DISABLED
+
+Do not use recommendation semantics.
+
+======================================================================
+42. WARNING MODEL
+======================================================================
+
+Possible:
+
+MARKET_ORDER_PRICE_UNCERTAINTY
+
+WIDE_SPREAD
+
+MARKET_CLOSED
+
+EARNINGS_WINDOW
+
+EXPIRATION_APPROACHING
+
+LIMIT_REFERENCE_NEAR_BID
+
+LIMIT_REFERENCE_NEAR_ASK
+
+DATA_REFRESH_SOON
+
+Warnings do not bypass blockers.
+
+======================================================================
+43. EXECUTION DISABLED BEHAVIOR
+======================================================================
+
+Important architectural decision:
+
+BROKER_EXECUTION_ENABLED=false
+
+may still allow creation of NON-EXECUTABLE order drafts for research/preview
+if policy explicitly permits.
+
+Define separate concept:
+
+ORDER_PREPARATION_ENABLED
+
+or safely allow draft creation while submission remains disabled.
+
+Preferred architecture:
+
+Order Preparation can operate while Broker Submission disabled.
+
+Because:
+
+draft is non-executable.
+
+However:
+
+make this explicit and tested.
+
+======================================================================
+44. ORDER PREPARATION FEATURE FLAG
+======================================================================
+
+Consider:
+
+ORDER_PREPARATION_ENABLED=true|false
+
+Default may be TRUE once sprint complete.
+
+It controls draft preparation only.
+
+Global:
+
+BROKER_EXECUTION_ENABLED=false
+
+continues to block actual order mutation.
+
+Document distinction.
+
+======================================================================
+45. EXECUTION MODE
+======================================================================
+
+OrderDraft records:
+
+executionMode
+
+DISABLED / SANDBOX / PRODUCTION
+
+But draft remains non-executable in all modes.
+
+This aids future transition.
+
+======================================================================
+46. SERVER AUTHORITATIVE INPUT
+======================================================================
+
+Client may submit:
+
+tradePlanId
+
+preflightId
+
+quantity
+
+orderTypePreference
+
+TIF preference
+
+limit price/reference
+
+selected authorized accountRef
+
+Client may NOT submit authoritative:
+
+symbol
+
+contract legs
+
+option strike
+
+expiration
+
+quote
+
+market price
+
+research score
+
+risk analysis
+
+buying power
+
+broker capabilities
+
+These come from server.
+
+======================================================================
+47. ACCOUNT CHANGE
+======================================================================
+
+If user selects account different from preflight account:
+
+old preflight invalid.
+
+Require:
+
+new preflight for selected account.
+
+Do not simply change account on OrderDraft.
+
+======================================================================
+48. BROKER PROVIDER CHANGE
+======================================================================
+
+Same.
+
+Provider change:
+
+requires new preflight.
+
+No draft transformation across providers without validation.
+
+======================================================================
+49. TRADE PLAN STRUCTURE IMMUTABILITY
+======================================================================
+
+Order Preparation must preserve selected structure.
+
+Equity:
+
+selected research scenario.
+
+Options:
+
+selected Contract Research Candidate.
+
+No:
+
+strike substitution
+
+expiration substitution
+
+strategy change
+
+leg change
+
+unless user returns upstream and explicitly selects new research structure.
+
+======================================================================
+50. RISK CONTEXT
+======================================================================
+
+Carry into draft:
+
+max loss
+
+max gain where applicable
+
+breakevens
+
+capital profile
+
+risk flags
+
+planning constraint status
+
+Do not recalculate methodology independently.
+
+Future preview uses authoritative Risk Analysis.
+
+======================================================================
+51. ESTIMATED CAPITAL
+======================================================================
+
+OrderDraft may show:
+
+Estimated Order Notional
+
+Estimated Debit
+
+Estimated Credit
+
+Estimated Cash-Secured Capital
+
+Estimated Defined-Risk Capital
+
+based on current draft.
+
+Label estimates clearly.
+
+Broker buying power remains authoritative.
+
+======================================================================
+52. EQUITY NOTIONAL
+======================================================================
+
+For equity:
+
+quantity × reference/limit price
+
+as estimate.
+
+Do not call:
+
+required cash
+
+unless broker confirms.
+
+======================================================================
+53. OPTION DEBIT/CREDIT
+======================================================================
+
+For multi-leg:
+
+derive estimated net debit/credit from current quote references.
+
+Do not assume midpoint execution.
+
+Display:
+
+Estimated Midpoint Debit/Credit
+
+with disclaimer.
+
+======================================================================
+54. PROVIDER TRANSLATION — NOT YET
+======================================================================
+
+Do NOT create actual Tradier request body or TradeStation order object.
+
+Instead create future translation interface:
+
+translateOrderDraftForProvider(...)
+
+DOCUMENT ONLY or stub interface that cannot execute.
+
+Actual broker payload translation belongs in later preview/submission sprint.
+
+======================================================================
+55. BROKER ORDER METHOD ISOLATION
+======================================================================
+
+Order Preparation service may depend on read-only broker adapter only.
+
+It must have no access to:
+
+placeOrder
+
+submitOrder
+
+replaceOrder
+
+cancelOrder
+
+Compile/test architecture to enforce if feasible.
+
+======================================================================
+56. MOCK SPY INVARIANT
+======================================================================
+
+Run all order preparation code paths.
+
+Assert:
+
+placeOrder calls = 0
+
+submitOrder = 0
+
+replaceOrder = 0
+
+cancelOrder = 0
+
+Mandatory.
+
+======================================================================
+57. LEGACY ORDER ROUTES
+======================================================================
+
+Do not modify existing legacy route guards unless needed for security.
+
+They remain protected by global execution kill switch.
+
+OrderDraft UI must not link directly to:
+
+POST /api/broker/orders
+
+or legacy execution UI.
+
+======================================================================
+58. API DESIGN
+======================================================================
+
+Suggested authenticated endpoints:
+
+POST /api/trade-plans/:id/execution/order-draft
+
+GET /api/trade-plans/:id/execution/order-draft
+
+GET /api/execution/order-drafts/:draftId
+
+PATCH /api/execution/order-drafts/:draftId
+
+DELETE /api/execution/order-drafts/:draftId
+
+GET /api/execution/order-preparation/health
+
+No:
+
+/submit
+
+/place
+
+/execute
+
+in this sprint.
+
+======================================================================
+59. CREATE DRAFT
+======================================================================
+
+POST should:
+
+load Trade Plan
+
+validate ownership
+
+load current preflight
+
+verify preflight current
+
+verify Trade Plan version
+
+verify lifecycle state
+
+verify account
+
+revalidate quote if policy requires
+
+build draft
+
+calculate fingerprint
+
+persist
+
+audit event
+
+return NON-EXECUTABLE draft.
+
+======================================================================
+60. UPDATE DRAFT
+======================================================================
+
+Only allow editable preparation preferences:
+
+quantity
+
+order type preference
+
+TIF
+
+limit reference
+
+Possibly account only through preflight rerun.
+
+Do NOT allow direct modification of:
+
+symbol
+
+strategy
+
+contracts
+
+legs
+
+risk analysis
+
+broker provider
+
+======================================================================
+61. DELETE / ABANDON
+======================================================================
+
+User may discard draft.
+
+Prefer:
+
+ABANDONED
+
+or deletion according to audit policy.
+
+If delete:
+
+audit event persists.
+
+Future execution history should remain traceable.
+
+======================================================================
+62. DRAFT EXPIRY
+======================================================================
+
+When expires:
+
+status EXPIRED.
+
+User must regenerate/revalidate.
+
+No automatic refresh silently changing economics.
+
+======================================================================
+63. ORDER PREPARATION UI
+======================================================================
+
+From Trade Plan Detail:
+
+after PASSING Execution Preflight:
+
+CTA:
+
+Prepare Order Draft
+
+NOT:
+
+Place Trade
+
+NOT:
+
+Submit
+
+NOT:
+
+Execute
+
+Page/panel title:
+
+Order Preparation
+
+Subtitle:
+
+"Review how this saved research plan could be represented as a future
+broker order. Nothing is submitted to your broker at this stage."
+
+======================================================================
+64. ORDER PREPARATION UI SECTIONS
+======================================================================
+
+Show:
+
+Trade Plan Summary
+
+Broker / Account
+
+Current Preflight
+
+Instrument / Strategy
+
+Order Draft Legs
+
+Quantity
+
+Order Type Preference
+
+Time in Force
+
+Pricing Reference
+
+Estimated Capital / Debit / Credit
+
+Risk Summary
+
+Quote Freshness
+
+Warnings
+
+Blockers
+
+Expiration
+
+Disclaimer
+
+Future Step
+
+======================================================================
+65. ACCOUNT DISPLAY
+======================================================================
+
+Show:
+
+Broker
+
+Account Type
+
+Masked account ID
+
+No full account ID unless necessary.
+
+======================================================================
+66. EQUITY DRAFT UX
+======================================================================
+
+Show:
+
+Symbol
+
+Scenario quantity
+
+Order quantity user input
+
+Current quote
+
+Estimated notional
+
+Order type
+
+TIF
+
+Limit reference if applicable
+
+Do not imply order will be filled.
+
+======================================================================
+67. OPTIONS DRAFT UX
+======================================================================
+
+Show:
+
+Strategy
+
+Expiration
+
+Legs
+
+Contracts
+
+Current leg quotes
+
+Estimated net debit/credit
+
+Risk snapshot
+
+Liquidity warnings
+
+No broker submission.
+
+======================================================================
+68. MULTI-LEG LEG TABLE
+======================================================================
+
+Columns:
+
+Role
+
+Contract
+
+Type
+
+Expiration
+
+Strike
+
+Ratio
+
+Quantity
+
+Quote
+
+No broker BUY/SELL language unless it is necessary for order education and
+clearly non-executing.
+
+Prefer canonical Open Long / Open Short Covered etc.
+
+======================================================================
+69. CURRENT QUOTE WARNING
+======================================================================
+
+Always display:
+
+"Quotes shown are references used to prepare this draft. Quotes can change
+before any future order is submitted."
+
+======================================================================
+70. NON-EXECUTION BANNER
+======================================================================
+
+Persistent banner:
+
+"Order Draft Only — Nothing has been submitted to your broker."
+
+This should be difficult to miss.
+
+======================================================================
+71. COMPLIANCE DISCLAIMER
+======================================================================
+
+Canonical:
+
+"Order Preparation converts a user-selected Trade Plan into a
+non-executable order draft for review. It does not submit an order,
+guarantee execution, or constitute investment advice, a recommendation,
+or a suitability determination."
+
+======================================================================
+72. NO FALSE CONFIRMATION
+======================================================================
+
+Do not use:
+
+Confirm Order
+
+Confirm Trade
+
+Final Confirmation
+
+Those belong later.
+
+Use:
+
+Save Draft
+
+Update Draft
+
+Continue to Preview — Upcoming
+
+======================================================================
+73. 2.8.2 / 2.8.3 HANDOFF
+======================================================================
+
+Create canonical:
+
+OrderPreviewInput {
+  orderDraftId
+  tradePlanId
+  preflightId
+}
+
+2.8.2 handles:
+
+Equity Order Preview
+
+2.8.3 handles:
+
+Options / Multi-Leg Preview
+
+Preview may show broker-like representation but still no submission.
+
+======================================================================
+74. 2.8.4 HANDOFF
+======================================================================
+
+Document that validation hardening will include:
+
+Lifecycle scheduler Task #131
+
+fresh buying power
+
+broker permissions
+
+positions
+
+fresh quotes
+
+order draft revalidation
+
+account state
+
+market state
+
+======================================================================
+75. 2.8.5 HANDOFF
+======================================================================
+
+Document:
+
+OrderDraft alone is NEVER sufficient for submission.
+
+2.8.5 requires:
+
+current preflight
+
+validated draft
+
+current validation hardening
+
+explicit confirmation
+
+persistent execution intent
+
+idempotency
+
+submission lock
+
+broker translation
+
+provider response handling
+
+No skipping.
+
+======================================================================
+76. IDEMPOTENCY PREPARATION
+======================================================================
+
+Preparation itself should be deterministic where inputs identical.
+
+If same:
+
+user
+
+Trade Plan version
+
+preflight
+
+account
+
+quantity
+
+preferences
+
+quotes/version
+
+then fingerprint identical.
+
+Do not necessarily create duplicate draft rows if architecture can safely
+reuse latest identical draft.
+
+Document decision.
+
+======================================================================
+77. DRAFT DUPLICATION
+======================================================================
+
+If same draft creation repeated:
+
+either:
+
+return existing active identical draft
+
+or:
+
+create versioned draft
+
+but avoid uncontrolled duplicate clutter.
+
+No broker implication.
+
+======================================================================
+78. CONCURRENCY
+======================================================================
+
+Two simultaneous Create Draft calls:
+
+must not create conflicting active drafts unexpectedly.
+
+Use:
+
+DB uniqueness/fingerprint
+
+transaction
+
+or concurrency guard.
+
+Do not rely only on client button disable.
+
+======================================================================
+79. DRAFT VERSIONING
+======================================================================
+
+Consider:
+
+version integer.
+
+When quantity/preferences change:
+
+version++.
+
+Future confirmation tied to exact version.
+
+If too large for current scope:
+
+ensure fingerprint/version architecture is ready.
+
+======================================================================
+80. AUDITABILITY
+======================================================================
+
+User/operator should be able to determine:
+
+which Trade Plan version
+
+which Preflight
+
+which account
+
+which draft version
+
+which quote timestamp
+
+which preferences
+
+were used.
+
+No secret data.
+
+======================================================================
+81. PRIVACY
+======================================================================
+
+Order drafts may include financial information.
+
+Do not expose:
+
+buying power values in admin health
+
+full positions in logs
+
+account full IDs
+
+user notes
+
+tokens
+
+portfolio contents unnecessarily
+
+Strict ownership.
+
+Cross-user draft:
+
+404.
+
+======================================================================
+82. PLATFORM HEALTH
+======================================================================
+
+Add:
+
+Order Preparation
+
+Possible status:
+
+HEALTHY
+
+DEGRADED
+
+DISABLED
+
+UNKNOWN
+
+Metrics:
+
+draftsCreated
+
+activeDrafts
+
+expiredDrafts
+
+invalidDrafts
+
+draftCreationFailures
+
+averageDraftLatencyMs
+
+lastDraftCreatedAt
+
+orderPreparationEnabled
+
+brokerSubmissionEnabled
+
+Admin aggregate only.
+
+======================================================================
+83. EXECUTION OPERATIONS CENTER
+======================================================================
+
+Show:
+
+Order Preparation Status
+
+Broker Submission Status:
+
+DISABLED
+
+Active Draft Count
+
+Draft Failures
+
+Average Preparation Time
+
+Kill Switch State
+
+No account/user details.
+
+======================================================================
+84. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+order_draft_started
+
+order_draft_created
+
+order_draft_updated
+
+order_draft_expired
+
+order_draft_invalidated
+
+order_draft_failed
+
+Safe metadata:
+
+provider
+
+instrumentType
+
+structureType
+
+status
+
+warningCount
+
+blockerCount
+
+durationMs
+
+No:
+
+symbol if policy avoids
+
+account full ID
+
+quantity
+
+limit price
+
+capital
+
+P/L
+
+option legs
+
+user identity
+
+tokens
+
+======================================================================
+85. FAILURE HANDLING
+======================================================================
+
+Examples:
+
+preflight expired
+
+quote unavailable
+
+Trade Plan changed
+
+account unavailable
+
+contract expired
+
+lifecycle changed
+
+return deterministic validation result.
+
+No 500 for expected domain failures.
+
+======================================================================
+86. PROVIDER UNAVAILABLE
+======================================================================
+
+If authoritative quote/account data unavailable:
+
+draft preparation fails/requires review.
+
+Do not use unsafe stale fallback for a future execution artifact.
+
+======================================================================
+87. RATE LIMIT
+======================================================================
+
+429:
+
+bounded handling.
+
+Do not retry indefinitely.
+
+Return provider limitation.
+
+No order mutation.
+
+======================================================================
+88. PERFORMANCE
+======================================================================
+
+Order Preparation should mostly consume existing Trade Plan/Preflight data.
+
+Avoid unnecessary provider calls.
+
+If quote revalidation required:
+
+one bounded call per underlying / option structure according to normalized
+provider architecture.
+
+No N+1 per leg if batch option quote service exists.
+
+Measure:
+
+equity draft
+
+single-leg option draft
+
+multi-leg draft
+
+Provider call count.
+
+======================================================================
+89. CACHE
+======================================================================
+
+Do not cache drafts as substitute for persistence.
+
+Quote caches may be reused only within execution freshness policy.
+
+Draft state is persisted.
+
+======================================================================
+90. ROUTING
+======================================================================
+
+Static/dynamic rules remain.
+
+Protect:
+
+/api/execution/order-preparation/health
+
+/api/execution/order-drafts/:id
+
+/trade-plans/:id/execution/order-draft
+
+No static segment collision.
+
+======================================================================
+91. SECURITY TESTS
+======================================================================
+
+Cover:
+
+unauthenticated
+
+cross-user Trade Plan
+
+cross-user draft
+
+cross-user preflight
+
+forged preflight ID
+
+wrong Trade Plan version
+
+client symbol injection
+
+client contract injection
+
+client quote injection
+
+client account injection
+
+client risk injection
+
+client forceExecute
+
+client submit flag
+
+invalid quantity
+
+huge quantity
+
+invalid limit price
+
+expired preflight
+
+expired draft
+
+no secret response
+
+no broker mutation
+
+======================================================================
+92. NO ORDER NETWORK TEST
+======================================================================
+
+MANDATORY.
+
+Instrument all broker-mutating methods.
+
+Run every 2.8.1 route/service/UI flow.
+
+Assert:
+
+placeOrder = 0
+
+submitOrder = 0
+
+replaceOrder = 0
+
+cancelOrder = 0
+
+modifyOrder = 0
+
+No exceptions.
+
+======================================================================
+93. GLOBAL KILL SWITCH REGRESSION
+======================================================================
+
+BROKER_EXECUTION_ENABLED=false
+
+must continue to block ALL existing mutating broker order routes.
+
+OrderDraft creation may still be permitted if separated by
+ORDER_PREPARATION_ENABLED policy.
+
+Test distinction explicitly.
+
+======================================================================
+94. LEGACY ROUTE REGRESSION
+======================================================================
+
+Re-run all five legacy order-capable route guards from 2.8.0.
+
+No regression.
+
+======================================================================
+95. BUSINESS INVARIANTS
+======================================================================
+
+Add permanent invariants:
+
+OrderDraft requires saved Trade Plan.
+
+OrderDraft requires current preflight.
+
+Draft cannot change underlying.
+
+Draft cannot change strategy.
+
+Draft cannot change selected contracts.
+
+Draft cannot submit.
+
+Draft cannot call broker mutation.
+
+Quantity must be explicit.
+
+Account must match preflight.
+
+Draft expires.
+
+Draft fingerprint changes with editable order parameters.
+
+======================================================================
+96. COMPLIANCE REGRESSION
+======================================================================
+
+Check user surfaces for:
+
+Trade Approved
+
+Ready to Trade
+
+Execute Now
+
+Buy Now
+
+Sell Now
+
+Recommended Order
+
+Best Order
+
+Guaranteed Fill
+
+Expected Fill
+
+Order Submitted
+
+unless appearing in historical docs/tests in explicitly safe context.
+
+Context-aware assertions.
+
+======================================================================
+97. ACCESSIBILITY
+======================================================================
+
+Inputs labeled.
+
+Order type selector accessible.
+
+TIF selector accessible.
+
+Quantity errors announced.
+
+Warning/blocker states not color-only.
+
+Option leg table accessible.
+
+Keyboard workflow.
+
+======================================================================
+98. MOBILE
+======================================================================
+
+At 375px:
+
+draft header stacks
+
+account card readable
+
+quantity/order fields full width
+
+multi-leg table safe
+
+risk summary cards stack
+
+warnings readable
+
+non-execution banner visible
+
+======================================================================
+99. BROWSER E2E
+======================================================================
+
+Add critical journey:
+
+Saved Trade Plan
+→ Execution Preflight
+→ Prepare Order Draft
+→ set quantity
+→ select order type
+→ select TIF
+→ save draft
+→ verify NON-EXECUTABLE banner
+→ verify no submit CTA
+
+Test:
+
+equity
+
+single-leg options where fixture supports
+
+multi-leg options where fixture supports
+
+No broker mutation.
+
+======================================================================
+100. UAT
+======================================================================
+
+Document/run:
+
+1. Open saved Equity Trade Plan.
+2. Run Execution Preflight.
+3. Obtain valid preparation state.
+4. Click Prepare Order Draft.
+5. Verify Trade Plan reference.
+6. Verify broker/account.
+7. Enter quantity.
+8. Select MARKET.
+9. Verify market-order warning.
+10. Change to LIMIT.
+11. Enter limit reference.
+12. Select DAY.
+13. Save draft.
+14. Verify fingerprint.
+15. Change quantity.
+16. Verify fingerprint/version changes.
+17. Refresh page.
+18. Verify draft persisted.
+19. Verify quote timestamp.
+20. Verify expiresAt.
+21. Wait/simulate expiry.
+22. Verify draft expired.
+23. Trade Plan changes → invalidate.
+24. Preflight expires → draft blocked.
+25. Lifecycle invalidation → blocked.
+26. Options Trade Plan.
+27. Prepare single-leg option draft.
+28. Verify contract unchanged.
+29. Prepare multi-leg draft.
+30. Verify all legs unchanged.
+31. Verify debit/credit estimate.
+32. Verify midpoint disclaimer.
+33. Covered Call coverage remains validated.
+34. Cross-user draft → 404.
+35. Client symbol injection rejected.
+36. Client contract injection rejected.
+37. forceExecute rejected.
+38. Verify no Submit button.
+39. Verify no Confirm Trade.
+40. Verify no broker mutation.
+41. Mobile.
+42. Accessibility.
+43. Platform Health.
+44. Full quality gate.
+
+======================================================================
+101. QUALITY GATES
+======================================================================
+
+Run all permanent gates:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+npm run test:migrations
+
+npm run test:compliance
+
+npm run test:db
+
+npm run test:performance
+
+npm run test:invariants
+
+npm run test:idempotency
+
+npm run test:release
+
+Add:
+
+npm run test:order-preparation
+
+if useful.
+
+No sprint-only test result is sufficient.
+
+======================================================================
+102. TARGET TEST COVERAGE
+======================================================================
+
+Target 150+ meaningful 2.8.1 assertions where appropriate.
+
+Include:
+
+types
+
+persistence
+
+ownership
+
+Trade Plan version
+
+Preflight binding
+
+Preflight expiry
+
+Lifecycle change
+
+Equity draft
+
+Option draft
+
+Multi-leg draft
+
+quantity
+
+quantity required
+
+market order
+
+limit order
+
+TIF
+
+account
+
+quotes
+
+expiry
+
+fingerprints
+
+duplicate creation
+
+concurrency
+
+audit events
+
+no provider mutation
+
+kill switch
+
+legacy routes
+
+compliance
+
+security
+
+Platform Health
+
+E2E
+
+Operations Manual
+
+2.8.2 handoff
+
+2.8.5 invariants
+
+======================================================================
+103. DATABASE MIGRATION
+======================================================================
+
+If order_drafts table added:
+
+use approved additive migration/startup architecture.
+
+No destructive changes.
+
+Test:
+
+fresh DB
+
+existing DB
+
+restart
+
+idempotency
+
+Document production migration.
+
+======================================================================
+104. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+docs/operations/23-platform-operations-center.md
+
+docs/operations/37-execution-architecture-and-broker-preflight.md
+
+Create:
+
+docs/operations/38-order-preparation-engine.md
+
+Document:
+
+architecture
+
+non-executable boundary
+
+OrderDraft
+
+type-level separation
+
+source Trade Plan
+
+preflight binding
+
+Trade Plan versioning
+
+lifecycle validation
+
+equity draft
+
+option draft
+
+multi-leg draft
+
+quantity
+
+order types
+
+TIF
+
+market-order warning
+
+limit references
+
+quote snapshot
+
+freshness
+
+draft expiry
+
+fingerprint
+
+persistence
+
+audit
+
+idempotency
+
+concurrency
+
+account binding
+
+provider isolation
+
+no-order invariant
+
+kill switch interaction
+
+API
+
+client UX
+
+security
+
+privacy
+
+logging
+
+Platform Health
+
+performance
+
+failure handling
+
+E2E
+
+UAT
+
+2.8.2 handoff
+
+2.8.3 handoff
+
+2.8.4 hardening
+
+2.8.5 submission gates
+
+======================================================================
+105. TASK #131
+======================================================================
+
+Task #131 remains assigned:
+
+Sprint 2.8.4
+
+Lifecycle scheduler auto-wiring.
+
+Do not pull it into 2.8.1.
+
+But document that 2.8.5 submission remains blocked until it is complete.
+
+======================================================================
+106. EXISTING SECURITY LIMITATIONS
+======================================================================
+
+Confirm:
+
+xlsx HIGH vulnerability remains isolated from execution path.
+
+SnapTrade SDK HIGH/transitive issue remains isolated from any enabled
+submission path.
+
+Do not expand SnapTrade execution.
+
+Document unchanged disposition.
+
+======================================================================
+107. 2.8.2 HANDOFF
+======================================================================
+
+Sprint 2.8.2 — Equity Order Preview
+
+will consume:
+
+OrderDraft
+
+where:
+
+instrumentType = EQUITY
+
+and display broker-like preview.
+
+It may perform fresh validation.
+
+It still MUST NOT submit.
+
+======================================================================
+108. 2.8.3 HANDOFF
+======================================================================
+
+Sprint 2.8.3 — Options / Multi-Leg Order Preview
+
+will consume:
+
+OrderDraft
+
+where:
+
+OPTION or MULTI_LEG_OPTION.
+
+It will show provider-aware preview semantics.
+
+Still no submission.
+
+======================================================================
+109. 2.8.4 HANDOFF
+======================================================================
+
+Sprint 2.8.4:
+
+Execution Validation Hardening
+
+includes:
+
+Task #131 lifecycle scheduler
+
+fresh account/buying-power validation
+
+permission hardening
+
+quote revalidation
+
+position revalidation
+
+market/tradability checks
+
+draft/preflight expiration rules
+
+sandbox certification preparation
+
+======================================================================
+110. 2.8.5 ABSOLUTE BLOCK
+======================================================================
+
+Do NOT permit broker submission until:
+
+2.8.4 GO
+
+Authenticated E2E PASS
+
+Broker sandbox submission testing defined/executed
+
+Persistent idempotency implemented
+
+Duplicate-submit protection tested
+
+Fresh quote revalidation
+
+Fresh account state
+
+Fresh buying power
+
+Fresh positions
+
+Current lifecycle
+
+Current risk analysis
+
+Short-lived explicit confirmation
+
+Execution kill switch
+
+Full audit trail
+
+All security gates PASS.
+
+======================================================================
+111. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Existing order architecture audited.
+
+B. OrderDraft canonical model exists.
+
+C. OrderDraft is type-separated from broker submission request.
+
+D. executable=false semantics enforced.
+
+E. Trade Plan required.
+
+F. Preflight required.
+
+G. Preflight must be current.
+
+H. Trade Plan version binding works.
+
+I. Lifecycle change invalidates draft preparation appropriately.
+
+J. Equity drafts supported.
+
+K. Option drafts supported.
+
+L. Multi-leg drafts supported.
+
+M. Selected structure cannot change.
+
+N. Quantity explicit.
+
+O. Quantity validated.
+
+P. MARKET semantics supported safely.
+
+Q. LIMIT semantics supported safely.
+
+R. Market-order warning present.
+
+S. TIF validated.
+
+T. Account bound to preflight.
+
+U. Quote snapshot preserved.
+
+V. Draft expiry exists.
+
+W. Fingerprint deterministic.
+
+X. Fingerprint changes with user-editable order properties.
+
+Y. Persistence works.
+
+Z. Audit events work.
+
+AA. Duplicate creation controlled.
+
+AB. Concurrency controlled.
+
+AC. No broker payload emitted.
+
+AD. No broker mutation method accessible/called.
+
+AE. Legacy kill switch still works.
+
+AF. No submit endpoint.
+
+AG. No submit UI.
+
+AH. No confirmation UI pretending submission.
+
+AI. Security ownership passes.
+
+AJ. Privacy/logging passes.
+
+AK. Compliance passes.
+
+AL. Platform Health updated.
+
+AM. Browser E2E added/run where environment supports.
+
+AN. Full quality gates pass.
+
+AO. npm run build passes.
+
+AP. Zero new TypeScript errors.
+
+AQ. Operations Manual updated.
+
+AR. 2.8.2/2.8.3 handoffs exist.
+
+AS. 2.8.5 submission remains blocked.
+
+AT. Roadmap alignment confirmed.
+
+======================================================================
+112. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing order components discovered
+3. Component classification
+4. Legacy order code isolated
+5. Files changed
+6. Schema impact
+7. Migration details
+8. Canonical OrderDraft
+9. Type-level non-executable separation
+10. OrderDraft status model
+11. Trade Plan binding
+12. Preflight binding
+13. Trade Plan version validation
+14. Lifecycle validation
+15. Equity draft design
+16. Options single-leg design
+17. Multi-leg design
+18. Leg-intent model
+19. Covered/Cash-secured protections
+20. Quantity methodology
+21. Explicit quantity UX
+22. Order type model
+23. MARKET handling
+24. LIMIT handling
+25. TIF handling
+26. Extended-hours policy
+27. Market-hours context
+28. Price normalization
+29. Quote snapshot
+30. Draft freshness/expiry
+31. Fingerprint design
+32. Draft change detection
+33. Persistence
+34. Draft versioning
+35. Duplicate handling
+36. Concurrency
+37. Audit events
+38. Validation model
+39. Blockers
+40. Warnings
+41. Execution-disabled behavior
+42. Order Preparation feature flag decision
+43. Server-authoritative inputs
+44. Account binding
+45. Provider binding
+46. Structure immutability
+47. Risk context
+48. Capital/debit/credit estimates
+49. Provider translation deferral
+50. No-order-network invariant
+51. Legacy route regression
+52. API
+53. Client UX
+54. Equity UX
+55. Options UX
+56. Multi-leg UX
+57. Compliance audit
+58. Security/privacy
+59. Structured logging
+60. Failure handling
+61. Performance
+62. Platform Health
+63. Operations Center
+64. Routing regression
+65. Browser E2E
+66. UAT
+67. Unit/feature tests
+68. Integration
+69. Smoke
+70. Regression
+71. Security
+72. Compliance
+73. DB
+74. Migrations
+75. Performance tests
+76. Invariants
+77. Idempotency
+78. Order-preparation tests
+79. Full automated test count
+80. npm run build
+81. Typecheck
+82. Server startup
+83. Task #131 status
+84. xlsx vulnerability isolation
+85. SnapTrade disposition
+86. 2.8.2 handoff
+87. 2.8.3 handoff
+88. 2.8.4 handoff
+89. 2.8.5 absolute security gates
+90. Improvement suggestions
+91. Deferred backlog
+92. Roadmap Alignment
+93. Operations Manual Updated: YES/NO
+94. Operations Manual Files Updated
+95. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+113. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.8.1
+Order Preparation Engine
+
+NEXT IF GO:
+
+2.8.2
+Equity Order Preview
+
+THEN:
+
+2.8.3
+Options / Multi-Leg Order Preview
+
+2.8.4
+Execution Validation Hardening
++
+Lifecycle Scheduler Task #131
+
+2.8.5
+Explicit User Confirmation & Broker Submission
+
+2.8.6
+Execution Status, Fills & Position Linking
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+======================================================================
+114. PERMANENT ARCHITECTURE INVARIANT
+======================================================================
+
+Document permanently:
+
+An OrderDraft is a non-executable representation of a possible future
+broker order.
+
+It must remain cryptographically/logically bound to:
+
+the authenticated user
+
+a saved Trade Plan version
+
+a current Execution Preflight
+
+an authorized broker account
+
+the user-selected structure
+
+the user-selected quantity/preferences
+
+and a freshness window.
+
+It may NEVER itself authorize or trigger broker submission.
+
+Only a later server-side execution flow with fresh validation,
+short-lived explicit confirmation, persistent idempotency, and enabled
+execution policy may transform an OrderDraft into a broker submission.
+
+======================================================================
+115. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not add broker submission endpoints.
+
+Do not invoke existing broker order endpoints.
+
+Do not build Tradier or TradeStation executable payloads.
+
+Do not weaken the global kill switch.
+
+Do not silently convert hypothetical position size into order quantity.
+
+Audit existing order infrastructure first.
+
+Build the non-executable Order Preparation Engine.
+
+Run all permanent quality gates.
+
+Update the Operations Manual.
+
+Return the complete Sprint 2.8.1 engineering report for review before
+beginning Sprint 2.8.2.

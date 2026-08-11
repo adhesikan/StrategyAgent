@@ -1,5 +1,74 @@
 # Sprint Change Log
 
+## Sprint 2.8.1 — Order Preparation Engine (2026-08-11)
+
+### Summary
+Implemented the Order Preparation Engine — a canonical non-executable OrderDraft
+builder from saved Trade Plans + passing Execution Preflights. Equity, single-leg
+option, and multi-leg option drafts supported. **No broker order submission. All
+OrderDrafts have `executable: false` at the type level.** 536 tests pass (401 pre-existing + 135 new).
+
+### Key Deliverables
+- `OrderDraft` canonical type with `readonly executable: false` type-level guard
+- Type-level separation: `OrderDraft` ≠ future `ConfirmedOrderIntent` ≠ future `BrokerSubmissionRequest`
+- `ORDER_PREPARATION_ENABLED` feature flag (default: true) — independent of `BROKER_EXECUTION_ENABLED`
+- Pure computation engine with injectable deps for deterministic testing
+- Preflight binding: PASS only; REQUIRES_REVIEW → blocker (default policy)
+- Trade Plan version binding via `plan.updatedAt` vs `preflight.evaluatedAt` comparison
+- Lifecycle validation: THESIS_INVALIDATED / DATA_STALE → `LIFECYCLE_CHANGED` blocker
+- Equity, single-leg options, multi-leg options (spread) instrument types
+- Canonical leg intent mapping (OPEN_LONG, OPEN_SHORT_COVERED, OPEN_SHORT_SECURED) — not broker BUY/SELL
+- Quantity: explicit user input required; hypothetical plan sizes never auto-used
+- MARKET + LIMIT order types with mandatory warnings
+- DAY + GTC time-in-force
+- SHA-256 preparation fingerprint (deterministic, changes with any user-editable param)
+- Idempotency: existing non-expired identical-fingerprint draft returned (not duplicated)
+- Concurrency: DB UNIQUE (fingerprint, user_id) with ON CONFLICT DO UPDATE
+- `order_drafts` DB table (auto-created at startup, additive, idempotent)
+- 6 new API routes (no `/submit`, `/place`, `/execute` routes)
+- 4 new draft audit event types (never ORDER_SUBMITTED)
+- `OrderPreparationPanel` client component — "Save Draft" / "Update Draft" / "Abandon Draft" only
+- Mock broker spy: placeOrder=0, submitOrder=0, replaceOrder=0, cancelOrder=0, modifyOrder=0 in every afterEach
+- `docs/operations/38-order-preparation-engine.md`
+- Task #131 (lifecycle scheduler): confirmed assigned to Sprint 2.8.4
+- `xlsx` and SnapTrade security dispositions unchanged
+
+### Files Added
+| File | Purpose |
+|---|---|
+| `shared/order-draft-types.ts` | Canonical OrderDraft types, enums, compliance constants |
+| `server/services/order-preparation-service.ts` | Pure computation engine + DB deps + metrics |
+| `server/routes/order-preparation.ts` | 6 API routes |
+| `server/routes/__tests__/order-preparation.test.ts` | 135 tests, 30 groups, broker spy |
+| `client/src/components/execution/OrderPreparationPanel.tsx` | UI panel |
+| `docs/operations/38-order-preparation-engine.md` | Full architecture doc |
+
+### Files Modified
+| File | Change |
+|---|---|
+| `shared/schema.ts` | Added `orderDrafts` table + type exports |
+| `server/routes.ts` | Registered `registerOrderPreparationRoutes` + `ensureOrderDraftTables` |
+| `package.json` | Added `test:order-preparation`; updated `test:release` + `test:release:full` |
+| `docs/operations/17-sprint-change-log.md` | This entry |
+
+### API Routes Added
+| Method | Path | Purpose |
+|---|---|---|
+| POST | /api/trade-plans/:id/execution/order-draft | Create/return idempotent draft |
+| GET | /api/trade-plans/:id/execution/order-draft | Latest draft for plan |
+| GET | /api/execution/order-drafts/:draftId | Get draft by ID |
+| PATCH | /api/execution/order-drafts/:draftId | Update preferences |
+| DELETE | /api/execution/order-drafts/:draftId | Abandon draft |
+| GET | /api/execution/order-preparation/health | Platform health |
+
+### 2.8.2 Handoff
+`OrderPreviewInput { orderDraftId, tradePlanId, preflightId }` — Sprint 2.8.2 (Equity Order Preview).
+
+### 2.8.5 Absolute Block
+`OrderDraft` alone is never sufficient for submission. Sprint 2.8.5 requires fresh preflight, draft, validation hardening, explicit confirmation, idempotency, submission lock, broker translation, and sandbox certification.
+
+---
+
 ## Sprint 2.8.0 — Execution Architecture, Compliance & Broker Preflight (2026-08-11)
 
 ### Summary

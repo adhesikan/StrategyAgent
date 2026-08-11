@@ -3808,6 +3808,48 @@ export type InsertTradePlanActivity = typeof tradePlanActivity.$inferInsert;
 // EXECUTION PREFLIGHT TABLES  (Sprint 2.8.0)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDER DRAFTS (Sprint 2.8.1 — Order Preparation Engine)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Order Drafts — non-executable order preparation records.
+ *
+ * INVARIANT: An order draft is a non-executable representation of a possible
+ * future broker order. It MUST NOT cause broker mutation. No broker order ID,
+ * no execution status, no fill data.
+ *
+ * Unique constraint on (fingerprint, user_id) for concurrency safety.
+ * Uses upsert (onConflictDoUpdate) to handle concurrent identical requests.
+ */
+export const orderDrafts = pgTable("order_drafts", {
+  id:               varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:           text("user_id").notNull(),
+  tradePlanId:      varchar("trade_plan_id").notNull(),
+  tradePlanVersion: integer("trade_plan_version").notNull().default(1),
+  preflightId:      varchar("preflight_id").notNull(),
+  provider:         text("provider").notNull().default("unknown"),
+  accountRef:       text("account_ref").notNull().default("none"),
+  instrumentType:   text("instrument_type").notNull(),
+  structureType:    text("structure_type").notNull(),
+  /** Full OrderDraft. No raw tokens, broker credentials, balances, or positions. */
+  draftJson:        jsonb("draft_json").notNull().$type<Record<string, unknown>>().default({}),
+  fingerprint:      text("fingerprint").notNull(),
+  status:           text("status").notNull().default("DRAFT"),
+  version:          integer("version").notNull().default(1),
+  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt:        timestamp("expires_at", { withTimezone: true }),
+  updatedAt:        timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  idxOdUserId:      index("idx_od_user_id").on(t.userId),
+  idxOdTradePlanId: index("idx_od_trade_plan_id").on(t.tradePlanId),
+  idxOdStatus:      index("idx_od_status").on(t.status),
+  idxOdFingerprint: uniqueIndex("idx_od_fingerprint_user").on(t.fingerprint, t.userId),
+}));
+
+export type OrderDraftRow    = typeof orderDrafts.$inferSelect;
+export type InsertOrderDraft = typeof orderDrafts.$inferInsert;
+
 /**
  * Execution preflight results.
  * Append-only. One row per preflight evaluation.

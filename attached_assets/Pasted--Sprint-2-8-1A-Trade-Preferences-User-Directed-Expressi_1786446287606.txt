@@ -1,0 +1,2311 @@
+# Sprint 2.8.1A — Trade Preferences & User-Directed Expression Selection
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.8 — Broker-Assisted Execution
+
+CURRENT SPRINT:
+2.8.1A — Trade Preferences & User-Directed Expression Selection
+
+PREREQUISITES:
+
+✓ Research + Trade Planning v1.0
+✓ Goals & Research Planning
+✓ Portfolio Intelligence
+✓ Trade Planning Foundation
+✓ Equity Trade Planning
+✓ Options Strategy Matching
+✓ Contract Research
+✓ Risk & Scenario Analysis
+✓ Trade Plan Workspace
+✓ Lifecycle Monitoring
+✓ Execution Architecture & Broker Preflight
+✓ Sprint 2.8.1 Order Preparation Engine — must be completed before
+  starting this sprint
+
+======================================================================
+PRIMARY PRODUCT PRINCIPLE
+======================================================================
+
+The user should decide HOW they want to explore or express a qualified
+research opportunity.
+
+VCP Trader AI should NOT make the top-level instrument/strategy decision
+for the user.
+
+Preferred hierarchy:
+
+Qualified Research Candidate
+        ↓
+USER chooses broad expression category
+        ↓
+VCP evaluates compatible structures INSIDE that category
+        ↓
+USER chooses specific structure
+        ↓
+Contract Research where applicable
+        ↓
+Risk Analysis
+        ↓
+Trade Plan
+        ↓
+Execution Preflight
+        ↓
+Order Preparation
+        ↓
+Order Preview
+        ↓
+Future Explicit Confirmation
+        ↓
+Future Broker Submission
+
+This sprint implements the USER-DIRECTED EXPRESSION SELECTION layer.
+
+======================================================================
+IMPORTANT COMPLIANCE PRINCIPLE
+======================================================================
+
+Global and per-opportunity trade preferences are:
+
+USER PREFERENCES
+
+NOT:
+
+- suitability assessments
+- risk tolerance determinations
+- investment objectives
+- recommendations
+- financial profiles
+- personalized advice
+
+Do NOT derive a preferred strategy based on:
+
+income
+net worth
+age
+tax bracket
+employment
+dependents
+risk capacity
+portfolio value
+financial circumstances
+
+Do NOT say:
+
+"Based on your profile..."
+
+or:
+
+"This strategy is appropriate for you."
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker submission
+- final order confirmation
+- automatic strategy selection
+- automatic contract selection
+- automatic order preparation based solely on preference
+- suitability scoring
+- financial questionnaire
+- risk profiling
+- recommendation ranking
+- "best trade"
+- "best strategy"
+- automatic naked options
+- autonomous AI trading
+- portfolio rebalancing
+- tax optimization
+
+DO NOT modify:
+
+- Opportunity Intelligence scoring
+- Strategy Matching methodology
+- Contract Research methodology
+- Risk Analysis methodology
+- Trade Plan snapshots
+- Execution Preflight safety rules
+- Order Preparation safety architecture
+
+This sprint adds a THIN PREFERENCE + SELECTION LAYER.
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+TradePlanningContext
+
+TradePlanningConstraints
+
+TradePlanningSession
+
+OptionsStrategyMatchResult
+
+OptionsStrategyFamily
+
+EquityPlanningScenario
+
+TradePlan
+
+OrderDraft
+
+current Trade Planning UI
+
+current Opportunity Workspace
+
+Dashboard opportunity cards
+
+Research Workspace
+
+Goals
+
+Portfolio
+
+existing user settings/preferences tables
+
+existing profile/preferences schema
+
+existing settings page
+
+existing onboarding
+
+existing execution preferences
+
+existing options preferences
+
+existing broker permissions
+
+existing saved Trade Plan structure-selection fields
+
+Research Glossary
+
+Operations Manual
+
+Report:
+
+A. Existing user preference infrastructure
+B. Existing trade/instrument preference fields
+C. Existing options preference fields
+D. Existing settings persistence
+E. Existing Trade Planning selection flow
+F. Existing Strategy Matching entry points
+G. Existing Trade Plan selected-expression fields
+H. Existing UI duplication
+I. Schema changes required
+J. What can be reused safely
+
+Do not code until audit complete.
+
+======================================================================
+2. CANONICAL BROAD EXPRESSION TYPES
+======================================================================
+
+Create canonical broad user-facing expression categories.
+
+Suggested:
+
+STOCK
+
+LONG_OPTIONS
+
+COVERED_CALL
+
+CASH_SECURED_PUT
+
+DEFINED_RISK_OPTIONS
+
+INCOME_OPTIONS
+
+NEUTRAL_OPTIONS
+
+ADVANCED_OPTIONS
+
+EXPLORE_COMPATIBLE_STRUCTURES
+
+Do NOT expose all 17 low-level strategy families as the first decision
+unless in advanced/detail views.
+
+======================================================================
+3. USER-FACING LABELS
+======================================================================
+
+Preferred:
+
+Stock
+
+Long Options
+
+Covered Calls
+
+Cash-Secured Puts
+
+Defined-Risk Options
+
+Income / Premium Strategies
+
+Neutral / Range Strategies
+
+Advanced Options
+
+Explore Other Research Structures
+
+Avoid:
+
+AI Recommended Strategy
+
+Best Strategy
+
+Optimal Structure
+
+Use Iron Condor
+
+Use Bull Call Spread
+
+======================================================================
+4. GLOBAL USER PREFERENCES
+======================================================================
+
+Create:
+
+UserTradingPreferences
+
+Suggested:
+
+UserTradingPreferences {
+  userId
+
+  preferredExpressionTypes[]
+
+  showOtherCompatibleStructures
+
+  updatedAt
+}
+
+Users may select MULTIPLE preferred expression categories.
+
+Example:
+
+Stocks
+Long Options
+Covered Calls
+Cash-Secured Puts
+
+These are defaults for presentation.
+
+They are NOT restrictions.
+
+======================================================================
+5. DEFAULT BEHAVIOR
+======================================================================
+
+If no preferences saved:
+
+show all broad supported categories that are appropriate for display.
+
+Do not force onboarding.
+
+Do not assume:
+
+Stock only
+
+Options only
+
+Aggressive
+
+Conservative
+
+======================================================================
+6. PREFERENCE SETTINGS UI
+======================================================================
+
+Add to user Settings:
+
+Research & Trading Preferences
+
+Suggested description:
+
+"Choose the types of investment structures you typically want VCP Trader
+AI to show first when researching qualified opportunities. These
+preferences control presentation only and are not a suitability
+assessment or investment recommendation."
+
+Allow checkboxes/toggles:
+
+Stocks
+
+Long Options
+
+Covered Calls
+
+Cash-Secured Puts
+
+Defined-Risk Options
+
+Income / Premium Strategies
+
+Neutral / Range Strategies
+
+Advanced Options
+
+Show other compatible structures
+
+Save
+
+======================================================================
+7. GLOBAL PREFERENCES ARE NOT HARD FILTERS
+======================================================================
+
+Critical.
+
+If user preference:
+
+STOCK + LONG_OPTIONS
+
+VCP may prioritize those.
+
+But if user opens:
+
+Other Research Structures
+
+they may view other compatible categories.
+
+Global preference should affect:
+
+ordering
+
+visibility emphasis
+
+default expansion
+
+suggested first view
+
+NOT:
+
+canonical research qualification
+
+eligibility
+
+broker permission
+
+strategy applicability
+
+======================================================================
+8. PER-OPPORTUNITY EXPRESSION SELECTION
+======================================================================
+
+When user opens Trade Planning for a qualified candidate:
+
+show a new first-step section:
+
+"How would you like to explore this opportunity?"
+
+Preferred categories first.
+
+Then:
+
+Other Available Research Structures
+
+User explicitly selects ONE broad expression type for the current planning
+path.
+
+======================================================================
+9. CANONICAL OPPORTUNITY SELECTION MODEL
+======================================================================
+
+Create:
+
+OpportunityExpressionSelection {
+  id
+  userId
+  symbol
+
+  planningSessionId
+
+  selectedExpressionType
+
+  selectedBy
+
+  selectedAt
+  updatedAt?
+}
+
+selectedBy must currently be:
+
+USER
+
+Potential future:
+
+USER
+SYSTEM_FILTER
+
+But do NOT use AI as selector.
+
+Preferred:
+
+selectedBy = USER
+
+======================================================================
+10. USER SELECTION IS EXPLICIT
+======================================================================
+
+Do not silently select category solely because of global preference.
+
+You may pre-highlight or order.
+
+But before progressing into specific structure research, user must explicitly
+select.
+
+Example:
+
+Your usual choices:
+
+[ Stock ]
+[ Long Options ]
+
+Other structures:
+
+[ Defined-Risk Options ]
+[ Cash-Secured Put ]
+[ Income Strategies ]
+
+======================================================================
+11. EXPRESSION TYPE → ENGINE ROUTING
+======================================================================
+
+Map broad category to existing engines.
+
+STOCK
+→ Equity Planning Engine
+
+LONG_OPTIONS
+→ Options Strategy Matching constrained to:
+  long_call
+  long_put
+  possibly directionally compatible long-premium structures as policy defines
+
+COVERED_CALL
+→ Covered Call path only
+→ requires live/saved share ownership context for true covered structure
+
+CASH_SECURED_PUT
+→ Cash-Secured Put path
+
+DEFINED_RISK_OPTIONS
+→ evaluate only defined-risk compatible families
+
+INCOME_OPTIONS
+→ evaluate income-oriented compatible families
+
+NEUTRAL_OPTIONS
+→ neutral/range-bound compatible families
+
+ADVANCED_OPTIONS
+→ calendars
+→ diagonals
+→ iron structures
+→ other advanced supported families
+
+EXPLORE_COMPATIBLE_STRUCTURES
+→ show all structurally compatible broad categories / families
+
+Do NOT duplicate Strategy Matching logic.
+
+Pass category constraint into existing engine.
+
+======================================================================
+12. DO NOT THROW AWAY 2.7.2
+======================================================================
+
+Options Strategy Matching remains authoritative for:
+
+which specific options strategy families are structurally compatible.
+
+The new preference layer simply narrows the research universe based on the
+user's selected broad category.
+
+Example:
+
+User selects:
+
+DEFINED_RISK_OPTIONS
+
+Options Strategy Matching evaluates:
+
+bull_call_spread
+bull_put_spread
+bear_put_spread
+bear_call_spread
+iron_condor
+iron_butterfly
+etc.
+
+based on current thesis.
+
+The system does NOT automatically choose one.
+
+======================================================================
+13. COMPATIBILITY STATES
+======================================================================
+
+For broad expression categories use transparent states:
+
+AVAILABLE
+
+AVAILABLE_WITH_REQUIREMENTS
+
+NOT_ALIGNED_WITH_CURRENT_RESEARCH
+
+UNAVAILABLE
+
+Examples:
+
+Covered Call
+
+AVAILABLE_WITH_REQUIREMENTS
+
+Reason:
+Requires sufficient underlying shares.
+
+Neutral Options
+
+NOT_ALIGNED_WITH_CURRENT_RESEARCH
+
+Reason:
+Current research thesis is strongly directional.
+
+Do not say:
+
+Bad Strategy
+
+Not Recommended
+
+======================================================================
+14. CATEGORY EXPLANATIONS
+======================================================================
+
+Each broad category should have a concise educational description.
+
+Example:
+
+STOCK
+
+"Explore an equity-based research scenario using entry framework,
+hypothetical sizing, risk observations, and thesis invalidation."
+
+LONG_OPTIONS
+
+"Explore long call or put structures consistent with the current research
+direction and planning horizon."
+
+DEFINED_RISK_OPTIONS
+
+"Explore options structures where risk is structurally bounded by the
+selected multi-leg construction."
+
+COVERED_CALL
+
+"Explore covered-call research when sufficient underlying shares are
+confirmed."
+
+CASH_SECURED_PUT
+
+"Explore put structures backed by estimated cash-secured capital."
+
+No performance promises.
+
+======================================================================
+15. COVERED CALL OWNERSHIP
+======================================================================
+
+Do not show Covered Call as fully available unless current architecture can
+confirm sufficient shares.
+
+States:
+
+AVAILABLE
+
+if sufficient shares confirmed.
+
+AVAILABLE_WITH_REQUIREMENTS
+
+if portfolio context exists but coverage validation pending.
+
+UNAVAILABLE
+
+if confirmed insufficient shares.
+
+Never convert into naked call.
+
+======================================================================
+16. CASH-SECURED PUT CAPITAL CONTEXT
+======================================================================
+
+Broad preference may be selected without exact strike.
+
+Show:
+
+"Exact cash-secured capital requirement is determined during contract
+research."
+
+Do not claim sufficient buying power until broker preflight.
+
+======================================================================
+17. ADVANCED OPTIONS
+======================================================================
+
+Advanced Options should be opt-in.
+
+Do not automatically prioritize for normal retail users merely because an
+advanced strategy scores well.
+
+Potential included families:
+
+calendar
+diagonal
+iron_condor
+iron_butterfly
+long_straddle
+long_strangle
+complex multi-leg structures
+
+Exact mapping should reuse existing canonical strategy registry.
+
+======================================================================
+18. NAKED / UNDEFINED-RISK OPTIONS
+======================================================================
+
+Do NOT include naked short calls or unsecured naked puts as broad standard
+retail preference categories.
+
+If existing legacy system supports them:
+
+classify separately.
+
+Do not expose in 2.8.1A normal Retail UX.
+
+Future Professional/Institutional policy may revisit.
+
+======================================================================
+19. "EXPLORE OTHER RESEARCH STRUCTURES"
+======================================================================
+
+Preferred label:
+
+Explore Other Research Structures
+
+or:
+
+Explore Compatible Structures
+
+Avoid:
+
+Let AI Choose
+
+AI Pick
+
+Best Strategy
+
+Optimal Strategy
+
+When selected:
+
+show compatible categories/families with explanations.
+
+User still chooses.
+
+======================================================================
+20. USER AGENCY AUDIT TRAIL
+======================================================================
+
+Persist explicit selection.
+
+Important downstream fields:
+
+selectedExpressionType
+
+selectedBy = USER
+
+selectedAt
+
+planningSessionId
+
+This should flow into:
+
+Trade Planning
+
+Trade Plan
+
+Order Draft
+
+Execution Audit where appropriate
+
+without overlogging private data.
+
+======================================================================
+21. TRADE PLAN INTEGRATION
+======================================================================
+
+Persist in Trade Plan planning snapshot:
+
+broadExpressionType
+
+selectedBy
+
+selectedAt
+
+specificStrategyFamily where applicable
+
+This lets future audit distinguish:
+
+User chose Defined-Risk Options
+
+then selected Bull Call Spread
+
+Do not rewrite existing snapshots silently.
+
+For new plans only, or create explicit version if modifying existing plan.
+
+======================================================================
+22. ORDER PREPARATION INTEGRATION
+======================================================================
+
+Sprint 2.8.1 OrderDraft should consume the final selected structure.
+
+2.8.1A must NOT make Order Preparation choose:
+
+Stock vs Option
+
+Long Call vs Spread
+
+Covered Call vs CSP
+
+Order Preparation consumes upstream user choice.
+
+Add invariant:
+
+OrderDraft cannot change broad expression type.
+
+======================================================================
+23. EXECUTION PREFLIGHT INTEGRATION
+======================================================================
+
+Preflight may validate requirements for the selected expression.
+
+Examples:
+
+Covered Call:
+share coverage
+
+CSP:
+buying power / cash requirement
+
+Options:
+options permissions
+
+Multi-leg:
+multi-leg permission
+
+But Preflight does not choose another category.
+
+======================================================================
+24. DASHBOARD INTEGRATION
+======================================================================
+
+Optional but valuable and in-scope if low-risk:
+
+On qualified opportunity cards show:
+
+Research structures matching your preferences
+
+Example:
+
+Stock
+Long Options
+Cash-Secured Put
+
+This is informational.
+
+Do NOT imply those are recommended.
+
+If this adds major UI complexity:
+
+defer dashboard enhancement.
+
+Core requirement is Trade Planning.
+
+======================================================================
+25. OPPORTUNITY WORKSPACE INTEGRATION
+======================================================================
+
+Trade Planning CTA may show:
+
+Explore Trade Structures
+
+Click opens selection step.
+
+If preferences exist:
+
+show:
+
+Your preferred research structures
+
+Do not bypass explicit selection.
+
+======================================================================
+26. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+AI may explain:
+
+What is a Covered Call?
+
+Why is Defined-Risk Options available?
+
+Why is Neutral Options not aligned?
+
+Compare Stock vs Long Options research characteristics.
+
+AI may NOT:
+
+select the expression type for the user
+
+change saved selection
+
+claim suitability
+
+recommend a specific strategy
+
+======================================================================
+27. GLOBAL SETTINGS SHOULD NOT BECOME PROFILE SCORING
+======================================================================
+
+Do NOT create:
+
+Trader Type
+
+Aggressive Trader
+
+Conservative Investor
+
+Risk Score
+
+Options Sophistication Score
+
+Suitability Profile
+
+These are outside scope.
+
+The user simply chooses which research structures they want emphasized.
+
+======================================================================
+28. NO FINANCIAL PROFILE
+======================================================================
+
+Do not collect:
+
+income
+
+net worth
+
+age
+
+tax bracket
+
+employment
+
+dependents
+
+total assets
+
+liabilities
+
+risk tolerance
+
+risk capacity
+
+investment objective
+
+time-to-retirement
+
+for this feature.
+
+Planning horizon may remain part of Trade Planning because it affects
+research construction, but do not transform it into suitability.
+
+======================================================================
+29. BROKER PERMISSIONS ARE DIFFERENT
+======================================================================
+
+User preference:
+
+"I like Defined-Risk Options"
+
+does NOT mean broker permissions allow them.
+
+Preference controls research presentation.
+
+Broker permissions are validated later by Execution Preflight.
+
+Keep models separate.
+
+======================================================================
+30. RESEARCH COMPATIBILITY IS DIFFERENT
+======================================================================
+
+User preference:
+
+"I like Covered Calls"
+
+does NOT mean Covered Call fits every thesis.
+
+Strategy Matching still determines compatibility.
+
+Keep:
+
+Preference
+≠
+Compatibility
+≠
+Broker Permission
+≠
+Suitability
+≠
+Execution Authorization
+
+Document this permanently.
+
+======================================================================
+31. CANONICAL MODEL SEPARATION
+======================================================================
+
+Document five separate concepts:
+
+UserTradingPreferences
+
+OpportunityExpressionSelection
+
+OptionsStrategyMatch
+
+BrokerPermissions
+
+ExecutionPreflightResult
+
+Never merge these into one "trade suitability" object.
+
+======================================================================
+32. API — USER PREFERENCES
+======================================================================
+
+Suggested authenticated routes:
+
+GET /api/user/trading-preferences
+
+PUT /api/user/trading-preferences
+
+or align with existing settings route conventions.
+
+Server derives userId from session.
+
+No userId from body.
+
+======================================================================
+33. API — EXPRESSION SELECTION
+======================================================================
+
+Suggested:
+
+GET /api/trade-planning/:symbol/expression-options
+
+POST /api/trade-planning/:symbol/expression-selection
+
+GET /api/trade-planning/session/:id/expression-selection
+
+Use existing route architecture carefully.
+
+Static-before-dynamic rule applies.
+
+======================================================================
+34. EXPRESSION OPTIONS RESPONSE
+======================================================================
+
+Suggested:
+
+ExpressionOption {
+  expressionType
+  label
+
+  preferredByUser
+
+  compatibilityStatus
+
+  reasons[]
+
+  requirements[]
+
+  limitations[]
+
+  specificCompatibleFamilies[]
+
+  educationalSummary
+}
+
+No numeric recommendation score.
+
+======================================================================
+35. SERVER AUTHORITATIVE COMPATIBILITY
+======================================================================
+
+Client may submit:
+
+selectedExpressionType
+
+Client may NOT submit:
+
+compatibilityStatus
+
+strategy matches
+
+portfolio ownership
+
+broker permissions
+
+research direction
+
+Server reconstructs.
+
+======================================================================
+36. PREFERENCE PERSISTENCE
+======================================================================
+
+Prefer dedicated table if no reusable preference store exists.
+
+Possible:
+
+user_trading_preferences
+
+user_id
+preferred_expression_types JSONB / TEXT[]
+show_other_compatible_structures
+created_at
+updated_at
+
+Do not store unnecessary personal profile information.
+
+======================================================================
+37. EXPRESSION SELECTION PERSISTENCE
+======================================================================
+
+Prefer:
+
+trade_planning_sessions selected_expression_type
+
+or dedicated event/selection field.
+
+Avoid unnecessary new table if planning session already provides proper
+ownership/persistence.
+
+Audit first.
+
+======================================================================
+38. EXISTING TRADE PLANNING CONSTRAINTS
+======================================================================
+
+Do not confuse:
+
+preferredExpressionType
+
+with:
+
+equityAllowed
+optionsAllowed
+definedRiskPreferred
+incomeFocus
+
+Review existing constraints.
+
+Potentially normalize overlap.
+
+For example:
+
+selected broad expression should be primary user choice.
+
+Legacy booleans may continue as planning details.
+
+Avoid contradictory states.
+
+======================================================================
+39. CONSTRAINT CONSISTENCY
+======================================================================
+
+Examples:
+
+selectedExpressionType = STOCK
+
+optionsAllowed should not matter for current branch.
+
+selectedExpressionType = LONG_OPTIONS
+
+optionsAllowed must logically permit options research.
+
+Do not silently change user preferences.
+
+Return validation if inconsistent.
+
+======================================================================
+40. USER CHANGES CATEGORY
+======================================================================
+
+Allow user:
+
+Change Research Structure
+
+before saving Trade Plan.
+
+If switching category:
+
+preserve shared research context
+
+invalidate downstream category-specific work where necessary.
+
+Example:
+
+Bull Call Spread research exists
+
+User switches to Stock
+
+Do not reuse options Contract Research in equity branch.
+
+======================================================================
+41. DOWNSTREAM INVALIDATION
+======================================================================
+
+Changing broad expression type must invalidate appropriately:
+
+specific strategy selection
+
+contract candidate
+
+risk analysis tied to old structure
+
+order draft tied to old plan version/structure
+
+Do not delete history silently.
+
+Use new planning state/version.
+
+======================================================================
+42. SAVED TRADE PLAN CHANGE
+======================================================================
+
+If user already saved Trade Plan and wants different broad expression:
+
+prefer:
+
+Create New Trade Plan
+
+or:
+
+Create New Version
+
+Do not mutate original snapshot.
+
+======================================================================
+43. GLOBAL PREFERENCE UPDATE
+======================================================================
+
+Changing global preferences does NOT modify existing:
+
+Trade Plans
+
+Planning Sessions
+
+Order Drafts
+
+Execution Preflights
+
+It only affects future/default presentation.
+
+======================================================================
+44. ONBOARDING
+======================================================================
+
+Do NOT force trade preferences into mandatory signup.
+
+Optional future onboarding is fine.
+
+Current Settings + Trade Planning selection is sufficient.
+
+======================================================================
+45. UI — SETTINGS
+======================================================================
+
+Create clean card:
+
+Research & Trading Preferences
+
+Description.
+
+Checkboxes or toggle cards.
+
+Multiple selections.
+
+Tooltips/explanations.
+
+Save state.
+
+Privacy/compliance note.
+
+Accessible.
+
+======================================================================
+46. UI — TRADE PLANNING FIRST STEP
+======================================================================
+
+Before expression-family detail:
+
+How would you like to explore this opportunity?
+
+Section A:
+
+Your Preferred Research Structures
+
+Section B:
+
+Other Compatible Structures
+
+Section C:
+
+Currently Unavailable / Not Aligned
+
+Do not hide why.
+
+======================================================================
+47. UI — CARD EXAMPLE
+======================================================================
+
+Long Options
+
+Explore directional call or put structures consistent with the current
+research thesis.
+
+Status:
+Available
+
+Why:
+- Options research enabled
+- Current thesis is directional
+
+Button:
+
+Explore Long Options
+
+NOT:
+
+Trade Long Options
+
+======================================================================
+48. UI — SELECTED STATE
+======================================================================
+
+Once user chooses:
+
+Selected Research Structure:
+Long Options
+
+Selected by:
+You
+
+Allow:
+
+Change
+
+Do not prominently display "selectedBy USER" if awkward; it may be metadata.
+
+======================================================================
+49. UI — ADVANCED STRATEGY REVEAL
+======================================================================
+
+Do not overwhelm retail users.
+
+For Defined-Risk Options:
+
+first show broad category.
+
+After selection:
+
+show compatible specific families.
+
+Example:
+
+Bull Call Spread
+Bull Put Spread
+
+Use existing Strategy Matching output.
+
+======================================================================
+50. USER EDUCATION
+======================================================================
+
+Each category can link to existing Education content if available.
+
+Do not build duplicate education content.
+
+Use existing VCP Trader Education app/pages.
+
+======================================================================
+51. MONETIZATION
+======================================================================
+
+Document only.
+
+FREE:
+
+Stock
+basic Long Options education/research preview
+limited expression selection
+
+RETAIL:
+
+all standard user preference categories
+full Stock
+Long Options
+Covered Calls
+CSP
+Defined-Risk Options
+Income
+Neutral
+saved preferences
+
+PROFESSIONAL:
+
+Advanced Options
+richer custom preference templates
+advanced comparison
+
+RIA:
+
+firm-approved expression universe
+advisor workflow
+client-specific policy later
+
+Do NOT implement suitability.
+
+INSTITUTIONAL:
+
+custom strategy universe
+desk-level preferences
+organization policies
+
+ENTERPRISE:
+
+custom structures
+private models
+API
+
+No entitlement enforcement now.
+
+======================================================================
+52. RIA / INSTITUTIONAL FUTURE
+======================================================================
+
+Future separate concept:
+
+OrganizationExpressionPolicy {
+  allowedExpressionTypes[]
+  prohibitedExpressionTypes[]
+  allowedStrategyFamilies[]
+  requireDefinedRisk?
+}
+
+Do not implement now.
+
+Keep distinct from user preferences.
+
+======================================================================
+53. COMPLIANCE LANGUAGE
+======================================================================
+
+Canonical settings disclaimer:
+
+"These preferences control which research structures VCP Trader AI shows
+first. They do not determine whether any investment or strategy is
+appropriate for you and are not a suitability assessment or investment
+recommendation."
+
+Canonical Trade Planning disclaimer:
+
+"You choose the type of research structure you want to explore. VCP Trader
+AI then analyzes structures within that category using the current research
+thesis and available data. This does not constitute investment advice,
+a recommendation, or a suitability determination."
+
+======================================================================
+54. FORBIDDEN / RISKY LANGUAGE
+======================================================================
+
+Avoid:
+
+Recommended for You
+
+Best Strategy for You
+
+Your Ideal Strategy
+
+Your Risk Profile
+
+Suitable Strategy
+
+Appropriate for You
+
+AI Chose
+
+AI Selected
+
+Optimal Trade Type
+
+Top Strategy
+
+Use:
+
+Your Preference
+
+Your Selection
+
+Compatible Research Structure
+
+Available for Research
+
+Not Aligned With Current Research
+
+======================================================================
+55. ANALYTICS / LOGGING
+======================================================================
+
+If product analytics exist:
+
+safe event:
+
+trading_preferences_updated
+
+expression_type_selected
+
+expression_type_changed
+
+Safe metadata:
+
+expressionType
+
+sourceSurface
+
+Do NOT log:
+
+income
+net worth
+portfolio value
+account balance
+capital constraint
+user notes
+
+Respect current logging privacy standards.
+
+======================================================================
+56. PLATFORM HEALTH
+======================================================================
+
+No major health subsystem should be needed.
+
+If persistence/service is significant add:
+
+Trade Preferences
+
+Metrics:
+
+preferencesConfigured
+
+selectionRequests
+
+selectionFailures
+
+Do NOT expose user preference distribution if privacy/commercial policy
+does not require it.
+
+Could also remain under Trade Planning health.
+
+Prefer minimal health expansion.
+
+======================================================================
+57. SECURITY
+======================================================================
+
+Authenticated preference APIs.
+
+User only accesses own preferences.
+
+Planning selection belongs to user session.
+
+Cross-user planning session:
+
+404.
+
+Client cannot select expression for another user.
+
+No broker account data needed here.
+
+======================================================================
+58. CACHE
+======================================================================
+
+User preferences may be cached user-scoped if current settings architecture
+supports it.
+
+Invalidate on update.
+
+Never cross-user.
+
+Expression compatibility should reuse Opportunity Intelligence /
+Strategy Matching caches.
+
+Do not duplicate ranking.
+
+======================================================================
+59. PERFORMANCE
+======================================================================
+
+Preference read:
+
+very fast.
+
+Expression options should reuse precomputed:
+
+TradePlanningContext
+
+Strategy Matching
+
+Portfolio context
+
+No new market-data fetch solely to render category cards unless required
+by current compatibility engine.
+
+No N+1.
+
+======================================================================
+60. ACCESSIBILITY
+======================================================================
+
+Preference cards:
+
+keyboard selectable
+
+checkbox labels
+
+descriptions associated
+
+status text, not color-only
+
+expression selection cards keyboard accessible
+
+mobile touch targets
+
+======================================================================
+61. MOBILE
+======================================================================
+
+At 375px:
+
+preference cards stack
+
+selection cards stack
+
+advanced sections collapse
+
+reasons readable
+
+no clipped disclaimers
+
+======================================================================
+62. ROUTING REGRESSION
+======================================================================
+
+Test all new routes.
+
+Static planning-session routes before dynamic symbol routes where necessary.
+
+Direct refresh.
+
+Back/forward.
+
+No recurrence of static segment being interpreted as symbol.
+
+======================================================================
+63. BUSINESS INVARIANTS
+======================================================================
+
+Add permanent invariants:
+
+User preference cannot change Opportunity Intelligence qualification.
+
+User preference cannot create a qualified opportunity.
+
+User preference cannot bypass Strategy Matching.
+
+User preference cannot bypass broker permissions.
+
+User preference cannot bypass Execution Preflight.
+
+Global preference does not mutate existing Trade Plans.
+
+Expression selection must be explicit before category-specific planning.
+
+OrderDraft cannot change expression type.
+
+AI cannot set selectedExpressionType on behalf of user.
+
+Covered Call cannot become naked.
+
+CSP cannot become unsecured.
+
+======================================================================
+64. TESTS
+======================================================================
+
+Target 125+ meaningful assertions where appropriate.
+
+Cover:
+
+canonical expression types
+
+labels
+
+global preferences
+
+multiple selections
+
+empty preferences
+
+show other structures
+
+settings persistence
+
+ownership
+
+cross-user
+
+preference ordering
+
+not hard filtering
+
+explicit per-opportunity selection
+
+selectedBy USER
+
+STOCK routing
+
+LONG_OPTIONS routing
+
+COVERED_CALL routing
+
+CSP routing
+
+DEFINED_RISK_OPTIONS routing
+
+INCOME_OPTIONS routing
+
+NEUTRAL_OPTIONS routing
+
+ADVANCED_OPTIONS routing
+
+EXPLORE_COMPATIBLE routing
+
+covered-call ownership
+
+CSP capital limitation messaging
+
+compatibility statuses
+
+not aligned state
+
+unavailable state
+
+preference vs compatibility separation
+
+preference vs broker permission separation
+
+preference vs suitability separation
+
+global change does not mutate plan
+
+per-opportunity change invalidates downstream structure
+
+Trade Plan snapshot persistence
+
+OrderDraft structure immutability
+
+server authoritative compatibility
+
+client cannot fake compatibility
+
+client cannot fake ownership
+
+client cannot fake strategy match
+
+no AI selection
+
+no recommendation language
+
+no suitable-for-you language
+
+no risk-profile language
+
+compliance disclaimer
+
+security
+
+route regression
+
+accessibility
+
+mobile
+
+Operations Manual
+
+roadmap discipline
+
+======================================================================
+65. UAT
+======================================================================
+
+Document/run:
+
+1. Open Settings.
+2. Open Research & Trading Preferences.
+3. Select Stock + Long Options.
+4. Save.
+5. Reload.
+6. Verify persistence.
+7. Open qualified opportunity.
+8. Click Trade Planning.
+9. Verify Stock + Long Options shown first.
+10. Verify other compatible categories remain accessible.
+11. Select Stock.
+12. Verify Equity Planning path.
+13. Return/change structure.
+14. Select Long Options.
+15. Verify Strategy Matching constrained correctly.
+16. Select Defined-Risk Options.
+17. Verify compatible defined-risk families.
+18. Verify incompatible families not mislabeled as recommendations.
+19. User owns sufficient shares → Covered Call available.
+20. No shares → Covered Call requirement/unavailable state.
+21. Select Cash-Secured Put.
+22. Verify exact secured capital deferred to contract research.
+23. Select Advanced Options.
+24. Verify advanced strategy list.
+25. Select Explore Compatible Structures.
+26. Verify multiple compatible structures shown.
+27. Verify user still chooses.
+28. Save Trade Plan.
+29. Verify broadExpressionType saved.
+30. Verify selectedBy = USER persisted.
+31. Change global preference.
+32. Verify existing Trade Plan unchanged.
+33. Create OrderDraft from existing selected structure.
+34. Verify OrderDraft cannot change expression.
+35. Cross-user preference access → denied/404.
+36. Cross-user planning session → 404.
+37. Mobile.
+38. Accessibility.
+39. Compliance language.
+40. Full quality gate.
+
+======================================================================
+66. QUALITY GATES
+======================================================================
+
+Run permanent gates:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+npm run test:migrations
+
+npm run test:compliance
+
+npm run test:db
+
+npm run test:performance
+
+npm run test:invariants
+
+npm run test:idempotency
+
+npm run test:release
+
+Run Sprint 2.8.1 Order Preparation tests too.
+
+Add:
+
+npm run test:trade-preferences
+
+if useful.
+
+No sprint-only suite is sufficient for GO.
+
+======================================================================
+67. DATABASE
+======================================================================
+
+If new table required:
+
+user_trading_preferences
+
+use additive migration.
+
+If existing generic user preferences infrastructure exists:
+
+reuse rather than duplicate.
+
+For planning-session selection:
+
+prefer existing TradePlanningSession schema if safe.
+
+Do not create unnecessary tables.
+
+Test:
+
+fresh DB
+
+existing DB
+
+restart
+
+idempotency
+
+======================================================================
+68. RESEARCH GLOSSARY
+======================================================================
+
+Add terms only if useful:
+
+research_trading_preferences
+
+expression_type
+
+compatible_research_structure
+
+user_selected_expression
+
+advanced_options
+
+Do not overpopulate glossary.
+
+======================================================================
+69. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+docs/operations/37-execution-architecture-and-broker-preflight.md
+
+docs/operations/38-order-preparation-engine.md
+
+Create:
+
+docs/operations/39-trade-preferences-and-expression-selection.md
+
+Document:
+
+architecture
+
+why preference layer exists
+
+preference vs suitability
+
+preference vs compatibility
+
+preference vs broker permissions
+
+preference vs execution
+
+canonical expression types
+
+global settings
+
+per-opportunity selection
+
+selectedBy USER
+
+Strategy Matching integration
+
+Trade Planning integration
+
+Trade Plan snapshot
+
+OrderDraft invariants
+
+covered-call ownership
+
+CSP capital behavior
+
+advanced options
+
+Explore Compatible Structures
+
+security
+
+privacy
+
+logging
+
+API
+
+DB
+
+routing
+
+UAT
+
+compliance terminology
+
+RIA/Institutional future
+
+commercialization
+
+======================================================================
+70. ROADMAP UPDATE
+======================================================================
+
+Record:
+
+2.8.0
+Execution Architecture & Broker Preflight
+COMPLETE
+
+2.8.1
+Order Preparation Engine
+COMPLETE before this sprint begins
+
+2.8.1A
+Trade Preferences & User-Directed Expression Selection
+CURRENT
+
+Next:
+
+2.8.2
+Equity Order Preview
+
+2.8.3
+Options / Multi-Leg Order Preview
+
+2.8.4
+Execution Validation Hardening + Lifecycle Scheduler Task #131
+
+2.8.5
+Explicit User Confirmation & Broker Submission
+
+2.8.6
+Execution Status, Fills & Position Linking
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+======================================================================
+71. 2.8.2 HANDOFF
+======================================================================
+
+Equity Order Preview receives:
+
+OrderDraft
+
+with upstream:
+
+broadExpressionType = STOCK
+
+selectedBy = USER
+
+It does NOT ask again whether user wants Stock vs Options.
+
+======================================================================
+72. 2.8.3 HANDOFF
+======================================================================
+
+Options Order Preview receives:
+
+OrderDraft
+
+with upstream:
+
+broad expression selected by user
+
+specific strategy family selected through Strategy Matching / user choice
+
+specific contract candidate selected by user
+
+No downstream engine may change these silently.
+
+======================================================================
+73. 2.8.5 EXECUTION HANDOFF
+======================================================================
+
+Before broker submission:
+
+audit trail should be able to show:
+
+USER selected broad expression type
+
+USER selected specific structure
+
+USER selected contract candidate
+
+USER saved Trade Plan
+
+USER selected order quantity/preferences
+
+USER reviewed Order Preview
+
+USER explicitly confirmed submission
+
+This is a permanent user-agency chain.
+
+======================================================================
+74. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Global UserTradingPreferences model exists.
+
+B. Multiple preferences supported.
+
+C. Preferences affect presentation, not qualification.
+
+D. Preferences are not suitability.
+
+E. No financial questionnaire added.
+
+F. Per-opportunity selection exists.
+
+G. Per-opportunity selection explicit.
+
+H. selectedBy = USER persisted.
+
+I. Broad expression categories implemented.
+
+J. Strategy Matching reused, not duplicated.
+
+K. Stock routes to Equity Planning.
+
+L. Long Options routes appropriately.
+
+M. Covered Call ownership handled correctly.
+
+N. CSP handled correctly.
+
+O. Defined-Risk Options constrain strategy research.
+
+P. Income Options constrain appropriately.
+
+Q. Neutral Options constrain appropriately.
+
+R. Advanced Options opt-in.
+
+S. Explore Compatible Structures preserves user choice.
+
+T. Global preference change does not mutate existing plans.
+
+U. Expression change invalidates downstream structure safely.
+
+V. Trade Plan persists broad expression.
+
+W. OrderDraft cannot alter expression.
+
+X. Broker permissions remain separate.
+
+Y. Execution Preflight remains separate.
+
+Z. No AI strategy selection for user.
+
+AA. No recommendation language.
+
+AB. No suitability language.
+
+AC. Security passes.
+
+AD. Accessibility/mobile passes.
+
+AE. Full quality gates pass.
+
+AF. Build passes.
+
+AG. Zero new TS errors.
+
+AH. Operations Manual updated.
+
+AI. 2.8.2 handoff clean.
+
+AJ. Roadmap alignment confirmed.
+
+======================================================================
+75. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing preference infrastructure
+3. Existing Trade Planning selection behavior
+4. Files changed
+5. Schema impact
+6. Migration
+7. Canonical UserTradingPreferences
+8. Canonical broad expression types
+9. Global settings UX
+10. Default behavior
+11. Presentation ordering
+12. Preference-not-restriction behavior
+13. OpportunityExpressionSelection
+14. selectedBy = USER
+15. Trade Planning UX
+16. Expression compatibility states
+17. STOCK integration
+18. LONG_OPTIONS integration
+19. COVERED_CALL integration
+20. CASH_SECURED_PUT integration
+21. DEFINED_RISK_OPTIONS integration
+22. INCOME_OPTIONS integration
+23. NEUTRAL_OPTIONS integration
+24. ADVANCED_OPTIONS integration
+25. Explore Compatible Structures
+26. Strategy Matching reuse
+27. Covered-call ownership
+28. CSP capital handling
+29. Preference vs compatibility separation
+30. Preference vs broker-permission separation
+31. Preference vs suitability separation
+32. Trade Plan integration
+33. OrderDraft integration
+34. Downstream invalidation behavior
+35. Global preference update behavior
+36. Research Workspace integration
+37. Settings API
+38. Expression-selection API
+39. Server authoritative compatibility
+40. Security/privacy
+41. Logging
+42. Cache/performance
+43. Accessibility/mobile
+44. Routing regression
+45. Compliance audit
+46. Tests added
+47. Full test count
+48. Smoke
+49. Regression
+50. Integration
+51. Security
+52. Compliance
+53. DB
+54. Migrations
+55. Invariants
+56. Idempotency
+57. Order Preparation regression
+58. npm run build
+59. Typecheck
+60. Server startup
+61. UAT
+62. Free value
+63. Retail value
+64. Professional value
+65. RIA extension
+66. Institutional extension
+67. Enterprise extension
+68. 2.8.2 handoff
+69. 2.8.3 handoff
+70. Future execution user-agency chain
+71. Improvement suggestions
+72. Deferred backlog
+73. Roadmap Alignment
+74. Operations Manual Updated: YES/NO
+75. Operations Manual Files Updated
+76. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+76. PERMANENT ARCHITECTURE RULE
+======================================================================
+
+Document permanently:
+
+User Trading Preferences determine which research structures are shown
+first.
+
+They do NOT:
+
+qualify securities
+
+determine suitability
+
+authorize strategies
+
+override broker permissions
+
+override risk controls
+
+or authorize execution.
+
+The user explicitly chooses the broad expression type for each Trade
+Planning workflow.
+
+VCP Trader AI may then evaluate compatible structures INSIDE that
+user-selected category.
+
+The specific structure and contract remain user-selected before execution
+planning proceeds.
+
+======================================================================
+77. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not modify Sprint 2.8.1 Order Preparation safety boundaries.
+
+Do not add broker submission.
+
+Do not add suitability logic.
+
+Do not add financial profiling.
+
+Do not allow AI to choose the user's broad trade expression.
+
+Audit first.
+
+Implement the thin preference/selection layer.
+
+Reuse existing Strategy Matching.
+
+Preserve explicit user agency.
+
+Run all permanent quality gates.
+
+Update the Operations Manual.
+
+Return the complete Sprint 2.8.1A engineering report for review before
+beginning Sprint 2.8.2.

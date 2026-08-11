@@ -49,6 +49,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { ExecutionPreflightPanel } from "@/components/execution/ExecutionPreflightPanel";
+import { OrderPreparationPanel } from "@/components/execution/OrderPreparationPanel";
+import type { ExecutionPreflightResult } from "../../../shared/execution-types";
 import {
   Activity, AlertCircle, Archive, CheckSquare, ChevronLeft, Clock, Copy,
   ExternalLink, Filter, Info, RefreshCw, ShieldAlert, TrendingDown, TrendingUp
@@ -242,6 +246,16 @@ export default function TradePlanDetailPage() {
   // Lifecycle data (Sprint 2.7.6)
   const [activityCategory, setActivityCategory] = useState<string>("all");
   const [isEvaluating, setIsEvaluating] = useState(false);
+
+  const { isConnected: brokerConnected } = useBrokerStatus();
+
+  // Fetch current execution preflight (Sprint 2.8.0/2.8.1)
+  const { data: preflightData } = useQuery<ExecutionPreflightResult & { isExpired?: boolean }>({
+    queryKey: ["/api/trade-plans", id, "execution", "preflight"],
+    queryFn:  () => apiRequest("GET", `/api/trade-plans/${id}/execution/preflight`).then(r => r.json()),
+    enabled:  !!id && !!plan && brokerConnected,
+    staleTime: 4 * 60 * 1000,
+  });
 
   const { data: lifecycleData, refetch: refetchLifecycle } = useQuery<{
     tradePlanId: string;
@@ -1040,14 +1054,23 @@ export default function TradePlanDetailPage() {
           </Card>
         </section>
 
-        {/* § Future Step — no execution CTA */}
-        <Card className="border-dashed opacity-60">
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground text-center">
-              <strong>Future Step:</strong> Order Preparation — Upcoming
-            </p>
-          </CardContent>
-        </Card>
+        {/* § Execution Preflight (Sprint 2.8.0) */}
+        {brokerConnected && id && (
+          <section aria-labelledby="execution-preflight-heading">
+            <ExecutionPreflightPanel tradePlanId={id} brokerConnected={brokerConnected} />
+          </section>
+        )}
+
+        {/* § Order Preparation (Sprint 2.8.1) — shown when preflight has passed */}
+        {brokerConnected && id && preflightData && !preflightData.isExpired && preflightData.overallStatus === "PASS" && (
+          <section aria-labelledby="order-preparation-heading">
+            <OrderPreparationPanel
+              tradePlanId={id}
+              preflight={preflightData}
+              brokerConnected={brokerConnected}
+            />
+          </section>
+        )}
 
         {/* § Activity Timeline (Sprint 2.7.6) */}
         <section aria-labelledby="activity-timeline-heading">

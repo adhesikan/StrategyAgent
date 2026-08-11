@@ -14,7 +14,7 @@
  *   instruction to buy, sell, hold, or enter any security or strategy."
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -44,6 +44,7 @@ import {
   EXPRESSION_STATUS_DESCRIPTIONS, validateExpressionFamily,
 } from "@shared/trade-planning-types";
 import type { EquityPlanningScenario } from "@shared/equity-planning-types";
+import { EquityOrderPreviewPanel } from "@/components/execution/EquityOrderPreviewPanel";
 import {
   EQUITY_PLANNING_DISCLAIMER, SIZING_DISCLAIMER, SCENARIO_DISCLAIMER,
 } from "@shared/equity-planning-types";
@@ -2360,6 +2361,12 @@ export default function TradePlanningPage() {
   const rawSymbol = params?.symbol ?? "";
   const symbol    = rawSymbol.toUpperCase();
 
+  // Draft ID from URL query param — populated when user arrives from Order Preparation
+  const activeDraftId = useMemo(() => {
+    const sp = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return sp.get("draftId") ?? null;
+  }, []);
+
   const [constraints, setConstraints] = useState<TradePlanningConstraints>(DEFAULT_CONSTRAINTS);
   const [selectedFamily, setSelectedFamily] = useState<ExpressionFamily | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -2728,6 +2735,17 @@ export default function TradePlanningPage() {
             {/* Equity Planning Panel — shown when equity or equity_scaled selected */}
             {(selectedFamily === "equity" || selectedFamily === "equity_scaled") && sessionId && (
               <EquityPlanningPanel symbol={symbol} sessionId={sessionId} constraints={constraints} />
+            )}
+
+            {/* Equity Order Preview — Sprint 2.8.2
+                Shown when STOCK expression is selected and a draftId is present in the URL.
+                Non-executable: "Preview Only — Nothing has been submitted to your broker."
+                Follows Order Preparation → Equity Preview → (2.8.5) Final Execution Validation. */}
+            {(selectedFamily === "equity" || selectedFamily === "equity_scaled") && activeDraftId && (
+              <EquityOrderPreviewPanel
+                draftId={activeDraftId}
+                onEditDraft={() => window.history.back()}
+              />
             )}
 
             {/* Options Strategy Panel — shown when any options-related family selected */}

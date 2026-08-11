@@ -102,6 +102,7 @@ import { registerTradePlanRoutes } from "./routes/trade-plans";
 import { registerExecutionPreflightRoutes, ensureExecutionPreflightTables } from "./routes/execution-preflight";
 import { registerOrderPreparationRoutes, ensureOrderDraftTables } from "./routes/order-preparation";
 import { registerTradePreferencesRoutes, ensureTradePreferencesTables } from "./routes/trade-preferences";
+import { registerEquityPreviewRoutes, ensureEquityPreviewTables } from "./routes/equity-preview";
 import { isExecutionEnabled, getExecutionDisabledResponse } from "./services/execution-policy";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
@@ -298,6 +299,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   ensureOrderDraftTables().catch((e: any) => console.error("[order-prep] startup table init failed:", e?.message));
   registerTradePreferencesRoutes(app, isAuthenticated);
   ensureTradePreferencesTables().catch((e: any) => console.error("[trade-preferences] startup table init failed:", e?.message));
+  registerEquityPreviewRoutes(app, isAuthenticated);
+  ensureEquityPreviewTables().catch((e: any) => console.error("[equity-preview] startup table init failed:", e?.message));
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

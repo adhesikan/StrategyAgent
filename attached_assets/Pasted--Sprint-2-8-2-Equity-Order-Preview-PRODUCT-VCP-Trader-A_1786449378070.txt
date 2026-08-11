@@ -1,0 +1,2820 @@
+# Sprint 2.8.2 — Equity Order Preview
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.8 — Broker-Assisted Execution
+
+CURRENT SPRINT:
+2.8.2 — Equity Order Preview
+
+PREREQUISITES COMPLETED:
+
+✓ Research + Trade Planning v1.0
+✓ Trade Preferences & User-Directed Expression Selection
+✓ Trade Plan Workspace
+✓ Trade Monitoring & Lifecycle Intelligence
+✓ Execution Architecture & Broker Preflight
+✓ Order Preparation Engine
+✓ Global Execution Kill Switch
+✓ Legacy order-route guards
+✓ Non-executable OrderDraft architecture
+✓ Permanent release-quality gate framework
+
+CURRENT EXECUTION SAFETY STATE:
+
+BROKER_EXECUTION_ENABLED defaults FALSE.
+
+No behavior in Sprint 2.8.2 may weaken this.
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Current execution chain:
+
+Qualified Research Candidate
+        ↓
+USER selects broad expression:
+STOCK
+        ↓
+Equity Planning
+        ↓
+USER saves Trade Plan
+        ↓
+Lifecycle Monitoring
+        ↓
+Execution Preflight
+        ↓
+Order Preparation
+        ↓
+EQUITY ORDER PREVIEW
+        ↓
+Future Validation Hardening
+        ↓
+Future Explicit Confirmation
+        ↓
+Future Broker Submission
+
+Sprint 2.8.2 implements ONLY:
+
+EQUITY ORDER PREVIEW
+
+It must NOT:
+
+submit an order
+
+call broker order mutation
+
+confirm an order for submission
+
+create a live broker payload
+
+place, replace, or cancel anything
+
+======================================================================
+PERMANENT ARCHITECTURE PRINCIPLE
+======================================================================
+
+Equity Order Preview is a user-review surface.
+
+It displays the exact current non-executable OrderDraft and its supporting
+validation context.
+
+It may not silently:
+
+change quantity
+
+change account
+
+change side intent
+
+change broad expression type
+
+change Trade Plan
+
+change order type
+
+change time in force
+
+change limit reference
+
+or infer a different trade.
+
+Any user change must route back through explicit draft editing and
+revalidation.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker submission
+- Confirm & Submit
+- Place Order
+- Trade Now
+- order cancellation
+- order replacement
+- automatic limit adjustment
+- fill monitoring
+- live execution status
+- broker-side order preview request if it mutates state
+- automated trading
+- algorithmic execution
+- autonomous AI execution
+- smart order routing
+- tax optimization
+- portfolio rebalancing
+- suitability scoring
+- recommendation logic
+
+DO NOT change:
+
+- Opportunity Intelligence
+- UserTradingPreferences semantics
+- OpportunityExpressionSelection
+- Equity Planning methodology
+- Trade Plan snapshots
+- Lifecycle methodology
+- Execution Preflight methodology
+- Order Preparation methodology
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a canonical Equity Order Preview experience that takes:
+
+User-owned saved Trade Plan
++
+selectedBy USER broad expression = STOCK
++
+current PASSING Execution Preflight
++
+current VALID non-executable OrderDraft
++
+authoritative current quote context
++
+risk/planning context
+        ↓
+EquityOrderPreview
+
+The preview should answer:
+
+"What exactly does my current equity order draft represent?"
+
+"What account would it use later?"
+
+"What quantity did I select?"
+
+"What kind of order did I draft?"
+
+"What price reference is being shown?"
+
+"What estimated notional does that imply?"
+
+"What risks, warnings, freshness limits, and blockers apply?"
+
+It must NOT answer:
+
+"Should I submit this order?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+shared/order-preparation types
+
+OrderDraft
+
+order_drafts table
+
+order-preparation service
+
+order-preparation routes
+
+OrderPreparationPanel
+
+TradePlan
+
+TradePlanLifecycleResult
+
+ExecutionPreflightResult
+
+UserTradingPreferences
+
+OpportunityExpressionSelection
+
+EquityPlanningScenario
+
+existing broker order-preview UI if any
+
+existing InstaTrade UI
+
+existing equity order ticket
+
+existing quote/reference components
+
+existing market-hours service
+
+existing price rounding/tick-size utilities
+
+existing account masking
+
+existing Tradier/TradeStation preview/order models
+
+existing broker order-estimate APIs
+
+existing notional calculations
+
+existing compliance banners
+
+Platform Health
+
+Structured Logging
+
+Operations Manual
+
+Report before coding:
+
+A. Existing preview UI/components
+B. Existing equity order presentation components
+C. Existing provider-side preview/estimate APIs
+D. Which provider preview APIs are read-only
+E. Which existing "preview" functions can mutate/order-stage state
+F. Existing market-hours data
+G. Existing quote freshness logic
+H. Existing price formatting
+I. Existing account masking
+J. Existing notional/capital calculations
+K. Existing recommendation-sensitive labels
+L. Components safe to reuse
+M. Components to isolate
+
+Do not code until audit complete.
+
+======================================================================
+2. CANONICAL EQUITY PREVIEW MODEL
+======================================================================
+
+Create shared canonical type.
+
+Suggested:
+
+EquityOrderPreview {
+  id
+
+  userId
+  tradePlanId
+  tradePlanVersion
+  preflightId
+  orderDraftId
+  orderDraftVersion?
+
+  expressionType
+
+  generatedAt
+  validUntil
+
+  broker
+  account
+
+  symbol
+
+  sideIntent
+  quantity
+
+  orderType
+  timeInForce
+
+  pricing
+  marketHours
+
+  estimatedNotional
+
+  planningContext
+  riskContext
+
+  quoteFreshness
+
+  blockers[]
+  warnings[]
+
+  sourceIntegrity
+  disclaimer
+
+  executable
+}
+
+Mandatory:
+
+expressionType = STOCK
+
+selectedBy = USER available through source/audit context
+
+executable = false
+
+======================================================================
+3. PREVIEW STATUS MODEL
+======================================================================
+
+Suggested:
+
+VALID
+
+REQUIRES_REVIEW
+
+EXPIRED
+
+INVALID
+
+UNAVAILABLE
+
+Do NOT use:
+
+READY_TO_TRADE
+
+APPROVED
+
+EXECUTION_READY
+
+RECOMMENDED
+
+GOOD_TO_GO
+
+======================================================================
+4. SOURCE INTEGRITY
+======================================================================
+
+Create source-integrity block.
+
+Suggested:
+
+PreviewSourceIntegrity {
+  tradePlanMatches
+  tradePlanVersionMatches
+  broadExpressionMatches
+  preflightMatches
+  orderDraftMatches
+  accountMatches
+  symbolMatches
+  lifecycleCurrent
+  quoteCurrent
+}
+
+All critical source references must agree.
+
+If not:
+
+preview fails/requires regeneration.
+
+======================================================================
+5. BROAD EXPRESSION TYPE INVARIANT
+======================================================================
+
+Equity preview requires:
+
+broadExpressionType = STOCK
+
+selectedBy = USER
+
+If Trade Plan/Planning Session says:
+
+LONG_OPTIONS
+
+COVERED_CALL
+
+CASH_SECURED_PUT
+
+DEFINED_RISK_OPTIONS
+
+etc.
+
+do NOT render Equity Order Preview.
+
+Return:
+
+WRONG_PREVIEW_TYPE
+
+or equivalent.
+
+No silent conversion.
+
+======================================================================
+6. USER-SELECTION TRACE
+======================================================================
+
+Preview should preserve metadata that:
+
+the user selected STOCK upstream.
+
+Optional visible language:
+
+"Research structure selected by you: Stock"
+
+Do not overemphasize internal metadata.
+
+But audit trail must retain:
+
+selectedExpressionType
+
+selectedBy = USER
+
+selectedAt
+
+======================================================================
+7. ORDER DRAFT REQUIRED
+======================================================================
+
+Equity Order Preview requires an existing current OrderDraft.
+
+Do not construct draft inside preview.
+
+If none:
+
+CTA:
+
+Prepare Order Draft
+
+No preview generation from Trade Plan alone.
+
+======================================================================
+8. DRAFT MUST BE CURRENT
+======================================================================
+
+Validate:
+
+draft status
+
+expiresAt
+
+preflight validity
+
+Trade Plan version
+
+lifecycle freshness
+
+quote freshness
+
+account
+
+If stale/expired:
+
+preview = EXPIRED or REQUIRES_REVIEW.
+
+Do not silently regenerate.
+
+======================================================================
+9. DRAFT IMMUTABILITY
+======================================================================
+
+Preview service is READ-ONLY regarding OrderDraft.
+
+It must not update:
+
+quantity
+
+order type
+
+TIF
+
+limit price
+
+account
+
+side
+
+symbol
+
+If user wants change:
+
+Edit Order Draft
+
+→ returns to 2.8.1 flow.
+
+======================================================================
+10. EQUITY SIDE INTENT
+======================================================================
+
+Show canonical equity intent from OrderDraft.
+
+Examples only if supported:
+
+OPEN_LONG
+
+ADD_TO_LONG
+
+REDUCE_LONG
+
+CLOSE_LONG
+
+Do not introduce unsupported intent.
+
+For current initial release, likely focus on supported user-saved opening
+equity scenarios.
+
+Use user-friendly labels carefully.
+
+Example:
+
+OPEN_LONG
+→ "Open Long Position"
+
+Do not convert into recommendation language.
+
+======================================================================
+11. QUANTITY DISPLAY
+======================================================================
+
+Display explicit user-selected draft quantity.
+
+Never display hypothetical sizing as if it were order quantity unless the user
+explicitly selected/acknowledged it in 2.8.1.
+
+Show:
+
+Order Draft Quantity
+
+not:
+
+Recommended Shares
+
+======================================================================
+12. QUANTITY SOURCE
+======================================================================
+
+Preview should show source:
+
+Selected in Order Preparation
+
+Optional small text:
+
+"This is the quantity you selected for this order draft."
+
+No AI-generated wording.
+
+======================================================================
+13. BROKER / ACCOUNT SECTION
+======================================================================
+
+Show:
+
+Broker Provider
+
+Masked Account ID
+
+Account Type if available
+
+Execution Mode
+
+Do NOT expose:
+
+full account ID
+
+OAuth token
+
+broker credentials
+
+buying power amount unless intentionally user-facing and needed
+
+======================================================================
+14. EXECUTION MODE
+======================================================================
+
+Show:
+
+Execution Mode:
+DISABLED / SANDBOX / PRODUCTION
+
+But remember:
+
+preview remains non-executable in every mode.
+
+If BROKER_EXECUTION_ENABLED=false:
+
+show prominent:
+
+"Broker submission is currently disabled."
+
+Do not prevent preview unless policy says so.
+
+======================================================================
+15. ORDER TYPE DISPLAY
+======================================================================
+
+Support current OrderDraft types.
+
+Likely:
+
+MARKET
+
+LIMIT
+
+Display exact user selection.
+
+No auto-changing.
+
+======================================================================
+16. MARKET ORDER PREVIEW
+======================================================================
+
+For MARKET:
+
+show current quote references:
+
+Bid
+
+Ask
+
+Last
+
+Midpoint if useful
+
+Estimated Notional based on transparent reference methodology.
+
+Prominent warning:
+
+"Market orders do not guarantee an execution price. A future fill could occur
+at a price materially different from the currently displayed quote."
+
+Do not label:
+
+Expected Fill Price
+
+======================================================================
+17. LIMIT ORDER PREVIEW
+======================================================================
+
+For LIMIT:
+
+show:
+
+Limit Price
+
+Limit Price Source
+
+Current Bid
+
+Ask
+
+Midpoint
+
+Distance from market references
+
+No statement that the order will fill.
+
+Possible status:
+
+AT_OR_ABOVE_ASK
+
+BETWEEN_BID_ASK
+
+AT_OR_BELOW_BID
+
+OUTSIDE_CURRENT_MARKET
+
+These are descriptive.
+
+Do not label:
+
+Good Limit
+
+Bad Limit
+
+======================================================================
+18. LIMIT PRICE SOURCE
+======================================================================
+
+Preserve:
+
+USER_SELECTED
+
+REFERENCE_MIDPOINT
+
+REFERENCE_BID
+
+REFERENCE_ASK
+
+or existing canonical values.
+
+If limit reference originally based on market quote:
+
+show quote timestamp.
+
+No automatic refreshing into a changed price.
+
+======================================================================
+19. PRICE MOVEMENT SINCE DRAFT
+======================================================================
+
+Useful and in-scope.
+
+Compare:
+
+quote at draft creation
+
+current quote used for preview
+
+Show:
+
+Reference Price Changed Since Draft
+
+possible:
+
+UNCHANGED
+
+SMALL_CHANGE
+
+MATERIAL_CHANGE
+
+UNKNOWN
+
+Thresholds must be explicit if categories introduced.
+
+Prefer numerical descriptive difference:
+
+Current midpoint differs by X% from draft reference.
+
+If change exceeds execution freshness/policy threshold:
+
+REQUIRES_REVIEW.
+
+No recommendation.
+
+======================================================================
+20. QUOTE REVALIDATION
+======================================================================
+
+Equity Preview may request fresh READ-ONLY quote validation according to
+Execution Preflight policy.
+
+No order call.
+
+Use existing read-only broker/market adapter.
+
+If quote cannot be refreshed:
+
+preview REQUIRES_REVIEW / UNAVAILABLE.
+
+Do not display stale quote as current.
+
+======================================================================
+21. QUOTE QUALITY
+======================================================================
+
+Validate:
+
+timestamp
+
+bid
+
+ask
+
+last
+
+crossed market
+
+zero/negative values
+
+spread if relevant
+
+trading status where available
+
+No fake quote normalization.
+
+======================================================================
+22. MARKET HOURS
+======================================================================
+
+Show:
+
+Market Open
+
+Pre-Market
+
+After-Hours
+
+Closed
+
+Unknown
+
+Timestamp.
+
+For non-open market:
+
+display informational warning.
+
+Do not automatically change order type.
+
+Do not enable extended-hours submission.
+
+======================================================================
+23. EXTENDED HOURS
+======================================================================
+
+If OrderDraft contains:
+
+allowExtendedHours=false
+
+show that.
+
+If true is supported only as future preference:
+
+do not imply broker submission support unless capability validated.
+
+Sprint 2.8.2 does not submit extended-hours orders.
+
+======================================================================
+24. TIME IN FORCE
+======================================================================
+
+Show:
+
+DAY
+
+GTC
+
+or existing allowed value.
+
+Explain briefly.
+
+If current provider capability no longer supports selected TIF:
+
+REQUIRES_REVIEW.
+
+Do not change automatically.
+
+======================================================================
+25. ESTIMATED NOTIONAL
+======================================================================
+
+Calculate/display:
+
+quantity × relevant preview price reference
+
+For LIMIT:
+
+limit price can be clear estimated notional reference.
+
+For MARKET:
+
+use clearly labeled current reference methodology.
+
+Example:
+
+Estimated Notional at Current Ask
+
+or:
+
+Estimated Notional at Current Midpoint
+
+Do not call it:
+
+Final Cost
+
+Required Cash
+
+Guaranteed Cost
+
+======================================================================
+26. BROKER BUYING POWER
+======================================================================
+
+Preflight may contain buying-power validation.
+
+Preview may display categorical result:
+
+Buying Power Check:
+PASS
+
+Do not necessarily display full buying power amount.
+
+If product UX needs value:
+
+audit privacy/security first.
+
+Preferred for 2.8.2:
+
+status only.
+
+======================================================================
+27. CAPITAL CONTEXT
+======================================================================
+
+Show:
+
+Estimated Draft Notional
+
+Planning Scenario Capital
+
+Broker Buying Power Check
+
+These are distinct.
+
+Do not conflate planning estimate with broker authority.
+
+======================================================================
+28. EQUITY RISK CONTEXT
+======================================================================
+
+Carry existing Equity Planning / Risk context.
+
+Possible:
+
+Research Invalidation
+
+Hypothetical Scenario Loss
+
+Concentration context where relevant
+
+Planning constraint status
+
+No new risk methodology.
+
+Do not calculate expected return.
+
+======================================================================
+29. THESIS / RESEARCH CONTEXT
+======================================================================
+
+Compact section:
+
+Why This Trade Plan Exists
+
+Research Candidate
+
+Research Thesis
+
+Research Score at Plan Creation
+
+Current Plan Lifecycle State
+
+Thesis Invalidation Status
+
+Do not overload order preview with full Research Workspace.
+
+Provide links back.
+
+======================================================================
+30. LIFECYCLE STATE
+======================================================================
+
+Show:
+
+CURRENT
+
+CHANGED
+
+REQUIRES_REVIEW
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+UNKNOWN
+
+If current state no longer permits execution preflight:
+
+preview should block/review.
+
+No exit instruction.
+
+======================================================================
+31. WARNINGS
+======================================================================
+
+Show all current draft/preflight warnings.
+
+Possible:
+
+MARKET_ORDER_PRICE_UNCERTAINTY
+
+MARKET_CLOSED
+
+QUOTE_MOVED
+
+QUOTE_NEAR_EXPIRY
+
+DATA_REFRESH_SOON
+
+RESEARCH_CHANGED
+
+EARNINGS_WINDOW
+
+CONCENTRATION_CONTEXT
+
+Only use actual canonical warnings.
+
+Do not invent unsupported risk conditions.
+
+======================================================================
+32. BLOCKERS
+======================================================================
+
+Preview must surface blockers prominently.
+
+Possible:
+
+ORDER_DRAFT_EXPIRED
+
+PREFLIGHT_EXPIRED
+
+TRADE_PLAN_CHANGED
+
+LIFECYCLE_CHANGED
+
+QUOTE_STALE
+
+ACCOUNT_CHANGED
+
+BROKER_DISCONNECTED
+
+INSUFFICIENT_BUYING_POWER
+
+ORDER_TYPE_UNSUPPORTED
+
+TIF_UNSUPPORTED
+
+EXECUTION_DISABLED may be informational for preview if preview is allowed
+with submission disabled.
+
+Define exact policy.
+
+======================================================================
+33. PREVIEW VALIDITY WINDOW
+======================================================================
+
+EquityOrderPreview should have:
+
+generatedAt
+
+validUntil
+
+derived from current shortest freshness requirement.
+
+Preview is not indefinitely reusable.
+
+After expiry:
+
+user must refresh/revalidate.
+
+======================================================================
+34. REFRESH PREVIEW
+======================================================================
+
+Allow:
+
+Refresh Preview
+
+This may re-read authoritative current quote/preflight status.
+
+It must NOT mutate OrderDraft.
+
+If refresh reveals material change:
+
+show comparison.
+
+No automatic draft edit.
+
+======================================================================
+35. DRAFT VS CURRENT COMPARISON
+======================================================================
+
+Create small section:
+
+Since Draft Preparation
+
+Quote changed
+
+Market status changed
+
+Lifecycle changed
+
+Account state changed
+
+Preflight expiry approaching
+
+This is valuable.
+
+No auto-remediation.
+
+======================================================================
+36. EDIT DRAFT ACTION
+======================================================================
+
+CTA:
+
+Edit Order Draft
+
+Returns to Order Preparation.
+
+If changed:
+
+new draft version/fingerprint according to 2.8.1.
+
+Preview then regenerated.
+
+======================================================================
+37. NO CONFIRMATION
+======================================================================
+
+Do NOT include:
+
+Confirm
+
+Confirm Order
+
+Confirm & Submit
+
+Place Order
+
+Submit Order
+
+Execute
+
+Send to Broker
+
+Sprint 2.8.2 must stop before confirmation.
+
+======================================================================
+38. FUTURE CTA
+======================================================================
+
+At bottom:
+
+Final Execution Validation — Upcoming
+
+or:
+
+Continue to Final Validation — Upcoming
+
+Disabled.
+
+No fake enabled action.
+
+======================================================================
+39. NON-EXECUTION BANNER
+======================================================================
+
+Prominent:
+
+"Preview Only — Nothing has been submitted to your broker."
+
+Always visible.
+
+======================================================================
+40. PREVIEW DISCLAIMER
+======================================================================
+
+Canonical:
+
+"Equity Order Preview displays the current non-executable order draft and
+supporting market/account validation for review. It does not submit an
+order, guarantee execution or price, or constitute investment advice,
+a recommendation, or a suitability determination."
+
+======================================================================
+41. EXECUTION PRICE DISCLAIMER
+======================================================================
+
+"Displayed quotes and estimated notional values are reference values.
+Market conditions may change before any future broker submission."
+
+======================================================================
+42. SERVER AUTHORITATIVE PREVIEW
+======================================================================
+
+Client may submit:
+
+orderDraftId
+
+possibly refresh=true
+
+Client may NOT submit:
+
+symbol
+
+quantity
+
+side
+
+orderType
+
+TIF
+
+limitPrice
+
+quote
+
+account
+
+Trade Plan version
+
+risk context
+
+Those come from server-stored draft/current validation.
+
+======================================================================
+43. API
+======================================================================
+
+Suggested authenticated endpoints:
+
+POST /api/execution/order-drafts/:draftId/equity-preview
+
+GET /api/execution/order-drafts/:draftId/equity-preview
+
+POST /api/execution/order-drafts/:draftId/equity-preview/refresh
+
+GET /api/execution/equity-preview/health
+
+or align with existing route style.
+
+No:
+
+/confirm
+
+/submit
+
+/place
+
+======================================================================
+44. PERSISTENCE
+======================================================================
+
+Decide after audit.
+
+Preferred:
+
+Equity Preview is ephemeral/recomputable.
+
+Persist only if audit/history requirement justifies it.
+
+If persisted:
+
+store compact snapshot:
+
+draftId
+
+preview timestamp
+
+quote snapshot reference
+
+validUntil
+
+validation state
+
+Do not create unnecessary huge history.
+
+Execution audit event can capture preview generation.
+
+======================================================================
+45. AUDIT EVENTS
+======================================================================
+
+Extend ExecutionAuditEvent:
+
+EQUITY_PREVIEW_STARTED
+
+EQUITY_PREVIEW_GENERATED
+
+EQUITY_PREVIEW_REFRESHED
+
+EQUITY_PREVIEW_REQUIRES_REVIEW
+
+EQUITY_PREVIEW_EXPIRED
+
+No:
+
+ORDER_CONFIRMED
+
+ORDER_SUBMITTED
+
+======================================================================
+46. AUDIT DATA SAFETY
+======================================================================
+
+Do not log:
+
+quantity
+
+price
+
+notional
+
+account full ID
+
+portfolio values
+
+user identity
+
+private plan notes
+
+Safe:
+
+provider
+
+orderType
+
+TIF
+
+status
+
+warningCount
+
+blockerCount
+
+durationMs
+
+quoteFreshnessCategory
+
+======================================================================
+47. BROKER ADAPTER BOUNDARY
+======================================================================
+
+Equity Preview uses READ-ONLY methods only.
+
+Allowed examples:
+
+getConnectionStatus
+
+listAccounts
+
+getAccountCapabilities
+
+getBuyingPower status
+
+getPositions
+
+getQuoteValidation
+
+Not allowed:
+
+placeOrder
+
+submitOrder
+
+replaceOrder
+
+cancelOrder
+
+======================================================================
+48. NO-ORDER NETWORK INVARIANT
+======================================================================
+
+MANDATORY.
+
+Spy every broker-mutating method.
+
+Run all preview paths.
+
+Assert:
+
+placeOrder = 0
+
+submitOrder = 0
+
+replaceOrder = 0
+
+cancelOrder = 0
+
+modifyOrder = 0
+
+======================================================================
+49. EXISTING LEGACY ROUTE GUARDS
+======================================================================
+
+Regression test all existing order-capable routes.
+
+BROKER_EXECUTION_ENABLED=false
+
+must continue to block.
+
+Preview functionality must not link to them.
+
+======================================================================
+50. USER PREFERENCE INVARIANT
+======================================================================
+
+Verify source Trade Plan:
+
+broadExpressionType = STOCK
+
+selectedBy = USER
+
+Equity Preview cannot change either.
+
+Add permanent invariant.
+
+======================================================================
+51. NO AI MODIFICATION
+======================================================================
+
+Research Workspace may later explain preview fields.
+
+AI must not:
+
+change quantity
+
+change order type
+
+change limit price
+
+change account
+
+change side
+
+submit order
+
+Do not add AI editing in this sprint.
+
+======================================================================
+52. BROKER CAPABILITY DISPLAY
+======================================================================
+
+Show relevant capability statuses:
+
+Equity Trading
+
+Market Order support
+
+Limit Order support
+
+Selected TIF support
+
+Extended-hours support if relevant
+
+No unsupported claims.
+
+======================================================================
+53. PROVIDER DIFFERENCES
+======================================================================
+
+Do not duplicate UI per broker unnecessarily.
+
+Canonical preview first.
+
+Provider-specific notes may appear.
+
+Example:
+
+Tradier
+
+TradeStation
+
+But do not build executable provider payload.
+
+======================================================================
+54. EQUITY PREVIEW PAGE/PANEL
+======================================================================
+
+Preferred integration:
+
+within Trade Plan Detail below Order Preparation.
+
+Flow:
+
+Execution Preflight
+→ Order Preparation
+→ Equity Order Preview
+
+Only show when:
+
+OrderDraft exists
+
+instrumentType = EQUITY
+
+draft valid/current
+
+======================================================================
+55. UI HEADER
+======================================================================
+
+Example:
+
+Equity Order Preview
+
+Preview Only badge
+
+Symbol / company
+
+Broker
+
+Masked account
+
+Draft version
+
+Generated time
+
+Valid until
+
+No Trade Now.
+
+======================================================================
+56. UI — ORDER SUMMARY
+======================================================================
+
+Show:
+
+Side Intent
+
+Quantity
+
+Order Type
+
+TIF
+
+Extended Hours preference
+
+Reference Quote
+
+Limit Price if applicable
+
+Estimated Notional
+
+Market Status
+
+======================================================================
+57. UI — SOURCE SUMMARY
+======================================================================
+
+Show compact chain:
+
+Trade Plan
+✓
+
+Execution Preflight
+✓
+
+Order Draft
+✓
+
+Equity Preview
+Current
+
+This helps user understand stages.
+
+Do not call checkmarks approvals.
+
+Use:
+
+Completed / Current / Needs Review.
+
+======================================================================
+58. UI — MARKET DATA
+======================================================================
+
+Show:
+
+Bid
+
+Ask
+
+Last
+
+Midpoint
+
+Quote time
+
+Freshness
+
+Provider/source
+
+Keep concise.
+
+======================================================================
+59. UI — LIMIT ANALYSIS
+======================================================================
+
+For limit:
+
+Selected Limit
+
+Current Bid/Ask
+
+Distance to Bid
+
+Distance to Ask
+
+Current Market Relation
+
+Educational text:
+
+"A limit price sets the maximum price for a buy order or minimum price for
+a sell order, but does not guarantee execution."
+
+Use directionally correct wording based on canonical side.
+
+======================================================================
+60. UI — RISK SUMMARY
+======================================================================
+
+Show:
+
+Planning constraint status
+
+Research invalidation
+
+Current lifecycle state
+
+Risk observations
+
+No expected return.
+
+No "risk/reward score" unless canonical existing methodology supports it.
+
+======================================================================
+61. UI — WARNINGS & BLOCKERS
+======================================================================
+
+Separate visually:
+
+Needs Attention
+
+Warnings
+
+Do not conflate.
+
+Blocker means preview/future progression cannot continue.
+
+Warning is informational/review.
+
+======================================================================
+62. UI — FUTURE ACTION
+======================================================================
+
+Show disabled:
+
+Continue to Final Execution Validation — Upcoming
+
+Supporting text:
+
+"Broker submission remains disabled at this stage."
+
+======================================================================
+63. EDITING POLICY
+======================================================================
+
+Preview is not an editor.
+
+Do not add editable quantity/order type/TIF fields directly here.
+
+Use:
+
+Edit Draft
+
+This preserves architecture.
+
+======================================================================
+64. MOBILE
+======================================================================
+
+At 375px:
+
+summary stacks
+
+account info readable
+
+quote grid 2-column/cards
+
+notional visible
+
+warnings stack
+
+banner remains visible
+
+no horizontal clipping
+
+======================================================================
+65. ACCESSIBILITY
+======================================================================
+
+Semantic headings.
+
+Status text.
+
+Tooltip keyboard access.
+
+Quote data table accessible.
+
+No color-only blocker/warning distinction.
+
+Refresh button labeled.
+
+Edit Draft button labeled.
+
+======================================================================
+66. ROUTING REGRESSION
+======================================================================
+
+Test new preview routes.
+
+Static route rules.
+
+Direct refresh.
+
+Browser back.
+
+No collision with:
+
+order-drafts/:id
+
+health
+
+refresh
+
+======================================================================
+67. SECURITY
+======================================================================
+
+Authenticated.
+
+Cross-user draft → 404.
+
+Cross-user Trade Plan → 404.
+
+Forged preview request → denied.
+
+Client cannot inject:
+
+symbol
+
+quantity
+
+price
+
+account
+
+Trade Plan ID mismatch
+
+preflight
+
+No secrets.
+
+No full account ID.
+
+======================================================================
+68. STALE DRAFT TEST
+======================================================================
+
+Draft expired:
+
+preview EXPIRED.
+
+No refresh that silently extends draft without revalidation.
+
+User must return to Order Preparation if necessary.
+
+======================================================================
+69. STALE PREFLIGHT TEST
+======================================================================
+
+Preflight expired:
+
+preview REQUIRES_REVIEW / INVALID.
+
+CTA:
+
+Run Execution Preflight Again.
+
+No silent preflight rebuild unless user explicitly initiates.
+
+======================================================================
+70. TRADE PLAN VERSION CHANGE
+======================================================================
+
+If Trade Plan version differs from draft:
+
+preview invalid.
+
+No automatic migration.
+
+======================================================================
+71. LIFECYCLE CHANGE
+======================================================================
+
+If:
+
+CURRENT → THESIS_INVALIDATED
+
+preview blocked.
+
+If:
+
+CURRENT → REQUIRES_REVIEW
+
+preview should require review.
+
+No execution semantics.
+
+======================================================================
+72. ACCOUNT CHANGE
+======================================================================
+
+If broker account context changed:
+
+preview requires new preflight/draft.
+
+Do not substitute account.
+
+======================================================================
+73. QUOTE MOVEMENT
+======================================================================
+
+Test material quote movement.
+
+Preview should surface.
+
+For limit orders:
+
+draft itself stays unchanged.
+
+For market orders:
+
+estimated notional refreshes based on current reference, but quantity/order
+intent stays unchanged.
+
+Clearly distinguish:
+
+Draft Inputs
+
+Current Reference Data
+
+======================================================================
+74. CURRENT VS DRAFT DATA MODEL
+======================================================================
+
+Important.
+
+Separate:
+
+DRAFT VALUES
+
+and:
+
+CURRENT MARKET CONTEXT.
+
+For example:
+
+Order Type:
+LIMIT
+
+Draft Limit:
+$100
+
+Current Ask:
+$102
+
+Do not rewrite Draft Limit to $102.
+
+======================================================================
+75. PERFORMANCE
+======================================================================
+
+Target preview generation:
+
+<250ms after required fresh quote/current state available.
+
+If quote network call needed:
+
+report separately.
+
+Avoid repeated redundant calls.
+
+No AI.
+
+No N+1.
+
+======================================================================
+76. CACHE
+======================================================================
+
+Preview may use short-lived quote/preflight caches only within execution
+freshness policy.
+
+Do not cache stale PASS.
+
+No cross-user.
+
+======================================================================
+77. PLATFORM HEALTH
+======================================================================
+
+Add:
+
+Equity Order Preview
+
+Metrics:
+
+previewRequests
+
+previewPasses
+
+previewRequiresReview
+
+previewExpired
+
+previewFailures
+
+averagePreviewLatencyMs
+
+lastPreviewAt
+
+brokerSubmissionEnabled
+
+Admin aggregate only.
+
+No quantities/prices/users.
+
+======================================================================
+78. OPERATIONS CENTER
+======================================================================
+
+Execution section should show:
+
+Execution Preflight
+
+Order Preparation
+
+Equity Preview
+
+Options Preview — Upcoming
+
+Validation Hardening — Upcoming
+
+Submission — DISABLED
+
+No private details.
+
+======================================================================
+79. COMPLIANCE REGRESSION
+======================================================================
+
+Add checks for:
+
+Ready to Trade
+
+Trade Approved
+
+Submit Now
+
+Buy Now
+
+Sell Now
+
+Guaranteed Fill
+
+Expected Fill
+
+Recommended Limit
+
+Recommended Quantity
+
+Best Price
+
+Optimal Order
+
+Context-aware disclaimers excluded appropriately.
+
+======================================================================
+80. SECURITY REGRESSION
+======================================================================
+
+Add:
+
+cross-user preview
+
+draft ID tampering
+
+Trade Plan mismatch
+
+account mismatch
+
+client quote injection
+
+client quantity injection
+
+client limit injection
+
+execution flag bypass
+
+order submission attempt
+
+No order mutation.
+
+======================================================================
+81. TESTS
+======================================================================
+
+Target 125+ meaningful Sprint 2.8.2 assertions.
+
+Cover:
+
+canonical preview type
+
+executable false
+
+STOCK requirement
+
+selectedBy USER
+
+source integrity
+
+Trade Plan version
+
+draft required
+
+draft current
+
+draft expired
+
+preflight current
+
+preflight expired
+
+lifecycle current
+
+lifecycle changed
+
+thesis invalidated
+
+broker/account
+
+masked account
+
+market order
+
+market warning
+
+limit order
+
+limit price
+
+limit source
+
+bid
+
+ask
+
+midpoint
+
+last
+
+quote freshness
+
+quote movement
+
+current vs draft separation
+
+market open
+
+market closed
+
+TIF
+
+TIF unsupported
+
+extended-hours flag
+
+estimated notional
+
+buying-power status
+
+capital context
+
+risk context
+
+warnings
+
+blockers
+
+validUntil
+
+refresh
+
+edit-draft navigation
+
+no editing in preview
+
+no confirmation
+
+no submit CTA
+
+no order calls
+
+legacy route guards
+
+client injection
+
+cross-user
+
+audit events
+
+logging privacy
+
+Platform Health
+
+routing
+
+accessibility
+
+mobile
+
+Operations Manual
+
+2.8.3/2.8.4/2.8.5 roadmap discipline
+
+======================================================================
+82. DRAFT EXPIRY INTEGRATION — TASK #136
+======================================================================
+
+Task #136 was proposed after Sprint 2.8.1.
+
+Fold it into Sprint 2.8.2 if practical.
+
+Add true integration tests proving:
+
+active OrderDraft → preview works
+
+expired OrderDraft → preview blocked
+
+refresh does not mutate/extend OrderDraft
+
+regenerated draft creates new valid preview
+
+If test requires excessive infrastructure:
+
+assign to 2.8.4 explicitly.
+
+Preferred:
+complete now.
+
+======================================================================
+83. BROWSER E2E
+======================================================================
+
+Add real browser flow:
+
+Open Equity Trade Plan
+
+→ Execution Preflight
+
+→ Order Preparation
+
+→ create valid Equity OrderDraft
+
+→ open Equity Order Preview
+
+→ verify selected STOCK expression
+
+→ verify quantity
+
+→ verify account masked
+
+→ verify quote
+
+→ verify notional
+
+→ verify Preview Only banner
+
+→ verify no submit CTA
+
+→ Edit Draft
+
+→ change quantity
+
+→ regenerate preview
+
+→ verify updated explicit user quantity
+
+No broker mutation.
+
+======================================================================
+84. UAT
+======================================================================
+
+Document/run:
+
+1. Open Equity Trade Plan.
+2. Verify broad expression = Stock.
+3. Verify selected by user.
+4. Run Execution Preflight.
+5. Prepare Order Draft.
+6. Open Equity Order Preview.
+7. Verify Preview Only banner.
+8. Verify broker.
+9. Verify masked account.
+10. Verify side intent.
+11. Verify user-selected quantity.
+12. Verify MARKET draft.
+13. Verify market warning.
+14. Verify Bid/Ask/Last.
+15. Verify quote freshness.
+16. Verify estimated notional.
+17. Change draft to LIMIT.
+18. Open updated preview.
+19. Verify limit price preserved.
+20. Verify limit source.
+21. Verify current bid/ask separately.
+22. Simulate market movement.
+23. Refresh preview.
+24. Verify draft values unchanged.
+25. Verify current quote changed.
+26. Market closed state.
+27. Unsupported TIF state.
+28. Draft expiry.
+29. Verify preview blocked.
+30. New draft.
+31. Verify preview restored.
+32. Preflight expiry.
+33. Verify review required.
+34. Trade Plan version change.
+35. Verify preview invalid.
+36. Lifecycle Requires Review.
+37. Thesis Invalidated.
+38. Verify no submission CTA.
+39. Verify no confirmation CTA.
+40. Verify no broker mutation.
+41. Cross-user → 404.
+42. Mobile.
+43. Accessibility.
+44. Platform Health.
+45. Full quality gates.
+
+======================================================================
+85. PERMANENT QUALITY GATES
+======================================================================
+
+Run:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+npm run test:migrations
+
+npm run test:compliance
+
+npm run test:db
+
+npm run test:performance
+
+npm run test:invariants
+
+npm run test:idempotency
+
+npm run test:order-preparation
+
+npm run test:release
+
+Add:
+
+npm run test:equity-preview
+
+if useful.
+
+Also run trade-preference tests from 2.8.1A.
+
+No sprint-only result is sufficient.
+
+======================================================================
+86. BUILD / TYPESCRIPT
+======================================================================
+
+Run:
+
+npm run build
+
+npx tsc --noEmit
+
+Report:
+
+new TS errors = 0
+
+Do not regress current baseline.
+
+======================================================================
+87. DATABASE
+======================================================================
+
+Avoid new table unless preview persistence is necessary.
+
+If no persistence:
+
+no schema change.
+
+If preview snapshot table added:
+
+additive only
+
+idempotent
+
+test migration
+
+Document reason.
+
+Prefer ephemeral preview + audit event.
+
+======================================================================
+88. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+docs/operations/23-platform-operations-center.md
+
+docs/operations/37-execution-architecture-and-broker-preflight.md
+
+docs/operations/38-order-preparation-engine.md
+
+docs/operations/39-trade-preferences-and-expression-selection.md
+
+Create:
+
+docs/operations/40-equity-order-preview.md
+
+Document:
+
+architecture
+
+non-executable boundary
+
+EquityOrderPreview
+
+STOCK-expression invariant
+
+selectedBy USER chain
+
+source integrity
+
+Trade Plan binding
+
+Preflight binding
+
+OrderDraft binding
+
+draft/current data separation
+
+market vs limit
+
+market warning
+
+limit reference
+
+TIF
+
+quote validation
+
+market hours
+
+estimated notional
+
+buying-power status
+
+risk context
+
+lifecycle context
+
+warnings/blockers
+
+freshness
+
+preview expiry
+
+refresh
+
+edit-draft behavior
+
+audit events
+
+security/privacy
+
+no-order invariant
+
+API
+
+client UX
+
+performance
+
+Platform Health
+
+routing
+
+E2E
+
+UAT
+
+Task #136 disposition
+
+2.8.3 handoff
+
+2.8.4 handoff
+
+2.8.5 absolute submission block
+
+======================================================================
+89. 2.8.3 HANDOFF
+======================================================================
+
+Next:
+
+Sprint 2.8.3 — Options / Multi-Leg Order Preview
+
+It consumes:
+
+OrderDraft where instrument type = OPTION or MULTI_LEG_OPTION
+
+It must preserve:
+
+user-selected broad expression
+
+user-selected strategy family
+
+user-selected contract research candidate
+
+user-selected contract quantity
+
+No submission.
+
+======================================================================
+90. 2.8.4 HANDOFF
+======================================================================
+
+Execution Validation Hardening includes:
+
+Task #131 lifecycle scheduler
+
+final quote freshness
+
+broker/account freshness
+
+buying power
+
+position validation
+
+permissions
+
+market/tradability status
+
+OrderDraft + Preview freshness
+
+sandbox-certification preparation
+
+Task #136 if not completed here
+
+======================================================================
+91. 2.8.5 ABSOLUTE BLOCK
+======================================================================
+
+Do NOT allow broker submission until:
+
+2.8.4 GO
+
+lifecycle scheduler appropriately current
+
+authenticated E2E PASS
+
+sandbox order testing completed
+
+fresh quotes
+
+fresh account
+
+permissions
+
+buying power/positions
+
+current risk analysis
+
+short-lived explicit confirmation
+
+persistent idempotency
+
+duplicate-submit protection
+
+kill switch
+
+full audit trail
+
+security gates
+
+======================================================================
+92. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. EquityOrderPreview canonical type exists.
+
+B. executable=false enforced.
+
+C. broadExpressionType must be STOCK.
+
+D. selectedBy=USER preserved.
+
+E. Trade Plan binding validated.
+
+F. Preflight binding validated.
+
+G. OrderDraft binding validated.
+
+H. Trade Plan version checked.
+
+I. Draft expiry checked.
+
+J. Preflight expiry checked.
+
+K. Lifecycle state checked.
+
+L. Preview does not mutate OrderDraft.
+
+M. Quantity shown is explicit user-selected draft quantity.
+
+N. MARKET preview works.
+
+O. MARKET warning present.
+
+P. LIMIT preview works.
+
+Q. Draft limit never auto-changed.
+
+R. Current market values separate from draft values.
+
+S. TIF shown/validated.
+
+T. Market-hours state visible.
+
+U. Quote freshness visible.
+
+V. Quote movement visible.
+
+W. Estimated notional transparent.
+
+X. Broker account masked.
+
+Y. Risk/lifecycle context visible.
+
+Z. Blockers visible.
+
+AA. Warnings visible.
+
+AB. Preview expires.
+
+AC. Refresh does not mutate draft.
+
+AD. Edit Draft routes upstream.
+
+AE. No editable order fields directly in Preview.
+
+AF. No Confirm/Submit.
+
+AG. No broker mutation.
+
+AH. Legacy kill switch regression passes.
+
+AI. Security/ownership passes.
+
+AJ. Compliance passes.
+
+AK. Task #136 completed or explicitly moved to 2.8.4.
+
+AL. Platform Health updated.
+
+AM. Browser E2E covered.
+
+AN. Full permanent quality gates pass.
+
+AO. Build passes.
+
+AP. Zero new TS errors.
+
+AQ. Operations Manual updated.
+
+AR. 2.8.3 handoff exists.
+
+AS. 2.8.5 remains blocked.
+
+AT. Roadmap alignment confirmed.
+
+======================================================================
+93. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing preview infrastructure
+3. Safe reusable components
+4. Legacy preview/execution code isolated
+5. Files changed
+6. Schema impact
+7. Canonical EquityOrderPreview
+8. Preview status model
+9. executable=false boundary
+10. STOCK-expression invariant
+11. selectedBy=USER trace
+12. Source integrity
+13. Trade Plan binding
+14. Preflight binding
+15. OrderDraft binding
+16. Trade Plan version validation
+17. Draft expiry
+18. Preflight expiry
+19. Lifecycle validation
+20. Broker/account presentation
+21. Account masking
+22. Side intent
+23. Quantity
+24. MARKET preview
+25. Market-order warning
+26. LIMIT preview
+27. Limit source
+28. Draft/current data separation
+29. Quote validation
+30. Quote movement
+31. Market hours
+32. TIF
+33. Extended-hours policy
+34. Estimated notional
+35. Buying-power status
+36. Capital context
+37. Risk context
+38. Research/lifecycle context
+39. Warnings
+40. Blockers
+41. Preview TTL
+42. Refresh behavior
+43. Edit Draft behavior
+44. No confirmation boundary
+45. No submission boundary
+46. Audit events
+47. Logging/privacy
+48. Broker read-only boundary
+49. No-order-network invariant
+50. Legacy route regression
+51. API
+52. Client UX
+53. Mobile/accessibility
+54. Routing regression
+55. Performance
+56. Platform Health
+57. Operations Center
+58. Compliance audit
+59. Security audit
+60. Task #136 result
+61. Browser E2E
+62. UAT
+63. New equity-preview tests
+64. Trade-preference regression
+65. Order-preparation regression
+66. Smoke
+67. Regression
+68. Integration
+69. Security
+70. Lifecycle
+71. Compliance
+72. DB
+73. Migrations
+74. Performance
+75. Invariants
+76. Idempotency
+77. Full automated test count
+78. npm run build
+79. Typecheck
+80. Server startup
+81. 2.8.3 handoff
+82. 2.8.4 handoff
+83. 2.8.5 security block
+84. Improvement suggestions
+85. Deferred backlog
+86. Roadmap Alignment
+87. Operations Manual Updated: YES/NO
+88. Operations Manual Files Updated
+89. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+94. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.8.2
+Equity Order Preview
+
+NEXT IF GO:
+
+2.8.3
+Options / Multi-Leg Order Preview
+
+THEN:
+
+2.8.4
+Execution Validation Hardening
++
+Lifecycle Scheduler Task #131
++
+Draft-expiry hardening if needed
+
+2.8.5
+Explicit User Confirmation & Broker Submission
+
+2.8.6
+Execution Status, Fills & Position Linking
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+======================================================================
+95. PERMANENT ARCHITECTURE INVARIANT
+======================================================================
+
+Document permanently:
+
+Equity Order Preview is a read-only review of the user's current
+non-executable equity OrderDraft.
+
+It may display:
+
+current market context
+
+account context
+
+estimated notional
+
+risk context
+
+freshness
+
+warnings
+
+blockers
+
+It may NEVER:
+
+change the user's STOCK expression selection
+
+change quantity
+
+change account
+
+change side intent
+
+change order type
+
+change TIF
+
+change limit price
+
+submit an order
+
+or serve as user confirmation.
+
+All changes must return through Order Preparation and create/revalidate the
+appropriate OrderDraft.
+
+======================================================================
+96. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not add broker submission.
+
+Do not add Confirm & Submit.
+
+Do not invoke existing broker order routes.
+
+Do not build executable provider payloads.
+
+Do not let preview mutate OrderDraft.
+
+Preserve the explicit user-selected STOCK expression from Sprint 2.8.1A.
+
+Complete Sprint 2.8.2.
+
+Run all permanent quality gates.
+
+Run build and typecheck.
+
+Update the Operations Manual.
+
+Return the full engineering report for review before Sprint 2.8.3.

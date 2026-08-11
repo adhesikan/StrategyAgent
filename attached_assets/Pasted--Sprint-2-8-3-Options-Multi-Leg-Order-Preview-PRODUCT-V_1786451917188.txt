@@ -1,0 +1,3702 @@
+# Sprint 2.8.3 — Options / Multi-Leg Order Preview
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.8 — Broker-Assisted Execution
+
+CURRENT SPRINT:
+2.8.3 — Options / Multi-Leg Order Preview
+
+PREREQUISITES COMPLETED:
+
+✓ Research + Trade Planning v1.0
+✓ Trade Preferences & User-Directed Expression Selection
+✓ Options Strategy Matching
+✓ Options Contract Research
+✓ Trade Risk & Scenario Analysis
+✓ Trade Plan Workspace
+✓ Lifecycle Monitoring
+✓ Execution Architecture & Broker Preflight
+✓ Order Preparation Engine
+✓ Equity Order Preview
+✓ Global Execution Kill Switch
+✓ Legacy order-route guards
+✓ Permanent quality-gate framework
+
+CURRENT EXECUTION SAFETY STATE:
+
+BROKER_EXECUTION_ENABLED defaults FALSE.
+
+Sprint 2.8.3 MUST NOT weaken this.
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Current options execution chain:
+
+Qualified Research Candidate
+        ↓
+USER selects broad expression
+        ↓
+Options Strategy Matching
+        ↓
+USER selects specific strategy family
+        ↓
+Contract Research
+        ↓
+USER selects contract research candidate
+        ↓
+Risk & Scenario Analysis
+        ↓
+USER saves Trade Plan
+        ↓
+Lifecycle Monitoring
+        ↓
+Execution Preflight
+        ↓
+Order Preparation
+        ↓
+OPTIONS / MULTI-LEG ORDER PREVIEW
+        ↓
+Future Validation Hardening
+        ↓
+Future Explicit Confirmation
+        ↓
+Future Broker Submission
+
+Sprint 2.8.3 implements ONLY:
+
+OPTIONS / MULTI-LEG ORDER PREVIEW
+
+It MUST NOT:
+
+submit a broker order
+
+build an executable broker payload
+
+change strategy family
+
+replace contracts
+
+change strikes
+
+change expirations
+
+change leg ratios
+
+change quantity
+
+change account
+
+change pricing preferences
+
+place/replace/cancel anything
+
+======================================================================
+PERMANENT ARCHITECTURE PRINCIPLE
+======================================================================
+
+Options Order Preview is a READ-ONLY review surface.
+
+It displays:
+
+the exact current non-executable OrderDraft
+
++
+current contract/market context
+
++
+existing risk context
+
+It may NEVER silently mutate:
+
+broad expression
+
+specific strategy
+
+contracts
+
+legs
+
+expirations
+
+strikes
+
+ratios
+
+quantity
+
+account
+
+order type
+
+TIF
+
+limit/debit/credit reference
+
+Any user change must return upstream to Order Preparation and trigger
+revalidation.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker submission
+- Confirm & Submit
+- Place Order
+- Trade Now
+- multi-leg broker submission
+- order cancellation
+- order replacement
+- automatic roll
+- automatic strike replacement
+- automatic expiration replacement
+- smart price improvement
+- midpoint chasing
+- legging automation
+- partial-leg execution
+- fill monitoring
+- assignment handling workflow
+- position creation
+- trade journal
+- expected return
+- POP
+- recommendation logic
+- suitability scoring
+- autonomous AI execution
+
+DO NOT change:
+
+- UserTradingPreferences
+- OpportunityExpressionSelection
+- Strategy Matching
+- Contract Research
+- Risk Analysis
+- Trade Plan
+- Lifecycle
+- Execution Preflight
+- Order Preparation
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a canonical options preview experience that takes:
+
+user-owned saved Trade Plan
++
+user-selected broad expression
++
+user-selected strategy family
++
+user-selected contract research candidate
++
+current PASSING Execution Preflight
++
+current VALID non-executable OrderDraft
++
+authoritative current option quotes
++
+risk analysis
+        ↓
+OptionsOrderPreview
+
+The preview should answer:
+
+"What exact option structure did I prepare?"
+
+"What are all the legs?"
+
+"What quotes are current now?"
+
+"What debit/credit reference does the current structure imply?"
+
+"What changed since draft preparation?"
+
+"What are the current liquidity/freshness concerns?"
+
+"What does the existing risk analysis say?"
+
+"What account would this later use?"
+
+It must NOT answer:
+
+"Should I submit this trade?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+OrderDraft
+
+order-preparation service
+
+order_drafts persistence
+
+OrderPreparationPanel
+
+OptionsContractResearchResult
+
+ContractResearchCandidate
+
+TradeRiskScenarioResult
+
+OptionsStrategyMatchResult
+
+TradePlan
+
+TradePlanLifecycleResult
+
+ExecutionPreflightResult
+
+BroadExpressionType
+
+specific strategy family mappings
+
+existing options ticket UI
+
+existing multi-leg ticket UI
+
+existing Tradier options order preview/payload code
+
+existing TradeStation options order preview/payload code
+
+existing broker multi-leg capability mappings
+
+existing OCC contract symbol handling
+
+existing option quote services
+
+existing option multiplier logic
+
+existing bid/ask midpoint calculations
+
+existing net debit/credit calculations
+
+existing assignment/exercise risk content
+
+existing DTE/expiration utilities
+
+existing price increment logic
+
+existing leg side/action mappings
+
+existing options compliance banners
+
+Platform Health
+
+Structured Logging
+
+Operations Manual
+
+Report before coding:
+
+A. Existing options preview components
+B. Existing multi-leg presentation components
+C. Existing provider-native order preview methods
+D. Which are read-only
+E. Which may mutate/order-stage state
+F. Existing leg normalization
+G. Existing contract-symbol parsing
+H. Existing multiplier logic
+I. Existing net debit/credit logic
+J. Existing risk-summary components
+K. Existing assignment/exercise messaging
+L. Existing provider capability matrix
+M. Components safe to reuse
+N. Components to isolate
+
+Do not code until audit complete.
+
+======================================================================
+2. CANONICAL OPTIONS PREVIEW MODEL
+======================================================================
+
+Create canonical shared type.
+
+Suggested:
+
+OptionsOrderPreview {
+  id
+
+  userId
+  tradePlanId
+  tradePlanVersion
+
+  preflightId
+  orderDraftId
+  orderDraftVersion?
+
+  broadExpressionType
+  selectedBy
+  strategyFamily
+
+  instrumentType
+
+  generatedAt
+  validUntil
+
+  broker
+  account
+
+  underlying
+
+  expirationContext
+  legs[]
+
+  quantityContext
+
+  orderType
+  timeInForce
+
+  pricingContext
+  netStructurePricing
+
+  quoteFreshness
+  liquidityContext
+
+  riskContext
+  assignmentExerciseContext
+  eventContext
+
+  blockers[]
+  warnings[]
+
+  sourceIntegrity
+
+  executable
+  disclaimer
+}
+
+Mandatory:
+
+selectedBy = USER
+
+executable = false
+
+======================================================================
+3. SUPPORTED PREVIEW MODES
+======================================================================
+
+Support:
+
+OPTION
+
+MULTI_LEG_OPTION
+
+Do not include equity in this model.
+
+Single-leg and multi-leg may share canonical model.
+
+======================================================================
+4. PREVIEW STATUS
+======================================================================
+
+Use:
+
+VALID
+
+REQUIRES_REVIEW
+
+EXPIRED
+
+INVALID
+
+UNAVAILABLE
+
+Do NOT use:
+
+READY_TO_TRADE
+
+APPROVED
+
+EXECUTION_READY
+
+RECOMMENDED
+
+BEST_STRUCTURE
+
+======================================================================
+5. SOURCE INTEGRITY
+======================================================================
+
+Create canonical:
+
+OptionsPreviewSourceIntegrity {
+  tradePlanMatches
+  tradePlanVersionMatches
+  broadExpressionMatches
+  strategyFamilyMatches
+  contractCandidateMatches
+  preflightMatches
+  orderDraftMatches
+  accountMatches
+  lifecycleCurrent
+  contractsCurrent
+  quotesCurrent
+  structureValid
+}
+
+Critical mismatches block preview.
+
+======================================================================
+6. BROAD EXPRESSION INVARIANT
+======================================================================
+
+Preview must validate the source broad expression.
+
+Possible options-side expressions:
+
+LONG_OPTIONS
+
+COVERED_CALL
+
+CASH_SECURED_PUT
+
+DEFINED_RISK_OPTIONS
+
+INCOME_OPTIONS
+
+NEUTRAL_OPTIONS
+
+ADVANCED_OPTIONS
+
+EXPLORE_COMPATIBLE_STRUCTURES
+
+But the specific Trade Plan/order draft must already contain the actual
+selected strategy family.
+
+No reinterpretation.
+
+======================================================================
+7. USER-SELECTION CHAIN
+======================================================================
+
+Preserve audit chain:
+
+USER selected broad expression
+
+USER selected specific strategy family
+
+USER selected contract research candidate
+
+USER selected quantity/preferences
+
+Preview must not alter any of these.
+
+======================================================================
+8. ORDER DRAFT REQUIRED
+======================================================================
+
+Options Preview requires:
+
+existing current OrderDraft
+
+instrumentType OPTION or MULTI_LEG_OPTION
+
+Do not construct draft in preview.
+
+If none:
+
+return:
+
+ORDER_DRAFT_REQUIRED
+
+CTA:
+Prepare Order Draft
+
+======================================================================
+9. DRAFT CURRENTNESS
+======================================================================
+
+Validate:
+
+draft status
+
+expiresAt
+
+preflight validity
+
+Trade Plan version
+
+lifecycle state
+
+account
+
+contracts
+
+quotes
+
+If stale:
+
+REQUIRES_REVIEW / EXPIRED.
+
+Do not silently regenerate.
+
+======================================================================
+10. DRAFT IMMUTABILITY
+======================================================================
+
+Preview is read-only.
+
+Never mutate:
+
+strategyFamily
+
+legs
+
+quantity
+
+TIF
+
+order type
+
+limit/debit/credit reference
+
+account
+
+provider
+
+======================================================================
+11. STRATEGY FAMILY INVARIANT
+======================================================================
+
+The preview must match the exact saved user-selected strategy family.
+
+Examples:
+
+long_call
+
+long_put
+
+covered_call
+
+cash_secured_put
+
+bull_call_spread
+
+bear_put_spread
+
+bull_put_spread
+
+bear_call_spread
+
+iron_condor
+
+iron_butterfly
+
+calendar
+
+diagonal
+
+collar
+
+protective_put
+
+other currently supported families
+
+No automatic strategy switch.
+
+======================================================================
+12. CONTRACT CANDIDATE INVARIANT
+======================================================================
+
+All legs must come from the user-selected Contract Research Candidate.
+
+No new strike research.
+
+No new expiration research.
+
+No "better contract" substitution.
+
+No leg removal.
+
+No leg addition.
+
+======================================================================
+13. LEG MODEL
+======================================================================
+
+Create canonical preview leg.
+
+Suggested:
+
+OptionsPreviewLeg {
+  legIndex
+
+  role
+  canonicalIntent
+
+  contractSymbol
+  optionType
+
+  expiration
+  dte
+
+  strike
+  ratio
+  quantity
+
+  multiplier
+
+  draftQuote
+  currentQuote
+
+  quoteChange
+
+  liquidity
+
+  greeks?
+
+  status
+
+  warnings[]
+}
+
+Do not include executable provider action payload.
+
+======================================================================
+14. CANONICAL LEG INTENTS
+======================================================================
+
+Reuse 2.8.1 canonical intents.
+
+Examples:
+
+OPEN_LONG
+
+OPEN_SHORT_COVERED
+
+OPEN_SHORT_SECURED
+
+OPEN_SHORT_DEFINED_RISK
+
+Do not convert to provider-specific:
+
+BUY_TO_OPEN
+
+SELL_TO_OPEN
+
+until future translation layer.
+
+If user-friendly UI needs action wording:
+
+display educational/canonical mapping only.
+
+======================================================================
+15. SINGLE-LEG LONG OPTIONS
+======================================================================
+
+For Long Call / Long Put show:
+
+contract
+
+expiration
+
+DTE
+
+strike
+
+quantity
+
+multiplier
+
+current bid
+
+ask
+
+midpoint
+
+last
+
+IV
+
+delta/theta/vega where available
+
+liquidity
+
+quote time
+
+No POP.
+
+No expected return.
+
+======================================================================
+16. COVERED CALL PREVIEW
+======================================================================
+
+Show:
+
+underlying shares required
+
+coverage status from current preflight
+
+short call leg
+
+expiration
+
+strike
+
+current quote
+
+estimated credit reference
+
+current underlying context
+
+assignment risk
+
+early exercise risk
+
+Do not present as covered if live position coverage no longer confirmed.
+
+If insufficient coverage:
+
+block.
+
+Never transform to naked short call.
+
+======================================================================
+17. CASH-SECURED PUT PREVIEW
+======================================================================
+
+Show:
+
+short put leg
+
+expiration
+
+strike
+
+quantity
+
+multiplier
+
+estimated credit reference
+
+estimated cash-secured capital
+
+broker buying-power validation status
+
+assignment implication
+
+downside scenario context
+
+Do not call premium guaranteed income.
+
+If broker/account capital validation changed:
+
+REQUIRES_REVIEW / INVALID.
+
+======================================================================
+18. PROTECTIVE PUT
+======================================================================
+
+Validate underlying shares.
+
+Show:
+
+share coverage
+
+put leg
+
+protection strike
+
+premium/debit reference
+
+risk context from existing Risk Analysis
+
+No recommendation.
+
+======================================================================
+19. COLLAR
+======================================================================
+
+Validate shares.
+
+Show:
+
+underlying
+
+long put
+
+short covered call
+
+expirations
+
+strikes
+
+net debit/credit reference
+
+assignment/exercise considerations
+
+No structure mutation.
+
+======================================================================
+20. VERTICAL SPREADS
+======================================================================
+
+For:
+
+bull call spread
+
+bear put spread
+
+bull put spread
+
+bear call spread
+
+Show:
+
+long leg
+
+short leg
+
+expiration
+
+width
+
+current quotes
+
+estimated net debit/credit
+
+max loss
+
+max gain where existing risk engine provides it
+
+breakeven
+
+assignment risk on short leg
+
+No probability metrics.
+
+======================================================================
+21. IRON CONDOR
+======================================================================
+
+Show all four immutable legs.
+
+Show:
+
+put spread
+
+call spread
+
+short strikes
+
+long wings
+
+widths
+
+current leg quotes
+
+estimated net credit
+
+max gain/loss from Risk Analysis
+
+breakevens
+
+assignment/pin risk
+
+event exposure
+
+No leg optimization.
+
+======================================================================
+22. IRON BUTTERFLY
+======================================================================
+
+Same discipline.
+
+Validate:
+
+center strikes
+
+wings
+
+all legs
+
+estimated net credit/debit
+
+risk context
+
+No replacement.
+
+======================================================================
+23. CALENDAR
+======================================================================
+
+Show:
+
+near expiration
+
+far expiration
+
+strikes
+
+current quotes
+
+net debit reference
+
+path-dependent risk warning
+
+volatility/time sensitivity
+
+Do not claim simple fixed max gain if Risk Analysis marks path-dependent.
+
+======================================================================
+24. DIAGONAL
+======================================================================
+
+Show:
+
+different expirations
+
+different strikes
+
+leg ordering
+
+net debit/credit
+
+path-dependent warning
+
+assignment/exercise considerations
+
+No oversimplification.
+
+======================================================================
+25. STRUCTURE VALIDATION
+======================================================================
+
+Before rendering VALID preview, revalidate:
+
+leg count
+
+contract symbols
+
+expiration ordering
+
+strike ordering
+
+ratios
+
+multipliers
+
+option type
+
+strategy-family rules
+
+provider multi-leg capability
+
+Do not rebuild structure.
+
+======================================================================
+26. CONTRACT EXISTENCE
+======================================================================
+
+Read-only revalidation:
+
+each selected contract still exists / resolves.
+
+If missing:
+
+CONTRACT_UNAVAILABLE
+
+No substitute contract.
+
+======================================================================
+27. EXPIRATION CHECK
+======================================================================
+
+If any contract expired:
+
+preview INVALID / EXPIRED.
+
+If near expiration:
+
+warning.
+
+No automatic roll.
+
+======================================================================
+28. DTE DISPLAY
+======================================================================
+
+Show current DTE.
+
+Compare with DTE at draft creation if available.
+
+For large changes due to time passage:
+
+informational / warning according to existing policy.
+
+No action recommendation.
+
+======================================================================
+29. QUOTE MODEL
+======================================================================
+
+Per leg current quote:
+
+bid
+
+ask
+
+midpoint
+
+last
+
+timestamp
+
+provider
+
+freshness
+
+spreadAbsolute
+
+spreadPct where valid
+
+No invalid quote normalization.
+
+======================================================================
+30. DRAFT VS CURRENT QUOTES
+======================================================================
+
+Preserve:
+
+draftQuote
+
+currentQuote
+
+Show differences.
+
+Do not rewrite draft.
+
+Examples:
+
+Draft midpoint:
+$3.20
+
+Current midpoint:
+$3.45
+
+Change:
++7.8%
+
+No recommendation.
+
+======================================================================
+31. NET STRUCTURE PRICING
+======================================================================
+
+Calculate current reference pricing from current leg quotes.
+
+For structure:
+
+estimatedNetDebit
+
+estimatedNetCredit
+
+based on canonical leg signs.
+
+Also preserve draft net reference.
+
+Show:
+
+Draft Net Reference
+
+Current Net Reference
+
+No fill guarantee.
+
+======================================================================
+32. MIDPOINT DISCLAIMER
+======================================================================
+
+Mandatory:
+
+"Net debit/credit values are calculated from current quote references.
+Actual execution prices may differ materially."
+
+Use existing midpoint disclaimer where possible.
+
+======================================================================
+33. NO AUTO PRICE IMPROVEMENT
+======================================================================
+
+Do not:
+
+move debit
+
+move credit
+
+chase midpoint
+
+calculate "recommended limit"
+
+optimize fill price
+
+Preview is descriptive.
+
+======================================================================
+34. ORDER TYPE
+======================================================================
+
+Show exact OrderDraft order type.
+
+Likely:
+
+LIMIT
+
+Possibly MARKET where provider/product policy allows.
+
+Audit.
+
+Do not silently change.
+
+======================================================================
+35. MARKET ORDERS FOR OPTIONS
+======================================================================
+
+Important.
+
+Audit whether VCP should permit MARKET for options drafts at all.
+
+If existing OrderDraft supports MARKET:
+
+display strong warning.
+
+Do not enable if provider/policy says unsupported.
+
+Do not introduce MARKET solely for this sprint.
+
+If unsupported:
+
+ORDER_TYPE_UNSUPPORTED.
+
+======================================================================
+36. LIMIT PRICE / NET PRICE
+======================================================================
+
+For multi-leg options, distinguish:
+
+NET_DEBIT
+
+NET_CREDIT
+
+where appropriate.
+
+Show selected draft limit/reference.
+
+Do not create provider payload.
+
+======================================================================
+37. PRICE SIGN CONVENTION
+======================================================================
+
+Canonicalize net pricing consistently.
+
+Avoid confusing:
+
+negative debit
+
+positive credit
+
+Prefer explicit:
+
+pricingType = DEBIT | CREDIT
+
+amount = positive numeric value
+
+Document.
+
+Do not silently reinterpret existing draft semantics.
+
+======================================================================
+38. TIF
+======================================================================
+
+Show exact TIF.
+
+Validate provider capability.
+
+No automatic change.
+
+======================================================================
+39. ACCOUNT
+======================================================================
+
+Show:
+
+broker
+
+masked account
+
+account type
+
+options permissions status
+
+multi-leg permission status
+
+No full account ID.
+
+======================================================================
+40. OPTIONS PERMISSION CONTEXT
+======================================================================
+
+Show categorical:
+
+PASS
+
+INSUFFICIENT
+
+UNAVAILABLE
+
+Current permission context from preflight.
+
+Do not infer suitability.
+
+======================================================================
+41. MULTI-LEG CAPABILITY
+======================================================================
+
+Show whether current provider/account supports native multi-leg order for
+the structure.
+
+If not:
+
+preview may show structure but future progression blocked.
+
+Do NOT decompose multi-leg order into separate legs automatically.
+
+This is critical.
+
+======================================================================
+42. NO LEGGING
+======================================================================
+
+If provider does not support native multi-leg:
+
+do NOT offer:
+
+submit legs separately
+
+leg into position
+
+open one side first
+
+That materially changes execution risk.
+
+Future product decision only.
+
+======================================================================
+43. LIQUIDITY CONTEXT
+======================================================================
+
+Show per-leg and aggregate:
+
+OI
+
+volume
+
+bid/ask width
+
+spreadPct
+
+liquidity category
+
+quote freshness
+
+No ranking.
+
+No best-leg language.
+
+======================================================================
+44. LIQUIDITY CHANGE
+======================================================================
+
+Compare draft/preflight liquidity to current.
+
+Possible:
+
+UNCHANGED
+
+IMPROVED
+
+WEAKENED
+
+UNKNOWN
+
+If current liquidity violates execution policy:
+
+REQUIRES_REVIEW / INVALID.
+
+Do not change contracts.
+
+======================================================================
+45. GREEKS
+======================================================================
+
+Show current Greeks where available:
+
+delta
+
+gamma
+
+theta
+
+vega
+
+and net structure Greeks if current canonical Risk Analysis / calculation
+supports.
+
+Missing stays null.
+
+No zero substitution.
+
+======================================================================
+46. GREEKS CHANGE
+======================================================================
+
+Optional descriptive comparison:
+
+Net Delta at Risk Analysis
+
+Current Net Delta if refreshed
+
+If methodology supports.
+
+Do not create new Greeks engine.
+
+If not safely available:
+
+defer.
+
+======================================================================
+47. IV CONTEXT
+======================================================================
+
+Show IV per leg / current structure context.
+
+No claim that higher/lower IV is good.
+
+Use research explanation.
+
+======================================================================
+48. EVENT CONTEXT
+======================================================================
+
+Show:
+
+earnings/event inside structure life
+
+event approaching
+
+event passed
+
+event unknown
+
+No forecast.
+
+If event status materially changed:
+
+warning/review.
+
+======================================================================
+49. ASSIGNMENT RISK
+======================================================================
+
+For short legs:
+
+general assignment risk.
+
+Covered Call:
+possible early assignment.
+
+Short put:
+assignment may acquire shares.
+
+Credit spreads:
+short-leg assignment risk.
+
+No probability.
+
+======================================================================
+50. EXERCISE RISK
+======================================================================
+
+For long options:
+
+expiration/exercise context.
+
+Do not implement exercise workflow.
+
+======================================================================
+51. PIN RISK
+======================================================================
+
+Where appropriate:
+
+short strike near underlying near expiration.
+
+If existing methodology can detect descriptively:
+
+surface warning.
+
+Do not create predictive probability.
+
+If no existing method:
+
+document as general risk only.
+
+======================================================================
+52. RISK CONTEXT
+======================================================================
+
+Carry existing Risk Analysis.
+
+Show:
+
+max loss
+
+max gain where defined
+
+breakeven(s)
+
+capital profile
+
+net Greeks
+
+risk flags
+
+planning constraint status
+
+path-dependent status
+
+No recomputation beyond current context needed for preview.
+
+======================================================================
+53. RISK ANALYSIS FRESHNESS
+======================================================================
+
+If Risk Analysis stale:
+
+REQUIRES_REVIEW.
+
+CTA:
+
+Re-run Risk Analysis
+
+No silent recalculation unless explicitly requested upstream.
+
+======================================================================
+54. LIFECYCLE CONTEXT
+======================================================================
+
+Show current Trade Plan lifecycle.
+
+If:
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+REQUIRES_REVIEW
+
+apply existing preflight/preview policy.
+
+No exit instruction.
+
+======================================================================
+55. QUOTE MOVEMENT
+======================================================================
+
+Show per leg and aggregate.
+
+A materially moved quote may be warning or review depending execution policy.
+
+Do not auto-change draft pricing.
+
+======================================================================
+56. STRUCTURE VALUE MOVEMENT
+======================================================================
+
+Show:
+
+Draft Net Reference
+
+Current Net Reference
+
+Difference
+
+Difference %
+
+Label:
+
+Current Structure Quote Change
+
+not:
+
+Gain/Loss
+
+because no execution occurred.
+
+======================================================================
+57. MARKET HOURS
+======================================================================
+
+Show current market status.
+
+Options session status if available.
+
+Do not infer options trading availability solely from equity market status
+if provider architecture distinguishes them.
+
+If unknown:
+
+UNKNOWN.
+
+======================================================================
+58. PREVIEW VALIDITY
+======================================================================
+
+generatedAt
+
+validUntil
+
+based on shortest critical freshness among:
+
+draft
+
+preflight
+
+leg quotes
+
+account/permissions
+
+risk
+
+lifecycle
+
+Do not reuse old preview indefinitely.
+
+======================================================================
+59. REFRESH PREVIEW
+======================================================================
+
+Allow:
+
+Refresh Preview
+
+This may update CURRENT context only.
+
+It must NOT change:
+
+draft legs
+
+draft price
+
+draft quantity
+
+draft TIF
+
+draft account
+
+strategy family
+
+broad expression
+
+selected contract candidate
+
+======================================================================
+60. EDIT DRAFT
+======================================================================
+
+CTA:
+
+Edit Order Draft
+
+If user wants to change:
+
+quantity
+
+order type
+
+TIF
+
+pricing reference
+
+Return upstream.
+
+If user wants to change:
+
+strategy
+
+contracts
+
+expiration
+
+strikes
+
+return further upstream to Contract Research / Trade Planning.
+
+Do not edit these inside preview.
+
+======================================================================
+61. CHANGE CONTRACTS ACTION
+======================================================================
+
+Optional link:
+
+Change Contract Research Candidate
+
+This must navigate upstream.
+
+Warn that downstream:
+
+Risk Analysis
+
+Trade Plan version
+
+Preflight
+
+OrderDraft
+
+Preview
+
+may need regeneration.
+
+Do not mutate automatically.
+
+======================================================================
+62. NON-EXECUTION BANNER
+======================================================================
+
+Always visible:
+
+"Preview Only — Nothing has been submitted to your broker."
+
+Mandatory.
+
+======================================================================
+63. COMPLIANCE DISCLAIMER
+======================================================================
+
+Canonical:
+
+"Options Order Preview displays the current non-executable order draft,
+selected option structure, current quote context, and existing risk
+analysis for review. It does not submit an order, guarantee execution or
+price, or constitute investment advice, a recommendation, or a suitability
+determination."
+
+======================================================================
+64. OPTIONS RISK DISCLOSURE
+======================================================================
+
+General options risk disclosure mandatory.
+
+Also include structure-specific context.
+
+Do not call all options defined-risk.
+
+======================================================================
+65. PRICE DISCLAIMER
+======================================================================
+
+"Displayed contract quotes and net debit/credit references are current
+research/preview values. Actual execution prices may differ materially."
+
+======================================================================
+66. NO CONFIRMATION
+======================================================================
+
+Do NOT include:
+
+Confirm
+
+Confirm Trade
+
+Confirm Order
+
+Confirm & Submit
+
+Place
+
+Execute
+
+Send to Broker
+
+The future CTA remains disabled:
+
+Continue to Final Execution Validation — Upcoming
+
+======================================================================
+67. SERVER AUTHORITATIVE PREVIEW
+======================================================================
+
+Client may submit:
+
+orderDraftId
+
+refresh flag
+
+Client may NOT submit authoritative:
+
+strategyFamily
+
+legs
+
+contract symbols
+
+strikes
+
+expirations
+
+ratio
+
+quantity
+
+account
+
+quotes
+
+debit/credit
+
+risk values
+
+broker capability
+
+Server reconstructs.
+
+======================================================================
+68. API
+======================================================================
+
+Suggested:
+
+POST /api/execution/order-drafts/:draftId/options-preview
+
+GET /api/execution/order-drafts/:draftId/options-preview
+
+POST /api/execution/order-drafts/:draftId/options-preview/refresh
+
+GET /api/execution/options-preview/health
+
+Align with equity preview style where possible.
+
+No confirm/submit routes.
+
+======================================================================
+69. PREVIEW SERVICE
+======================================================================
+
+Create pure deterministic service with injectable READ-ONLY deps.
+
+Suggested stages:
+
+1. authenticate ownership
+2. load OrderDraft
+3. validate instrument type
+4. load Trade Plan
+5. validate Trade Plan version
+6. validate broad expression
+7. validate selectedBy USER
+8. validate strategy family
+9. validate contract candidate
+10. validate preflight
+11. validate lifecycle
+12. validate account
+13. validate permissions
+14. validate provider multi-leg capability
+15. revalidate contracts
+16. fetch current quotes
+17. validate quote freshness
+18. compute current net reference
+19. attach liquidity
+20. attach risk context
+21. build warnings/blockers
+22. determine status
+23. determine validUntil
+24. audit
+25. return preview
+
+No broker mutation.
+
+======================================================================
+70. PERSISTENCE
+======================================================================
+
+Prefer ephemeral preview.
+
+Reuse execution_audit_events.
+
+Do not add table unless clear audit need.
+
+If persisted:
+
+compact only.
+
+No raw chain.
+
+======================================================================
+71. AUDIT EVENTS
+======================================================================
+
+Add:
+
+OPTIONS_PREVIEW_STARTED
+
+OPTIONS_PREVIEW_GENERATED
+
+OPTIONS_PREVIEW_REFRESHED
+
+OPTIONS_PREVIEW_REQUIRES_REVIEW
+
+OPTIONS_PREVIEW_EXPIRED
+
+OPTIONS_PREVIEW_INVALID
+
+No order-submission events.
+
+======================================================================
+72. SAFE AUDIT METADATA
+======================================================================
+
+Allow:
+
+provider
+
+strategyFamily
+
+legCount
+
+instrumentType
+
+status
+
+warningCount
+
+blockerCount
+
+durationMs
+
+hasEventRisk
+
+hasAssignmentRisk
+
+Do not log:
+
+contract symbols if policy avoids
+
+strike prices
+
+quantity
+
+account full ID
+
+net debit/credit
+
+capital
+
+P/L
+
+tokens
+
+user identity
+
+======================================================================
+73. BROKER ADAPTER
+======================================================================
+
+Use read-only adapter only.
+
+Allowed:
+
+getConnectionStatus
+
+listAccounts
+
+getAccountCapabilities
+
+getPositions
+
+getQuoteValidation
+
+validateOptionsContract
+
+possibly batch option quote lookup
+
+No:
+
+placeOrder
+
+submitOrder
+
+replaceOrder
+
+cancelOrder
+
+======================================================================
+74. NO-ORDER NETWORK INVARIANT
+======================================================================
+
+MANDATORY.
+
+Spy all broker mutation methods.
+
+Run every options-preview path.
+
+Assert:
+
+placeOrder = 0
+
+submitOrder = 0
+
+replaceOrder = 0
+
+cancelOrder = 0
+
+modifyOrder = 0
+
+No exceptions.
+
+======================================================================
+75. LEGACY ROUTE REGRESSION
+======================================================================
+
+BROKER_EXECUTION_ENABLED=false
+
+all existing mutating broker routes remain blocked.
+
+Options Preview must not link to them.
+
+======================================================================
+76. BROAD EXPRESSION REGRESSION
+======================================================================
+
+Test all options broad expressions.
+
+Preview cannot convert:
+
+LONG_OPTIONS → DEFINED_RISK_OPTIONS
+
+COVERED_CALL → CASH_SECURED_PUT
+
+etc.
+
+Exact source expression preserved.
+
+======================================================================
+77. SPECIFIC STRATEGY REGRESSION
+======================================================================
+
+No strategy substitution.
+
+Bull Call Spread stays Bull Call Spread.
+
+Iron Condor stays Iron Condor.
+
+Calendar stays Calendar.
+
+No "better" strategy.
+
+======================================================================
+78. CONTRACT IMMUTABILITY TEST
+======================================================================
+
+Change current options chain.
+
+Preview still uses original draft contract set.
+
+If original contracts unavailable:
+
+block.
+
+Do not select replacements.
+
+======================================================================
+79. EXPIRATION IMMUTABILITY
+======================================================================
+
+Same.
+
+No roll.
+
+No next expiration.
+
+No nearest expiration substitution.
+
+======================================================================
+80. STRIKE IMMUTABILITY
+======================================================================
+
+No strike movement.
+
+No delta-based replacement.
+
+No moneyness-based replacement.
+
+======================================================================
+81. QUANTITY IMMUTABILITY
+======================================================================
+
+Preview cannot change contracts/shares count.
+
+Edit Draft required.
+
+======================================================================
+82. ACCOUNT IMMUTABILITY
+======================================================================
+
+Account mismatch requires new preflight/draft.
+
+No silent account replacement.
+
+======================================================================
+83. PRICE REFERENCE IMMUTABILITY
+======================================================================
+
+Draft selected pricing reference remains.
+
+Current net reference shown separately.
+
+Do not overwrite.
+
+======================================================================
+84. STRUCTURE-SPECIFIC WARNINGS
+======================================================================
+
+Long Option:
+
+time decay
+IV sensitivity
+expiration
+
+Covered Call:
+
+underlying downside
+assignment
+capped upside
+
+CSP:
+
+assignment
+capital requirement
+underlying downside
+
+Vertical:
+
+short-leg assignment
+defined spread risk
+
+Iron Condor/Butterfly:
+
+multiple short-leg assignment/pin risk
+
+Calendar/Diagonal:
+
+path dependence
+expiration mismatch
+volatility sensitivity
+
+Reuse Risk Analysis wording.
+
+======================================================================
+85. MULTIPLIER
+======================================================================
+
+Show actual normalized multiplier.
+
+Do not blindly assume 100 if contract metadata differs.
+
+Capital/debit/credit calculations must use multiplier.
+
+======================================================================
+86. NET DEBIT/CREDIT CALCULATION
+======================================================================
+
+Use current leg quotes with canonical long/short signs.
+
+Example:
+
+long leg midpoint contributes debit.
+
+short leg midpoint contributes credit.
+
+Return positive:
+
+amount
+
+with:
+
+pricingType = DEBIT or CREDIT.
+
+Test exact math.
+
+======================================================================
+87. INVALID QUOTES
+======================================================================
+
+Handle:
+
+zero bid
+
+negative quote
+
+ask < bid
+
+missing ask
+
+missing bid
+
+stale quote
+
+partial quote coverage
+
+Do not fabricate midpoint.
+
+If critical:
+
+REQUIRES_REVIEW / INVALID.
+
+======================================================================
+88. PARTIAL GREEKS
+======================================================================
+
+Missing Greeks remain null.
+
+Preview may show:
+
+Partial Greeks Coverage.
+
+No zero substitution.
+
+======================================================================
+89. PROVIDER CAPABILITY
+======================================================================
+
+If provider does not support multi-leg structure:
+
+block future progression.
+
+But still permit read-only preview if useful.
+
+Clearly state:
+
+Native multi-leg submission unavailable for this provider/account.
+
+Do not offer decomposition.
+
+======================================================================
+90. UI INTEGRATION
+======================================================================
+
+Preferred:
+
+Trade Plan Detail
+→ Preflight
+→ Order Preparation
+→ Options Order Preview
+
+or current trade-planning route if architecture already uses draftId.
+
+Use consistent placement with Equity Preview.
+
+Only show for:
+
+OPTION
+
+MULTI_LEG_OPTION.
+
+======================================================================
+91. UI HEADER
+======================================================================
+
+Options Order Preview
+
+Preview Only badge
+
+Underlying symbol/company
+
+Broad expression
+
+Strategy family
+
+Broker
+
+Masked account
+
+Draft version
+
+Generated
+
+Valid until
+
+No submission CTA.
+
+======================================================================
+92. UI — STRUCTURE SUMMARY
+======================================================================
+
+Show:
+
+Broad Expression
+
+Specific Strategy
+
+Expiration(s)
+
+Contracts
+
+Quantity
+
+Pricing Type
+
+Draft Net Reference
+
+Current Net Reference
+
+TIF
+
+Market Status
+
+======================================================================
+93. UI — LEG TABLE
+======================================================================
+
+Columns:
+
+Role
+
+Intent
+
+Contract
+
+Type
+
+Expiration
+
+DTE
+
+Strike
+
+Ratio
+
+Quantity
+
+Draft Quote
+
+Current Bid
+
+Current Ask
+
+Current Midpoint
+
+Liquidity
+
+Freshness
+
+Keep accessible and mobile-safe.
+
+======================================================================
+94. UI — CURRENT VS DRAFT
+======================================================================
+
+Separate cards:
+
+Draft Structure
+
+Current Market Context
+
+Do not merge.
+
+======================================================================
+95. UI — NET PRICING
+======================================================================
+
+Show:
+
+Draft Estimated Net Debit/Credit
+
+Current Estimated Net Debit/Credit
+
+Difference
+
+Percentage Difference where valid
+
+Midpoint disclaimer.
+
+No fill likelihood.
+
+======================================================================
+96. UI — LIQUIDITY
+======================================================================
+
+Per-leg details plus aggregate summary.
+
+No score unless canonical category already exists.
+
+Use:
+
+Strong
+Acceptable
+Limited
+Poor
+Unknown
+
+if these are existing approved categories.
+
+======================================================================
+97. UI — GREEKS
+======================================================================
+
+Show net Greeks.
+
+Optional per-leg expandable view.
+
+No probability interpretation.
+
+======================================================================
+98. UI — RISK SUMMARY
+======================================================================
+
+Show:
+
+Max Loss
+
+Max Gain where defined
+
+Breakevens
+
+Capital Context
+
+Net Greeks
+
+Risk Flags
+
+Event Context
+
+Path-Dependent warning
+
+Use existing Risk Analysis values.
+
+======================================================================
+99. UI — ASSIGNMENT / EXERCISE
+======================================================================
+
+Dedicated concise card when relevant.
+
+No alarmist language.
+
+No probability.
+
+======================================================================
+100. UI — WARNINGS / BLOCKERS
+======================================================================
+
+Separate:
+
+Needs Attention
+
+Warnings
+
+Critical blockers first.
+
+No recommendation action.
+
+======================================================================
+101. UI — REFRESH
+======================================================================
+
+Refresh Preview
+
+Updates current context.
+
+Does not mutate draft.
+
+Show last refreshed timestamp.
+
+======================================================================
+102. UI — EDIT
+======================================================================
+
+Edit Order Draft
+
+Change Contract Research Candidate
+
+View Risk Analysis
+
+View Trade Plan
+
+These are upstream/navigation actions.
+
+No execution.
+
+======================================================================
+103. MOBILE
+======================================================================
+
+At 375px:
+
+header stacks
+
+leg table horizontally safe or cardified
+
+pricing summary stacks
+
+risk cards stack
+
+warnings readable
+
+non-execution banner remains prominent
+
+======================================================================
+104. ACCESSIBILITY
+======================================================================
+
+Leg table accessible.
+
+Expandable sections keyboard accessible.
+
+Warnings not color-only.
+
+Status labels semantic.
+
+Refresh labeled.
+
+No hover-only essential information.
+
+======================================================================
+105. ROUTING
+======================================================================
+
+Static/dynamic route safety.
+
+Test:
+
+options-preview
+
+refresh
+
+health
+
+draftId
+
+No collision.
+
+======================================================================
+106. SECURITY
+======================================================================
+
+Authenticated.
+
+Cross-user draft → 404.
+
+Cross-user Trade Plan → 404.
+
+Cross-user preflight → 404.
+
+Forged contract candidate → rejected.
+
+Client cannot inject:
+
+strategy
+
+legs
+
+expiration
+
+strike
+
+quantity
+
+account
+
+quote
+
+net price
+
+risk data
+
+provider capability
+
+======================================================================
+107. INPUT REJECTION
+======================================================================
+
+Like Equity Preview, reject forbidden authoritative client fields before
+service call.
+
+Add explicit list.
+
+======================================================================
+108. PERFORMANCE
+======================================================================
+
+Avoid one external provider call per leg if batch quote lookup exists.
+
+Prefer:
+
+one contract-validation batch
+
+one quote batch
+
+or provider-minimal bounded calls.
+
+Measure:
+
+single-leg preview
+
+2-leg spread
+
+4-leg structure
+
+calendar/diagonal
+
+Report provider call count.
+
+No AI.
+
+======================================================================
+109. CACHE
+======================================================================
+
+Use only short-lived execution-safe quote caches.
+
+No cross-user.
+
+Do not cache stale PASS.
+
+Preview ephemeral.
+
+======================================================================
+110. PLATFORM HEALTH
+======================================================================
+
+Add:
+
+Options Order Preview
+
+Metrics:
+
+previewRequests
+
+singleLegPreviews
+
+multiLegPreviews
+
+previewPasses
+
+previewRequiresReview
+
+previewInvalid
+
+previewExpired
+
+previewFailures
+
+averagePreviewLatencyMs
+
+lastPreviewAt
+
+brokerSubmissionEnabled
+
+No contract/price/user details.
+
+======================================================================
+111. OPERATIONS CENTER
+======================================================================
+
+Execution pipeline display:
+
+Execution Preflight
+✓
+
+Order Preparation
+✓
+
+Equity Preview
+✓
+
+Options Preview
+current
+
+Execution Validation Hardening
+Upcoming
+
+Broker Submission
+DISABLED
+
+No private data.
+
+======================================================================
+112. COMPLIANCE REGRESSION
+======================================================================
+
+Check:
+
+Best Options Trade
+
+Recommended Spread
+
+Recommended Contract
+
+Best Strike
+
+Best Expiration
+
+Ready to Trade
+
+Submit Now
+
+Guaranteed Fill
+
+Expected Profit
+
+Probability of Profit
+
+Chance of Winning
+
+Roll Now
+
+Close Now
+
+Context-aware disclaimers excluded.
+
+======================================================================
+113. SECURITY REGRESSION
+======================================================================
+
+Include:
+
+cross-user
+
+contract injection
+
+strike injection
+
+expiration injection
+
+leg injection
+
+strategy-family injection
+
+quantity injection
+
+account injection
+
+net-price injection
+
+forceExecute
+
+skipValidation
+
+broker mutation spy
+
+legacy kill switch
+
+======================================================================
+114. BUSINESS INVARIANTS
+======================================================================
+
+Add permanent invariants:
+
+Options Preview requires user-selected Trade Plan.
+
+Options Preview requires OrderDraft.
+
+Options Preview requires current Preflight.
+
+Preview cannot change broad expression.
+
+Preview cannot change strategy family.
+
+Preview cannot change contract candidate.
+
+Preview cannot change legs.
+
+Preview cannot change expirations.
+
+Preview cannot change strikes.
+
+Preview cannot change ratio.
+
+Preview cannot change quantity.
+
+Preview cannot change account.
+
+Preview cannot submit.
+
+No multi-leg decomposition.
+
+Missing contract blocks rather than substitutes.
+
+======================================================================
+115. TASK #135
+======================================================================
+
+Task #135:
+
+Options Multi-Leg Preview
+
+This sprint IS the implementation.
+
+Close #135 upon successful completion.
+
+======================================================================
+116. TASK #136
+======================================================================
+
+If Draft Expiry integration was completed in 2.8.2:
+
+regression only.
+
+If not:
+
+complete now or explicitly assign to 2.8.4.
+
+No unresolved ambiguity before 2.8.5.
+
+======================================================================
+117. TESTS
+======================================================================
+
+Target 175+ meaningful Sprint 2.8.3 assertions where appropriate.
+
+Cover:
+
+canonical type
+
+executable false
+
+OPTION
+
+MULTI_LEG_OPTION
+
+all broad expression types
+
+selectedBy USER
+
+source integrity
+
+strategy family
+
+contract candidate
+
+Trade Plan version
+
+OrderDraft
+
+draft expiry
+
+Preflight
+
+Preflight expiry
+
+Lifecycle
+
+single-leg call
+
+single-leg put
+
+Covered Call
+
+CSP
+
+Protective Put
+
+Collar
+
+Bull Call Spread
+
+Bear Put Spread
+
+Bull Put Spread
+
+Bear Call Spread
+
+Iron Condor
+
+Iron Butterfly
+
+Calendar
+
+Diagonal
+
+leg count
+
+strike ordering
+
+expiration ordering
+
+ratio
+
+multiplier
+
+contract availability
+
+expired contract
+
+current DTE
+
+draft quote
+
+current quote
+
+quote movement
+
+invalid quote
+
+liquidity
+
+OI
+
+volume
+
+spread
+
+IV
+
+Greeks
+
+partial Greeks
+
+net debit
+
+net credit
+
+pricing sign convention
+
+midpoint disclaimer
+
+risk context
+
+max loss
+
+max gain
+
+breakevens
+
+path-dependent
+
+assignment risk
+
+exercise risk
+
+event risk
+
+provider multi-leg capability
+
+no decomposition
+
+TIF
+
+order type
+
+market-order warning if applicable
+
+account masking
+
+permissions
+
+validUntil
+
+refresh
+
+Edit Draft
+
+Change Contract upstream
+
+no confirm
+
+no submit
+
+no broker mutation
+
+cross-user
+
+client injection
+
+audit events
+
+logging privacy
+
+Platform Health
+
+routing
+
+accessibility
+
+mobile
+
+Operations Manual
+
+2.8.4 handoff
+
+2.8.5 block
+
+======================================================================
+118. BROWSER E2E
+======================================================================
+
+Add:
+
+FLOW 1 — Long Option
+
+Trade Plan
+→ Preflight
+→ Order Draft
+→ Options Preview
+→ verify single leg
+→ verify current quote
+→ verify risk
+→ verify Preview Only
+→ no Submit
+
+FLOW 2 — Vertical Spread
+
+verify 2 immutable legs
+
+verify net debit/credit
+
+verify risk
+
+FLOW 3 — Covered Call
+
+verify live coverage state
+
+FLOW 4 — CSP
+
+verify secured-capital context
+
+FLOW 5 — Iron Condor
+
+verify 4 legs
+
+verify no leg substitution
+
+FLOW 6 — Draft Expired
+
+preview blocked
+
+No broker mutation.
+
+======================================================================
+119. UAT
+======================================================================
+
+Document/run:
+
+1. Open Long Options Trade Plan.
+2. Verify broad expression.
+3. Verify selected by user.
+4. Run Preflight.
+5. Prepare Order Draft.
+6. Open Options Preview.
+7. Verify Preview Only banner.
+8. Verify strategy family.
+9. Verify contract.
+10. Verify expiration.
+11. Verify strike.
+12. Verify quantity.
+13. Verify current bid/ask.
+14. Verify midpoint.
+15. Verify freshness.
+16. Verify Greeks.
+17. Verify liquidity.
+18. Verify risk.
+19. Refresh quote.
+20. Verify draft contract unchanged.
+21. Verify current quote changed.
+22. Vertical Spread.
+23. Verify both legs immutable.
+24. Verify net debit/credit.
+25. Covered Call.
+26. Verify share coverage.
+27. CSP.
+28. Verify secured-capital context.
+29. Iron Condor.
+30. Verify all 4 legs.
+31. Verify widths.
+32. Verify risk context.
+33. Calendar.
+34. Verify two expirations.
+35. Verify path-dependent warning.
+36. Provider without multi-leg support.
+37. Verify no decomposition.
+38. Expired contract.
+39. Verify blocked.
+40. Stale quote.
+41. Verify review.
+42. Preflight expiry.
+43. Risk stale.
+44. Lifecycle Requires Review.
+45. Thesis Invalidated.
+46. Cross-user → 404.
+47. Client strike injection rejected.
+48. Client contract injection rejected.
+49. Client strategy injection rejected.
+50. Verify no Confirm.
+51. Verify no Submit.
+52. Verify no broker mutation.
+53. Mobile.
+54. Accessibility.
+55. Platform Health.
+56. Full quality gate.
+
+======================================================================
+120. QUALITY GATES
+======================================================================
+
+Run:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+npm run test:migrations
+
+npm run test:compliance
+
+npm run test:db
+
+npm run test:performance
+
+npm run test:invariants
+
+npm run test:idempotency
+
+npm run test:order-preparation
+
+npm run test:equity-preview
+
+npm run test:trade-preferences
+
+npm run test:release
+
+Add:
+
+npm run test:options-preview
+
+if useful.
+
+No sprint-only suite is sufficient.
+
+======================================================================
+121. BUILD / TYPESCRIPT
+======================================================================
+
+Run:
+
+npm run build
+
+npx tsc --noEmit
+
+Report:
+
+new errors = 0
+
+Prefer clean current baseline.
+
+======================================================================
+122. DATABASE
+======================================================================
+
+Prefer no new preview table.
+
+If ephemeral:
+
+schema unchanged.
+
+Audit events reuse:
+
+execution_audit_events.
+
+If new persistence genuinely required:
+
+additive only.
+
+Document.
+
+======================================================================
+123. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+docs/operations/23-platform-operations-center.md
+
+docs/operations/37-execution-architecture-and-broker-preflight.md
+
+docs/operations/38-order-preparation-engine.md
+
+docs/operations/39-trade-preferences-and-expression-selection.md
+
+docs/operations/40-equity-order-preview.md
+
+Create:
+
+docs/operations/41-options-and-multileg-order-preview.md
+
+Document:
+
+architecture
+
+non-executable boundary
+
+canonical model
+
+user-selection chain
+
+source integrity
+
+single-leg options
+
+Covered Call
+
+CSP
+
+Protective Put
+
+Collar
+
+verticals
+
+Iron Condor
+
+Iron Butterfly
+
+Calendar
+
+Diagonal
+
+leg model
+
+leg intents
+
+contract immutability
+
+expiration/strike immutability
+
+quote handling
+
+draft vs current
+
+net debit/credit
+
+pricing sign convention
+
+multiplier
+
+liquidity
+
+Greeks
+
+IV
+
+event context
+
+assignment/exercise/pin risk
+
+provider multi-leg capability
+
+no decomposition
+
+account/permission context
+
+risk freshness
+
+lifecycle context
+
+warnings/blockers
+
+preview TTL
+
+refresh
+
+edit-draft flow
+
+change-contract upstream flow
+
+API
+
+security
+
+privacy
+
+logging
+
+performance
+
+Platform Health
+
+E2E
+
+UAT
+
+Task #135 closure
+
+Task #136 status
+
+2.8.4 handoff
+
+2.8.5 absolute security block
+
+======================================================================
+124. 2.8.4 HANDOFF
+======================================================================
+
+Next:
+
+Sprint 2.8.4 — Execution Validation Hardening
+
+Must include:
+
+Task #131 lifecycle scheduler auto-wiring
+
+final/current lifecycle enforcement
+
+current Trade Plan version
+
+fresh Preflight
+
+fresh OrderDraft
+
+fresh Equity/Options Preview
+
+broker connection freshness
+
+account validation
+
+permissions
+
+buying power
+
+live positions
+
+covered/share checks
+
+cash-secured capital
+
+quotes
+
+contracts
+
+market/tradability state
+
+sandbox certification
+
+persistent idempotency infrastructure
+
+duplicate-submit architecture
+
+final pre-confirmation validation
+
+No production broker submission yet unless roadmap explicitly says 2.8.5.
+
+======================================================================
+125. 2.8.5 ABSOLUTE BLOCK
+======================================================================
+
+No broker submission before:
+
+2.8.4 GO
+
+Task #131 complete
+
+authenticated browser E2E PASS
+
+broker sandbox validation PASS
+
+fresh lifecycle
+
+fresh quotes
+
+fresh account
+
+permissions
+
+buying power/positions
+
+current risk analysis
+
+current OrderDraft
+
+current Preview
+
+short-lived explicit user confirmation
+
+persistent idempotency
+
+duplicate-submit protection
+
+global kill switch
+
+provider execution mode
+
+full audit trail
+
+security gates
+
+No exception.
+
+======================================================================
+126. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Canonical OptionsOrderPreview exists.
+
+B. executable=false enforced.
+
+C. Broad expression preserved.
+
+D. selectedBy=USER preserved.
+
+E. Specific strategy family preserved.
+
+F. Contract candidate preserved.
+
+G. Trade Plan version validated.
+
+H. OrderDraft validated.
+
+I. Preflight validated.
+
+J. Lifecycle validated.
+
+K. Single-leg preview works.
+
+L. Multi-leg preview works.
+
+M. Covered Call coverage validated.
+
+N. CSP capital context works.
+
+O. Protective structure coverage works.
+
+P. Vertical spreads correct.
+
+Q. Iron Condor correct.
+
+R. Iron Butterfly correct.
+
+S. Calendar/Diagonal handled without oversimplification.
+
+T. Leg ordering validated.
+
+U. Ratios validated.
+
+V. Multipliers respected.
+
+W. Contracts revalidated.
+
+X. Expired contracts block.
+
+Y. Draft/current quote separation works.
+
+Z. Net debit/credit correct.
+
+AA. Midpoint disclaimer present.
+
+AB. Liquidity visible.
+
+AC. Missing Greeks remain null.
+
+AD. Event context visible.
+
+AE. Assignment/exercise risk visible.
+
+AF. Multi-leg provider capability checked.
+
+AG. No leg decomposition.
+
+AH. Preview expires.
+
+AI. Refresh does not mutate draft.
+
+AJ. Strategy/contracts cannot be edited in preview.
+
+AK. No confirmation.
+
+AL. No submission.
+
+AM. No broker mutation.
+
+AN. Client authoritative field injection rejected.
+
+AO. Cross-user security passes.
+
+AP. Legacy kill switch passes.
+
+AQ. Compliance passes.
+
+AR. Platform Health updated.
+
+AS. Task #135 closed.
+
+AT. Task #136 resolved/assigned.
+
+AU. Browser E2E covered.
+
+AV. Full permanent quality gates pass.
+
+AW. Build passes.
+
+AX. Zero new TS errors.
+
+AY. Operations Manual updated.
+
+AZ. 2.8.4 handoff documented.
+
+BA. 2.8.5 remains blocked.
+
+BB. Roadmap alignment confirmed.
+
+======================================================================
+127. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing options-preview infrastructure
+3. Safe reusable components
+4. Legacy execution components isolated
+5. Files changed
+6. Schema impact
+7. Canonical OptionsOrderPreview
+8. Preview status
+9. executable=false boundary
+10. Broad-expression invariant
+11. selectedBy=USER chain
+12. Strategy-family invariant
+13. Contract-candidate invariant
+14. Source integrity
+15. Trade Plan binding
+16. OrderDraft binding
+17. Preflight binding
+18. Lifecycle validation
+19. Single-leg options
+20. Covered Call
+21. CSP
+22. Protective Put
+23. Collar
+24. Vertical spreads
+25. Iron Condor
+26. Iron Butterfly
+27. Calendar
+28. Diagonal
+29. Leg model
+30. Leg-intent model
+31. Contract revalidation
+32. Expiration validation
+33. Strike/ratio validation
+34. Multiplier handling
+35. Draft quote
+36. Current quote
+37. Quote-change handling
+38. Invalid quotes
+39. Net debit/credit
+40. Pricing sign convention
+41. Midpoint disclaimer
+42. TIF
+43. Order-type handling
+44. Market-hours context
+45. Account masking
+46. Broker permissions
+47. Multi-leg capability
+48. No-decomposition rule
+49. Liquidity
+50. Greeks
+51. IV
+52. Event context
+53. Assignment risk
+54. Exercise risk
+55. Pin-risk handling
+56. Risk context
+57. Risk freshness
+58. Lifecycle context
+59. Warnings
+60. Blockers
+61. Preview TTL
+62. Refresh
+63. Edit Draft
+64. Change-contract upstream flow
+65. No-confirmation boundary
+66. No-submission boundary
+67. Audit events
+68. Logging/privacy
+69. API
+70. Client UX
+71. Mobile/accessibility
+72. Routing regression
+73. Security
+74. No-order-network invariant
+75. Legacy-route regression
+76. Performance
+77. Provider-call count
+78. Platform Health
+79. Operations Center
+80. Compliance audit
+81. Task #135
+82. Task #136
+83. Browser E2E
+84. UAT
+85. New options-preview tests
+86. Trade-preference regression
+87. Order-preparation regression
+88. Equity-preview regression
+89. Smoke
+90. Regression
+91. Integration
+92. Security suite
+93. Lifecycle
+94. Compliance
+95. DB
+96. Migrations
+97. Performance tests
+98. Invariants
+99. Idempotency
+100. Full automated test count
+101. npm run build
+102. Typecheck
+103. Server startup
+104. 2.8.4 handoff
+105. 2.8.5 security block
+106. Improvement suggestions
+107. Deferred backlog
+108. Roadmap Alignment
+109. Operations Manual Updated: YES/NO
+110. Operations Manual Files Updated
+111. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+128. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.8.3
+Options / Multi-Leg Order Preview
+
+NEXT IF GO:
+
+2.8.4
+Execution Validation Hardening
++
+Lifecycle Scheduler Task #131
+
+THEN:
+
+2.8.5
+Explicit User Confirmation & Broker Submission
+
+2.8.6
+Execution Status, Fills & Position Linking
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+======================================================================
+129. PERMANENT ARCHITECTURE INVARIANT
+======================================================================
+
+Document permanently:
+
+Options Order Preview is a read-only representation of the exact option
+structure the user selected upstream and prepared as a non-executable
+OrderDraft.
+
+It may update CURRENT contextual data such as:
+
+quotes
+
+liquidity
+
+market state
+
+freshness
+
+risk context
+
+but it may NEVER:
+
+change the user's broad expression
+
+change the selected strategy family
+
+change the selected contract candidate
+
+replace a contract
+
+change expiration
+
+change strike
+
+change ratio
+
+change quantity
+
+change broker account
+
+change draft pricing preference
+
+decompose a multi-leg structure
+
+or submit an order.
+
+Any such change requires explicit upstream user action and revalidation.
+
+======================================================================
+130. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not add broker submission.
+
+Do not add Confirm & Submit.
+
+Do not invoke existing broker order endpoints.
+
+Do not create executable Tradier/TradeStation payloads.
+
+Do not optimize contracts or pricing.
+
+Do not leg multi-leg structures.
+
+Preserve the exact user-selected option structure.
+
+Complete Sprint 2.8.3.
+
+Run every permanent quality gate.
+
+Run build and typecheck.
+
+Update the Operations Manual.
+
+Return the complete Sprint 2.8.3 engineering report before beginning
+Sprint 2.8.4.

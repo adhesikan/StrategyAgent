@@ -45,6 +45,7 @@ import {
 } from "@shared/trade-planning-types";
 import type { EquityPlanningScenario } from "@shared/equity-planning-types";
 import { EquityOrderPreviewPanel } from "@/components/execution/EquityOrderPreviewPanel";
+import { OptionsOrderPreviewPanel } from "@/components/execution/OptionsOrderPreviewPanel";
 import {
   EQUITY_PLANNING_DISCLAIMER, SIZING_DISCLAIMER, SCENARIO_DISCLAIMER,
 } from "@shared/equity-planning-types";
@@ -2743,6 +2744,24 @@ export default function TradePlanningPage() {
                 Follows Order Preparation → Equity Preview → (2.8.5) Final Execution Validation. */}
             {(selectedFamily === "equity" || selectedFamily === "equity_scaled") && activeDraftId && (
               <EquityOrderPreviewPanel
+                draftId={activeDraftId}
+                onEditDraft={() => window.history.back()}
+              />
+            )}
+
+            {/* Options Order Preview — Sprint 2.8.3
+                Shown when any options-family expression is selected and a draftId is in the URL.
+                instrumentType must be OPTION or MULTI_LEG_OPTION.
+                Non-executable: "Preview Only — Nothing has been submitted to your broker."
+                No Confirm, Submit, or Execute actions.
+                No leg decomposition for multi-leg structures.
+                Pipeline: Trade Plan → Preflight → Order Draft → Options Preview → (2.8.5) Final Validation */}
+            {activeDraftId && selectedFamily && [
+              "long_option", "income", "defined_risk_directional",
+              "covered_call", "cash_secured_put", "vertical_spread",
+              "neutral_options", "advanced_options",
+            ].includes(selectedFamily) && (
+              <OptionsOrderPreviewPanel
                 draftId={activeDraftId}
                 onEditDraft={() => window.history.back()}
               />

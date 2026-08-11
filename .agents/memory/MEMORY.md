@@ -82,3 +82,4 @@
 - [Sprint 2.8.1 — Order Preparation Engine](sprint-281-order-preparation.md) — non-executable OrderDraft; executable:false type-level; only PASS preflight; limitPricePreference not limitPriceReference; 536 tests pass.
 - [Sprint 2.8.1A — Trade Preferences](sprint-281a-trade-preferences.md) — ExpressionFamily≠BroadExpressionType; @db alias fails in tests; validateConstraints not exported; Set iteration needs Array.from; 637 tests pass.
 - [Equity Order Preview (Sprint 2.8.2)](sprint-282-equity-preview.md) — executable=false const; EXPIRED≠UNAVAILABLE (pass status override); QUOTE_MOVED=warning only; 773 tests pass.
+- [Options / Multi-Leg Order Preview (Sprint 2.8.3)](sprint-283-options-preview.md) — long/short sign convention; MULTI_LEG_NOT_SUPPORTED=warning not blocker; no decomposition; static /health route before dynamic /:draftId.

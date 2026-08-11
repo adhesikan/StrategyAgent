@@ -1,5 +1,49 @@
 # Sprint Change Log
 
+## Sprint 2.8.3 — Options / Multi-Leg Order Preview
+**Date:** 2026-08-11  
+**Status:** COMPLETE  
+**Tests:** 948+ (15 suites, all passing)
+
+### What Was Built
+Non-executable options and multi-leg order preview engine. Supports all 16 options strategy families (single-leg through iron condor). Preview is ephemeral (no new DB table), computed from Trade Plan + Execution Preflight + Order Draft + current leg quotes. Net debit/credit computed with canonical long/short sign convention. All contracts, strikes, expirations, ratios, and quantities are immutable from the OrderDraft. Multi-leg structures are never decomposed.
+
+### New Files
+- `shared/options-order-preview-types.ts` — Canonical `OptionsOrderPreview`, `OptionsPreviewLeg`, `NetStructurePricing`, all blocker/warning codes, compliance constants, health metrics type, display labels
+- `server/services/options-preview-service.ts` — Pure 25-stage computation engine; injectable `OptionsPreviewDeps`; ephemeral health metrics; `createDbOptionsPreviewDeps`; `ensureOptionsPreviewTables` (no-op)
+- `server/routes/options-preview.ts` — 4 read-only routes; static `/health` before dynamic `/:draftId`; forbidden-field injection guard
+- `server/routes/__tests__/options-preview.test.ts` — 175+ assertions covering all spec invariants
+- `client/src/components/execution/OptionsOrderPreviewPanel.tsx` — Full preview UI; non-execution banner always visible; leg cards with draft vs current quote comparison; Greeks expandable; no Confirm/Submit CTA
+- `docs/operations/41-options-and-multileg-order-preview.md` — Full architecture doc
+
+### Modified Files
+- `server/routes.ts` — Registered `registerOptionsPreviewRoutes` + `ensureOptionsPreviewTables`
+- `package.json` — Added `test:options-preview`; updated `test:release` + `test:release:full` (15 suites)
+- `client/src/pages/trade-planning.tsx` — `OptionsOrderPreviewPanel` wired when options-family expression + valid draftId
+
+### Key Invariants Introduced
+- `executable: false` — type-level constant, impossible to override
+- `selectedBy: "USER"` — always read from Trade Plan; never from client
+- Instrument type must be OPTION or MULTI_LEG_OPTION — `WRONG_INSTRUMENT_TYPE` blocker for EQUITY
+- Options broad expression required — `WRONG_EXPRESSION_TYPE` blocker for STOCK
+- All leg parameters immutable — preview never changes contract, strike, expiration, ratio, quantity
+- No leg decomposition — multi-leg structures never split into individual legs
+- Net debit/credit sign convention canonical: long=debit, short=credit; amount always positive
+- Multiplier always 100 (standard US equity options)
+- Forbidden labels enforced — no "Probability of Profit", "Roll Now", "Ready to Trade", "Place Order", etc.
+- EXPIRED ≠ UNAVAILABLE — expired draft returns status EXPIRED explicitly
+- No broker mutation methods called anywhere
+
+### 2.8.4 Handoff
+Next: Sprint 2.8.4 — Execution Validation Hardening
+- Task #131 lifecycle scheduler auto-wiring
+- Final validation chain: lifecycle → preflight → draft → preview → account → permissions → buying power → positions → quotes → market state
+
+### 2.8.5 Absolute Block
+No broker submission until 2.8.4 GO + full validation chain passing. No exception.
+
+---
+
 ## Sprint 2.8.2 — Equity Order Preview
 **Date:** 2026-08-11  
 **Status:** COMPLETE  

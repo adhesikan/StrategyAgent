@@ -1,0 +1,3847 @@
+# Sprint 2.8.6 — Sandbox/Test-Account Broker Submission,
+# Execution State, Fills & Position Linking
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.8 — Broker-Assisted Execution
+
+CURRENT SPRINT:
+2.8.6 — Sandbox/Test-Account Broker Submission,
+Execution Status, Fills & Position Linking
+
+IMPORTANT CONTEXT:
+
+The user has a dedicated brokerage account used only for testing.
+
+This sprint MAY implement actual broker submission ONLY under tightly
+controlled test/sandbox execution modes and only after all safety gates
+below pass.
+
+DO NOT enable general customer production execution.
+
+======================================================================
+CURRENT COMPLETED FOUNDATION
+======================================================================
+
+✓ Research + Trade Planning v1.0
+✓ User-Directed Trade Preferences
+✓ Strategy Matching
+✓ Contract Research
+✓ Risk Analysis
+✓ Trade Plan
+✓ Lifecycle Monitoring
+✓ Execution Preflight
+✓ Non-Executable OrderDraft
+✓ Equity Order Preview
+✓ Options / Multi-Leg Preview
+✓ Execution Validation Hardening
+✓ Final Order Review / Explicit Confirmation
+✓ Confirmation snapshot hash
+✓ Confirmation acknowledgements
+✓ Global execution kill switch
+✓ Permanent quality gates
+
+Sprint 2.8.5 produced:
+
+shared/order-confirmation-types.ts
+server/services/order-confirmation-service.ts
+server/routes/order-confirmation.ts
+FinalOrderReviewPanel
+
+Important:
+
+BROKER_SUBMISSION_ENABLED is currently a compile-time FALSE literal.
+
+Do NOT remove that safety boundary casually.
+
+======================================================================
+CORE EXECUTION PRINCIPLE
+======================================================================
+
+A confirmed FinalOrderReview is permission to attempt EXACTLY ONE
+submission of EXACTLY ONE immutable confirmed snapshot.
+
+Confirmation is bound to:
+
+authenticated user
+
+Trade Plan
+
+Trade Plan version
+
+Execution Preflight
+
+OrderDraft
+
+Order Preview
+
+broker provider
+
+broker account
+
+structure
+
+legs
+
+quantity
+
+order type
+
+TIF
+
+price parameters
+
+confirmation snapshot hash
+
+confirmation expiration
+
+Any material change invalidates confirmation.
+
+======================================================================
+CRITICAL SAFETY RULE
+======================================================================
+
+If the broker response is ambiguous and VCP Trader AI cannot determine
+whether the order was accepted:
+
+DO NOT RETRY AUTOMATICALLY.
+
+Enter:
+
+SUBMISSION_UNKNOWN
+
+Then reconcile against the broker using known request/client/order
+identifiers before deciding whether any new submission is permitted.
+
+This invariant is mandatory.
+
+======================================================================
+EXECUTION MODES
+======================================================================
+
+Create/normalize explicit execution modes:
+
+DISABLED
+
+SANDBOX
+
+TEST_LIVE
+
+PRODUCTION
+
+Default:
+
+DISABLED
+
+Definitions:
+
+DISABLED:
+No broker mutation.
+
+SANDBOX:
+Paper/simulator broker environment only.
+
+TEST_LIVE:
+Real broker environment restricted to explicitly allowlisted dedicated
+test account(s) and strict limits.
+
+PRODUCTION:
+General customer live execution.
+
+Sprint 2.8.6 MUST NOT enable PRODUCTION.
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+BROKER_SUBMISSION_ENABLED
+
+BROKER_EXECUTION_ENABLED
+
+BROKER_EXECUTION_MODE
+
+provider-specific execution flags
+
+POST /api/broker/orders
+
+all existing broker mutation endpoints
+
+Tradier execution adapter
+
+TradeStation execution adapter
+
+SnapTrade integration
+
+order-confirmation service/routes
+
+FinalOrderReviewSnapshot
+
+confirmation snapshot hash
+
+order draft fingerprint
+
+execution_preflights
+
+execution_audit_events
+
+order_drafts
+
+Trade Plans
+
+lifecycle state
+
+existing broker order status polling
+
+broker order lookup
+
+order history
+
+fills
+
+positions
+
+cancel/replace APIs
+
+client order IDs
+
+provider order IDs
+
+retry logic
+
+timeouts
+
+rate limits
+
+logging
+
+Platform Health
+
+Operations Manual
+
+Report BEFORE implementation:
+
+A. Existing submit methods
+B. Existing provider payload types
+C. Existing order identifiers
+D. Existing order status methods
+E. Existing fill models
+F. Existing cancel/replace logic
+G. Existing retry behavior
+H. Existing ambiguity handling
+I. Existing persistent idempotency
+J. Existing order DB tables
+K. Existing environment separation
+L. Tradier sandbox configuration
+M. TradeStation simulator configuration
+N. Exact production-risk surfaces
+O. Components safe to reuse
+P. Components requiring hardening
+Q. Components to isolate
+
+Do not code until audit is complete.
+
+======================================================================
+2. PROVIDER TEST ENVIRONMENT POLICY
+======================================================================
+
+Prefer:
+
+SANDBOX first.
+
+Tradier:
+
+Sandbox base URL must remain distinct from live base URL.
+
+TradeStation:
+
+SIM environment must remain distinct from LIVE.
+
+Do not determine environment solely from hostname received from client.
+
+Server configuration owns provider environment.
+
+======================================================================
+3. TEST_LIVE MODE
+======================================================================
+
+Because a dedicated real brokerage account is available for testing,
+implement TEST_LIVE as a separate controlled environment mode.
+
+TEST_LIVE MUST require ALL of:
+
+BROKER_EXECUTION_ENABLED=true
+
+BROKER_EXECUTION_MODE=test_live
+
+BROKER_SUBMISSION_ENABLED=true
+or equivalent runtime-safe submission gate introduced intentionally
+
+provider-specific execution enabled
+
+allowlisted broker provider
+
+allowlisted dedicated test account
+
+test-live notional cap
+
+test-live quantity cap
+
+test-live symbol allowlist or explicit policy
+
+explicit confirmation
+
+fresh final validation
+
+persistent idempotency
+
+duplicate-submit lock
+
+audit persistence healthy
+
+No missing requirement may default permissive.
+
+======================================================================
+4. TEST ACCOUNT ALLOWLIST
+======================================================================
+
+Add server-side configuration:
+
+EXECUTION_TEST_ACCOUNT_ALLOWLIST
+
+or provider-scoped equivalent.
+
+Store internal/masked account references where possible.
+
+Do not allow browser/client to designate an arbitrary account as a test
+account.
+
+Server must verify selected account is allowlisted.
+
+If not:
+
+TEST_ACCOUNT_NOT_ALLOWLISTED
+
+No submission.
+
+======================================================================
+5. TEST SYMBOL ALLOWLIST
+======================================================================
+
+Strongly recommended for TEST_LIVE.
+
+Example configuration:
+
+EXECUTION_TEST_SYMBOL_ALLOWLIST
+
+Only explicitly permitted symbols may be submitted in TEST_LIVE mode.
+
+SANDBOX may support a broader universe.
+
+Do not hard-code symbols into source unless fixture-only.
+
+======================================================================
+6. TEST_LIVE NOTIONAL CAP
+======================================================================
+
+Create mandatory:
+
+EXECUTION_TEST_MAX_NOTIONAL
+
+For live test orders.
+
+Use a deliberately small operator-configured value.
+
+No default large value.
+
+Missing/invalid value:
+
+TEST_LIVE submission disabled.
+
+Calculate server-side.
+
+Client cannot override.
+
+======================================================================
+7. TEST_LIVE QUANTITY CAP
+======================================================================
+
+Create:
+
+EXECUTION_TEST_MAX_EQUITY_QTY
+
+EXECUTION_TEST_MAX_OPTION_CONTRACTS
+
+Missing/invalid:
+
+TEST_LIVE disabled.
+
+Server-enforced.
+
+No client override.
+
+======================================================================
+8. TEST_LIVE ORDER TYPE POLICY
+======================================================================
+
+For initial real-account testing:
+
+prefer LIMIT orders only.
+
+Do not permit MARKET in TEST_LIVE unless explicitly enabled later.
+
+Create:
+
+EXECUTION_TEST_ALLOW_MARKET_ORDERS=false
+
+default FALSE.
+
+If false:
+
+market order submission blocked.
+
+This reduces uncontrolled execution-price risk.
+
+======================================================================
+9. TEST_LIVE MULTI-LEG POLICY
+======================================================================
+
+Start conservatively.
+
+Suggested:
+
+EXECUTION_TEST_ALLOW_MULTILEG=false
+
+until:
+
+single-leg equity
+
+single-leg option
+
+sandbox multi-leg
+
+all pass.
+
+Then explicitly enable.
+
+Do not make multi-leg live testing the first order submission.
+
+======================================================================
+10. CANCEL / REPLACE POLICY
+======================================================================
+
+Do not automatically implement aggressive cancellation/replacement.
+
+Initial Sprint scope:
+
+submit
+
+retrieve status
+
+retrieve fills
+
+manual cancel where safe
+
+Replacement may be deferred.
+
+Never automatically change price to chase fill.
+
+======================================================================
+11. CANONICAL EXECUTION INTENT
+======================================================================
+
+Create/persist:
+
+ExecutionIntent {
+  id
+  userId
+
+  tradePlanId
+  tradePlanVersion
+
+  preflightId
+  orderDraftId
+  previewId?
+
+  confirmationId
+  confirmationSnapshotHash
+
+  provider
+  accountRef
+
+  executionMode
+
+  state
+
+  idempotencyKey
+  submissionFingerprint
+
+  createdAt
+  confirmedAt
+  expiresAt
+
+  submissionStartedAt?
+  submittedAt?
+  brokerAcknowledgedAt?
+  completedAt?
+
+  brokerOrderRef?
+  brokerRequestRef?
+
+  lastReconciledAt?
+
+  failureCode?
+  failureCategory?
+
+  version
+}
+
+No raw token.
+
+======================================================================
+12. PERSISTENT EXECUTION STATE MACHINE
+======================================================================
+
+Implement server-side persistent state machine.
+
+Suggested:
+
+CONFIRMED
+
+FINAL_VALIDATION_IN_PROGRESS
+
+FINAL_VALIDATION_FAILED
+
+READY_FOR_SINGLE_SUBMISSION
+
+SUBMISSION_IN_PROGRESS
+
+SUBMITTED
+
+BROKER_ACCEPTED
+
+PARTIALLY_FILLED
+
+FILLED
+
+REJECTED
+
+CANCEL_PENDING
+
+CANCELLED
+
+EXPIRED
+
+FAILED
+
+SUBMISSION_UNKNOWN
+
+RECONCILING
+
+Do not call READY_FOR_SINGLE_SUBMISSION "READY_TO_TRADE" in user UI.
+
+======================================================================
+13. ALLOWED TRANSITIONS
+======================================================================
+
+Define explicit transition table.
+
+Examples:
+
+CONFIRMED
+→ FINAL_VALIDATION_IN_PROGRESS
+
+FINAL_VALIDATION_IN_PROGRESS
+→ FINAL_VALIDATION_FAILED
+→ READY_FOR_SINGLE_SUBMISSION
+
+READY_FOR_SINGLE_SUBMISSION
+→ SUBMISSION_IN_PROGRESS
+
+SUBMISSION_IN_PROGRESS
+→ SUBMITTED
+→ BROKER_ACCEPTED
+→ REJECTED
+→ FAILED
+→ SUBMISSION_UNKNOWN
+
+SUBMITTED
+→ BROKER_ACCEPTED
+→ PARTIALLY_FILLED
+→ FILLED
+→ CANCELLED
+→ SUBMISSION_UNKNOWN
+
+PARTIALLY_FILLED
+→ FILLED
+→ CANCEL_PENDING
+→ CANCELLED
+
+SUBMISSION_UNKNOWN
+→ RECONCILING
+
+RECONCILING
+→ BROKER_ACCEPTED
+→ PARTIALLY_FILLED
+→ FILLED
+→ REJECTED
+→ FAILED
+→ SUBMISSION_UNKNOWN
+
+No invalid state skipping.
+
+======================================================================
+14. FINAL VALIDATION IMMEDIATELY BEFORE SUBMISSION
+======================================================================
+
+Do not rely only on 2.8.4 or 2.8.5 validation.
+
+Immediately before broker mutation revalidate:
+
+authenticated user
+
+Trade Plan ownership
+
+Trade Plan version
+
+lifecycle state
+
+confirmation hash
+
+confirmation expiration
+
+all acknowledgements
+
+OrderDraft version/fingerprint
+
+preview freshness
+
+broker connection
+
+provider mode
+
+account ownership
+
+test account allowlist
+
+permissions
+
+buying power
+
+positions / coverage
+
+quote freshness
+
+contract existence
+
+market/security tradability
+
+risk-analysis freshness
+
+notional cap
+
+quantity cap
+
+symbol allowlist
+
+global kill switch
+
+provider kill switch
+
+submission gate
+
+All server-side.
+
+======================================================================
+15. CONFIRMATION HASH BINDING
+======================================================================
+
+Recompute snapshot hash immediately before execution.
+
+Must equal confirmed snapshot hash.
+
+If mismatch:
+
+CONFIRMATION_SNAPSHOT_CHANGED
+
+Block.
+
+Do not auto-confirm new hash.
+
+======================================================================
+16. CONFIRMATION EXPIRY
+======================================================================
+
+Confirmation must be short-lived.
+
+If expired:
+
+CONFIRMATION_EXPIRED
+
+User must review/confirm again.
+
+Do not extend automatically.
+
+======================================================================
+17. ACKNOWLEDGEMENTS
+======================================================================
+
+Recheck all required acknowledgement codes.
+
+No client claim that acknowledgements exist without persisted server record.
+
+Missing:
+
+ACKNOWLEDGEMENT_REQUIRED
+
+Block.
+
+======================================================================
+18. ORDER PAYLOAD TRANSLATION
+======================================================================
+
+Only AFTER final validation:
+
+translate canonical confirmed order into provider-specific request.
+
+Create separate adapters:
+
+translateEquityOrder()
+
+translateSingleLegOptionOrder()
+
+translateMultiLegOrder()
+
+Provider-specific types must remain isolated from core domain types.
+
+Do not let client send raw provider payload.
+
+======================================================================
+19. TRADIER TRANSLATION
+======================================================================
+
+Audit official current Tradier API semantics from existing integration.
+
+Translate only supported:
+
+equity
+
+option
+
+multi-leg if enabled
+
+order type
+
+duration
+
+price
+
+stop if later supported
+
+side/action
+
+account
+
+tag/client reference if supported
+
+Do not guess unsupported provider fields.
+
+======================================================================
+20. TRADESTATION TRANSLATION
+======================================================================
+
+Audit current TradeStation integration/version.
+
+Translate only validated provider capabilities.
+
+SIM vs live environment must be server-owned configuration.
+
+No client-selected base URL.
+
+======================================================================
+21. NO GENERIC CLIENT BROKER PAYLOAD
+======================================================================
+
+Reject any client fields like:
+
+brokerPayload
+
+rawOrder
+
+providerOrder
+
+accountId
+
+legs
+
+quantity overrides
+
+price override
+
+side override
+
+symbol override
+
+forceSubmit
+
+skipValidation
+
+retry
+
+Client submits only the confirmed execution intent ID / confirmation
+action required by the API.
+
+======================================================================
+22. IDEMPOTENCY KEY
+======================================================================
+
+Create persistent idempotency key before submission.
+
+Bound to:
+
+user
+
+execution intent
+
+confirmation snapshot hash
+
+account
+
+provider
+
+canonical order fingerprint
+
+One confirmed snapshot → one idempotency identity.
+
+======================================================================
+23. SUBMISSION FINGERPRINT
+======================================================================
+
+Fingerprint exact normalized submission semantics:
+
+provider
+
+accountRef
+
+instrument
+
+legs
+
+actions
+
+quantity
+
+order type
+
+TIF
+
+limit/stop fields
+
+Trade Plan version
+
+confirmation hash
+
+Do not include tokens.
+
+======================================================================
+24. ATOMIC SUBMISSION LOCK
+======================================================================
+
+Use persistent DB state/transaction/unique constraint.
+
+Do NOT rely solely on:
+
+in-memory lock
+
+React disabled button
+
+process-local mutex
+
+Required behavior:
+
+two simultaneous submit requests
+
+→ one may transition to SUBMISSION_IN_PROGRESS
+
+→ the other returns existing execution state
+
+No second broker request.
+
+======================================================================
+25. PERSIST BEFORE NETWORK CALL
+======================================================================
+
+Critical.
+
+Before contacting broker persist:
+
+executionIntent
+
+idempotencyKey
+
+submissionFingerprint
+
+state = SUBMISSION_IN_PROGRESS
+
+attempt number
+
+timestamp
+
+This provides recovery context if process/network fails.
+
+======================================================================
+26. ONE NETWORK CALL RULE
+======================================================================
+
+For a given submission attempt:
+
+exactly one broker mutation call.
+
+No catch-and-retry wrapper around broker order placement.
+
+Read calls may retry according to bounded policy.
+
+Mutation does not blindly retry.
+
+======================================================================
+27. AMBIGUOUS RESPONSE HANDLING
+======================================================================
+
+Examples:
+
+network timeout after request sent
+
+connection reset after broker may have accepted
+
+gateway timeout
+
+process crash after broker call before local persistence update
+
+Do NOT classify simply as FAILED.
+
+Use:
+
+SUBMISSION_UNKNOWN
+
+Store:
+
+provider
+
+request correlation ref if available
+
+submission fingerprint
+
+time
+
+Then reconcile.
+
+======================================================================
+28. SUBMISSION_UNKNOWN UX
+======================================================================
+
+User-facing:
+
+"Order status could not be confirmed. VCP Trader AI will not submit this
+order again until the broker state is reconciled."
+
+Do not show:
+
+Retry Submission
+
+immediately.
+
+Offer:
+
+Check Broker Status
+
+======================================================================
+29. RECONCILIATION ENGINE
+======================================================================
+
+Create:
+
+reconcileExecutionIntent(intentId)
+
+It may use READ-ONLY broker calls:
+
+get specific order by provider order ID
+
+get recent orders
+
+query client/tag/reference where supported
+
+match submission fingerprint carefully
+
+Do not infer order match solely by symbol.
+
+Use strongest available identifiers.
+
+======================================================================
+30. RECONCILIATION MATCHING
+======================================================================
+
+Preferred order:
+
+broker order ID
+
+provider client order ID
+
+provider tag/reference
+
+exact account + timestamp + canonical order fingerprint
+
+Never broad:
+
+same ticker + same day
+
+because duplicate ambiguity.
+
+======================================================================
+31. NO RETRY UNTIL RECONCILED
+======================================================================
+
+If SUBMISSION_UNKNOWN:
+
+new mutation prohibited.
+
+Only after deterministic reconciliation says:
+
+NO_ORDER_FOUND
+
+may a new submission be considered.
+
+Even then:
+
+require fresh final validation and explicit user action.
+
+Do not automatic retry.
+
+======================================================================
+32. PROVIDER ORDER ACKNOWLEDGEMENT
+======================================================================
+
+Normalize response:
+
+BrokerOrderAcknowledgement {
+  provider
+  brokerOrderRef
+  status
+  receivedAt
+  providerMessage?
+  warnings[]
+}
+
+No raw payload to client unless sanitized.
+
+Persist raw provider response only if operationally necessary and securely
+redacted.
+
+======================================================================
+33. ORDER STATUS MODEL
+======================================================================
+
+Normalize provider statuses.
+
+Canonical:
+
+PENDING
+
+OPEN
+
+ACCEPTED
+
+PARTIALLY_FILLED
+
+FILLED
+
+REJECTED
+
+CANCEL_PENDING
+
+CANCELLED
+
+EXPIRED
+
+UNKNOWN
+
+Map provider states explicitly.
+
+Do not infer.
+
+======================================================================
+34. ORDER STATUS READ API
+======================================================================
+
+Create authenticated:
+
+GET /api/executions/:id
+
+GET /api/executions/:id/status
+
+GET /api/executions/:id/activity
+
+Ownership enforced.
+
+Cross-user:
+
+404.
+
+======================================================================
+35. BROKER STATUS POLLING
+======================================================================
+
+Initial approach:
+
+manual refresh + bounded polling on active execution page.
+
+If background job architecture already exists:
+
+scheduler-ready.
+
+Do not create aggressive high-frequency polling.
+
+Respect provider rate limits.
+
+======================================================================
+36. STREAMING ORDER STATUS
+======================================================================
+
+If TradeStation/provider order stream already exists:
+
+audit before reuse.
+
+Do not require streaming for GO.
+
+Polling/manual refresh acceptable initially if reliable.
+
+======================================================================
+37. FILL MODEL
+======================================================================
+
+Create canonical:
+
+ExecutionFill {
+  id
+  executionIntentId
+
+  brokerFillRef?
+  brokerOrderRef
+
+  quantity
+  price
+
+  occurredAt
+
+  commission?
+  fees?
+
+  legRef?
+  provider
+
+  createdAt
+}
+
+For multi-leg provider fill semantics, preserve actual provider detail.
+
+No fabricated fill.
+
+======================================================================
+38. PARTIAL FILLS
+======================================================================
+
+Support:
+
+PARTIALLY_FILLED
+
+Track:
+
+ordered quantity
+
+filled quantity
+
+remaining quantity
+
+average fill price if provider supplies/can be exactly derived
+
+Do not mark FILLED early.
+
+======================================================================
+39. MULTI-LEG FILLS
+======================================================================
+
+Audit provider semantics.
+
+Do not assume all legs fill atomically unless provider reports strategy
+fill that way.
+
+Preserve broker truth.
+
+No synthetic leg fill if provider does not provide detail.
+
+======================================================================
+40. POSITION LINKING
+======================================================================
+
+After confirmed FILLED state:
+
+link execution to broker/portfolio position where possible.
+
+Create:
+
+ExecutionPositionLink {
+  executionIntentId
+  portfolioId?
+  brokerPositionRef?
+  symbol
+  linkedAt
+  source
+}
+
+Do not fabricate portfolio position if broker sync hasn't reflected it yet.
+
+======================================================================
+41. POSITION SYNC AFTER FILL
+======================================================================
+
+After FILLED:
+
+optionally trigger bounded broker portfolio refresh.
+
+Do not block execution record if sync fails.
+
+State:
+
+FILL_CONFIRMED_POSITION_SYNC_PENDING
+
+or separate sync state.
+
+Avoid duplicate positions.
+
+======================================================================
+42. EQUITY TEST ORDER FLOW
+======================================================================
+
+SANDBOX first.
+
+Use minimal quantity.
+
+Suggested initial flow:
+
+one equity share
+
+LIMIT order
+
+liquid allowlisted test symbol
+
+price chosen deliberately for safe test conditions
+
+Do not use production customer account.
+
+For TEST_LIVE use dedicated test account only.
+
+======================================================================
+43. SINGLE-LEG OPTION TEST FLOW
+======================================================================
+
+Only after equity sandbox submission/reconciliation passes.
+
+Use:
+
+1 contract
+
+limit order
+
+liquid option
+
+allowlisted symbol
+
+far enough expiration to avoid accidental expiration edge conditions.
+
+For TEST_LIVE:
+
+only if explicitly approved by test mode policy.
+
+======================================================================
+44. MULTI-LEG TEST FLOW
+======================================================================
+
+Only after:
+
+equity
+
+single-leg option
+
+sandbox
+
+all stable.
+
+Initially SANDBOX only.
+
+Use defined-risk structure.
+
+No naked shorts.
+
+TEST_LIVE multi-leg default disabled.
+
+======================================================================
+45. TEST_LIVE FIRST ORDER
+======================================================================
+
+When TEST_LIVE is eventually exercised:
+
+require operator checklist.
+
+Recommended first test:
+
+1 equity share
+
+LIMIT
+
+dedicated test account
+
+allowlisted liquid symbol
+
+small notional
+
+during normal market hours
+
+No market order.
+
+No multi-leg.
+
+No short selling.
+
+No margin-dependent structure.
+
+======================================================================
+46. LIVE TEST OPERATOR ARMING
+======================================================================
+
+Require an explicit server-side arming variable such as:
+
+EXECUTION_TEST_LIVE_ARMED=true
+
+and optionally:
+
+EXECUTION_TEST_LIVE_ARMED_UNTIL
+
+If absent:
+
+TEST_LIVE blocked.
+
+This prevents accidental live test after configuration is forgotten.
+
+======================================================================
+47. ARMING EXPIRATION
+======================================================================
+
+If feasible:
+
+TEST_LIVE arming should expire.
+
+Example:
+
+server timestamp env/config.
+
+No indefinite forgotten live-test arm.
+
+If complexity too high:
+
+document manual enable/disable release procedure.
+
+======================================================================
+48. USER/UI EXECUTION MODE DISPLAY
+======================================================================
+
+Before submit:
+
+show prominently:
+
+Paper Trading
+
+or:
+
+LIVE TEST ACCOUNT
+
+Do not make modes visually similar.
+
+For TEST_LIVE:
+
+prominent warning:
+
+"Live Test Mode — this order can affect real money in the dedicated test
+account."
+
+======================================================================
+49. FINAL SUBMISSION CTA
+======================================================================
+
+For SANDBOX:
+
+Submit Paper Order
+
+For TEST_LIVE:
+
+Submit Live Test Order
+
+Never generic "Submit" where environment ambiguity exists.
+
+For PRODUCTION:
+
+not implemented/enabled in this sprint.
+
+======================================================================
+50. DOUBLE-CONFIRM TEST_LIVE
+======================================================================
+
+For TEST_LIVE only, consider requiring an additional explicit acknowledgement:
+
+"I understand this is a live order in the dedicated test brokerage account."
+
+Persist acknowledgement.
+
+This is operator/test safety, not suitability.
+
+======================================================================
+51. PRODUCTION MODE MUST REMAIN BLOCKED
+======================================================================
+
+If:
+
+BROKER_EXECUTION_MODE=production
+
+Sprint 2.8.6 should return:
+
+PRODUCTION_SUBMISSION_NOT_ENABLED
+
+unless an explicit future production activation flag/version says otherwise.
+
+Do not accidentally enable production general use.
+
+======================================================================
+52. BROKER KILL SWITCH
+======================================================================
+
+Global kill switch must be checked:
+
+before page/action availability
+
+before final validation
+
+immediately before broker network mutation.
+
+If toggled off between confirmation and network call:
+
+abort before submission.
+
+======================================================================
+53. PROVIDER KILL SWITCH
+======================================================================
+
+Recheck provider-specific flag immediately before mutation.
+
+No stale config assumption.
+
+======================================================================
+54. EXECUTION AUDIT EVENTS
+======================================================================
+
+Extend append-only events:
+
+EXECUTION_INTENT_CREATED
+
+FINAL_VALIDATION_STARTED
+
+FINAL_VALIDATION_PASSED
+
+FINAL_VALIDATION_FAILED
+
+SUBMISSION_LOCK_ACQUIRED
+
+BROKER_SUBMISSION_STARTED
+
+BROKER_SUBMISSION_ACKNOWLEDGED
+
+BROKER_SUBMISSION_REJECTED
+
+BROKER_SUBMISSION_UNKNOWN
+
+RECONCILIATION_STARTED
+
+RECONCILIATION_MATCHED
+
+RECONCILIATION_NO_ORDER_FOUND
+
+ORDER_STATUS_CHANGED
+
+PARTIAL_FILL_RECEIVED
+
+FILL_RECEIVED
+
+ORDER_CANCEL_REQUESTED
+
+ORDER_CANCELLED
+
+POSITION_LINKED
+
+POSITION_SYNC_FAILED
+
+No secrets.
+
+======================================================================
+55. AUDIT CORRELATION
+======================================================================
+
+Every event should correlate:
+
+executionIntentId
+
+Trade Plan
+
+provider
+
+masked account ref
+
+confirmation hash prefix if safe
+
+broker order ref once known
+
+Do not log full sensitive hash if unnecessary.
+
+======================================================================
+56. MUTATION LOG PRIVACY
+======================================================================
+
+Do NOT log:
+
+access token
+
+refresh token
+
+full broker account ID
+
+full portfolio holdings
+
+buying power amount
+
+full raw request
+
+password/session
+
+user notes
+
+Sensitive order economics belong in secured execution tables if required,
+not general logs.
+
+======================================================================
+57. EXECUTION TABLES
+======================================================================
+
+Create minimum required persisted tables.
+
+Possible:
+
+execution_intents
+
+execution_submissions
+
+execution_fills
+
+execution_position_links
+
+Use additive schema.
+
+Indexes:
+
+user_id
+
+state
+
+trade_plan_id
+
+idempotency_key UNIQUE
+
+submission_fingerprint
+
+broker_order_ref
+
+created_at
+
+No destructive changes.
+
+======================================================================
+58. SUBMISSION ATTEMPT TABLE
+======================================================================
+
+Recommended:
+
+execution_submission_attempts
+
+Fields:
+
+id
+execution_intent_id
+attempt_number
+provider
+state
+idempotency_key
+submission_fingerprint
+broker_request_ref
+broker_order_ref
+started_at
+completed_at
+error_category
+error_code
+
+For a confirmed snapshot, attempt semantics must prevent accidental duplicates.
+
+======================================================================
+59. ATTEMPT NUMBER
+======================================================================
+
+Attempt 1 only initially.
+
+Additional attempt permitted only after:
+
+SUBMISSION_UNKNOWN reconciled to NO_ORDER_FOUND
+
+fresh validation
+
+explicit user action
+
+new controlled state transition
+
+Document strongly.
+
+======================================================================
+60. ERROR CLASSIFICATION
+======================================================================
+
+Canonical categories:
+
+VALIDATION
+
+AUTH
+
+PERMISSION
+
+BUYING_POWER
+
+POSITION
+
+QUOTE
+
+MARKET
+
+RATE_LIMIT
+
+BROKER_REJECTED
+
+NETWORK_BEFORE_SEND
+
+NETWORK_AMBIGUOUS
+
+PROVIDER_UNAVAILABLE
+
+TIMEOUT_AMBIGUOUS
+
+INTERNAL
+
+Do not treat all failures as retriable.
+
+======================================================================
+61. RETRY POLICY
+======================================================================
+
+READ operations:
+
+bounded retries where safe.
+
+MUTATING submission:
+
+NO automatic retries after send may have occurred.
+
+If failure is provably before network send:
+
+new explicit attempt may be possible.
+
+Document.
+
+======================================================================
+62. HTTP TIMEOUT
+======================================================================
+
+Use explicit broker mutation timeout.
+
+Timeout does NOT imply broker rejection.
+
+Timeout after possible send:
+
+SUBMISSION_UNKNOWN.
+
+Critical.
+
+======================================================================
+63. 429 ON SUBMISSION
+======================================================================
+
+If broker returns 429 before accepting request and response is definitive:
+
+classify according to provider behavior.
+
+Do not automatically retry mutation.
+
+Require fresh explicit action unless provider idempotency guarantees safe
+retry and architecture has been independently proven.
+
+Default:
+
+no automatic retry.
+
+======================================================================
+64. 5XX ON SUBMISSION
+======================================================================
+
+Treat ambiguous unless provider explicitly guarantees no order accepted.
+
+Default:
+
+SUBMISSION_UNKNOWN
+
+then reconcile.
+
+======================================================================
+65. PROCESS CRASH RECOVERY
+======================================================================
+
+On startup:
+
+find intents stuck:
+
+SUBMISSION_IN_PROGRESS
+
+older than threshold.
+
+Do NOT automatically resubmit.
+
+Move to:
+
+SUBMISSION_UNKNOWN
+
+or reconciliation queue.
+
+Query broker.
+
+======================================================================
+66. STARTUP RECONCILIATION
+======================================================================
+
+Create safe:
+
+reconcileStaleExecutionIntents()
+
+scheduler/job-ready.
+
+No mutation except state reconciliation.
+
+No order submission.
+
+======================================================================
+67. BACKGROUND JOB
+======================================================================
+
+Add:
+
+execution_reconciliation
+
+to Job Status Store if appropriate.
+
+Track:
+
+started
+
+completed
+
+matched
+
+unknown
+
+failed
+
+No private values.
+
+======================================================================
+68. CANCELLATION
+======================================================================
+
+Optional but useful for test execution.
+
+If implemented:
+
+USER must explicitly request Cancel.
+
+Server rechecks ownership/account/order state.
+
+One cancel mutation.
+
+No repeated blind retry.
+
+If cancel response ambiguous:
+
+CANCEL_STATUS_UNKNOWN
+
+or appropriate reconciliation state.
+
+Do not implement replacement in same sprint unless trivial and fully safe.
+
+======================================================================
+69. CANCELLATION UI
+======================================================================
+
+Only if broker order is cancellable.
+
+CTA:
+
+Cancel Order
+
+Requires confirmation.
+
+Not auto.
+
+Show broker current state first.
+
+======================================================================
+70. ORDER REPLACEMENT
+======================================================================
+
+Prefer DEFER.
+
+Replacing order changes economics and adds duplicate-risk complexity.
+
+Document for later.
+
+Do not implement just because provider supports it.
+
+======================================================================
+71. EXECUTION DETAIL PAGE
+======================================================================
+
+Create:
+
+/executions/:id
+
+Show:
+
+Execution Mode
+
+Broker
+
+Masked Account
+
+Trade Plan
+
+Order Summary
+
+Confirmation Snapshot Hash
+
+Submission State
+
+Broker Order Reference
+
+Timeline
+
+Current Broker Status
+
+Filled Quantity
+
+Remaining Quantity
+
+Average Fill if known
+
+Fills
+
+Position Sync
+
+Warnings
+
+No secrets.
+
+======================================================================
+72. EXECUTION LIST
+======================================================================
+
+Optional:
+
+/executions
+
+Show user's executions.
+
+Filter:
+
+mode
+
+status
+
+date
+
+symbol if appropriate
+
+Do not rank performance.
+
+======================================================================
+73. TRADE PLAN LINK
+======================================================================
+
+Trade Plan after submission should show:
+
+Execution linked
+
+Paper / Test Live
+
+status
+
+No duplicate Submit CTA once exact confirmed snapshot has submitted.
+
+======================================================================
+74. CONFIRMATION CONSUMPTION
+======================================================================
+
+Once submission starts:
+
+confirmation becomes:
+
+CONSUMED
+
+or equivalent.
+
+Cannot be reused.
+
+Even if broker rejects?
+
+Define carefully.
+
+Preferred:
+
+the specific confirmation is consumed by a submission attempt.
+
+A new order attempt requires new final review/confirmation when material
+conditions may have changed.
+
+======================================================================
+75. CONFIRMATION SINGLE-USE
+======================================================================
+
+Permanent invariant:
+
+one confirmation snapshot hash cannot authorize multiple broker mutations.
+
+Enforce DB uniqueness.
+
+======================================================================
+76. UI AFTER CLICK
+======================================================================
+
+When user clicks Submit:
+
+disable button immediately client-side
+
+but do not rely on client.
+
+Show:
+
+Submitting...
+
+Server persistence is authoritative.
+
+If duplicate click:
+
+same ExecutionIntent returned.
+
+======================================================================
+77. BROWSER REFRESH DURING SUBMIT
+======================================================================
+
+After refresh:
+
+execution state retrieved from server.
+
+Never show Submit again for consumed confirmation.
+
+No duplicate.
+
+======================================================================
+78. MULTIPLE TABS
+======================================================================
+
+Two tabs submitting same confirmation simultaneously:
+
+one broker call total.
+
+Mandatory integration test.
+
+======================================================================
+79. SANDBOX TEST ACCOUNT
+======================================================================
+
+Create config by provider.
+
+Tradier sandbox and TradeStation simulator should be treated as sandbox
+execution environments where supported. Official provider documentation
+must govern base URLs/account behaviors.
+
+No production-token reuse for sandbox.
+
+======================================================================
+80. TEST_LIVE ACCOUNT SAFETY
+======================================================================
+
+Dedicated test account must be documented by:
+
+internal account ref
+
+provider
+
+allowed mode
+
+but never hard-coded credential/token.
+
+Test account should not be discoverable to other users.
+
+Strict ownership.
+
+======================================================================
+81. TEST_LIVE BALANCE
+======================================================================
+
+Do not increase allowable trade size simply because test account buying
+power is high.
+
+Hard caps win.
+
+======================================================================
+82. TEST_LIVE POSITION LIMIT
+======================================================================
+
+Optional:
+
+EXECUTION_TEST_MAX_OPEN_POSITIONS
+
+or per-symbol test limit.
+
+Prevent repeated testing from accumulating unintended exposure.
+
+If not implemented:
+
+document operator cleanup requirement.
+
+======================================================================
+83. TEST ORDER TAGGING
+======================================================================
+
+Where broker supports tags/client IDs, mark test orders with safe unique
+reference.
+
+Example internal semantic:
+
+VCP_TEST_<executionIntentId-short>
+
+No private info.
+
+Helps reconciliation.
+
+======================================================================
+84. TEST CLEANUP
+======================================================================
+
+SANDBOX:
+
+document cleanup.
+
+TEST_LIVE:
+
+do not automatically close filled live positions.
+
+Closing is another real order and requires separate explicit user
+decision/confirmation.
+
+This is important.
+
+Do NOT add automatic test cleanup that trades.
+
+======================================================================
+85. POSITION AFTER TEST
+======================================================================
+
+If live test order fills:
+
+show resulting position.
+
+User may later create a separate explicit close plan/order if needed.
+
+No automatic round-trip.
+
+======================================================================
+86. EQUITY SUBMISSION
+======================================================================
+
+Implement first.
+
+Canonical equity → provider request.
+
+Validate exact:
+
+symbol
+
+side
+
+quantity
+
+order type
+
+TIF
+
+price fields
+
+No client provider payload.
+
+======================================================================
+87. SINGLE-LEG OPTION SUBMISSION
+======================================================================
+
+Only after equity flow passes internal/sandbox tests.
+
+Map:
+
+contract symbol
+
+side/action
+
+quantity
+
+order type
+
+TIF
+
+price
+
+Use provider rules.
+
+No contract substitution.
+
+======================================================================
+88. MULTI-LEG SUBMISSION
+======================================================================
+
+Only if provider native multi-leg support has already been validated.
+
+Do not decompose.
+
+SANDBOX first.
+
+TEST_LIVE disabled by default.
+
+======================================================================
+89. COVERED CALL SUBMISSION
+======================================================================
+
+Immediately before mutation:
+
+revalidate live shares.
+
+If insufficient:
+
+block.
+
+Never submit naked short call.
+
+======================================================================
+90. CASH-SECURED PUT SUBMISSION
+======================================================================
+
+Immediately before mutation:
+
+broker buying power/cash requirement validation.
+
+If changed:
+
+block.
+
+Do not convert secured to naked.
+
+======================================================================
+91. DEFINED-RISK SPREAD
+======================================================================
+
+Verify complete native structure.
+
+No missing leg.
+
+No sequential independent leg orders unless future approved design.
+
+======================================================================
+92. FINAL QUOTE CHECK
+======================================================================
+
+Immediately before mutation.
+
+This should occur as close as practical to broker call.
+
+If stale:
+
+block and require re-review if economics materially changed according to
+policy.
+
+No automatic price adjustment.
+
+======================================================================
+93. LIMIT PRICE IMMUTABILITY
+======================================================================
+
+The submitted limit must equal the confirmed snapshot.
+
+If market moved:
+
+do not change limit.
+
+Require new draft/review/confirmation for changed price.
+
+======================================================================
+94. QUANTITY IMMUTABILITY
+======================================================================
+
+Submitted quantity must exactly match confirmed quantity.
+
+No brokerage/buying-power auto-sizing.
+
+======================================================================
+95. ACCOUNT IMMUTABILITY
+======================================================================
+
+Submitted account must equal confirmed authorized account.
+
+No failover account.
+
+======================================================================
+96. STRUCTURE IMMUTABILITY
+======================================================================
+
+No:
+
+symbol change
+
+contract change
+
+strike change
+
+expiration change
+
+leg ratio change
+
+strategy change
+
+between confirmation and payload.
+
+Snapshot hash protects this.
+
+======================================================================
+97. BROKER PREVIEW / CONFIRM ENDPOINTS
+======================================================================
+
+If provider offers a non-mutating order confirmation/preview endpoint,
+use it where safe as an additional validation step before submission.
+
+Tradier officially supports preview behavior on order creation calls, and
+TradeStation exposes order confirmation that does not place the order.
+
+Provider preview is supplementary.
+
+It does NOT replace VCP's own:
+
+Trade Plan
+
+Preflight
+
+OrderDraft
+
+Preview
+
+Final Confirmation
+
+Idempotency
+
+======================================================================
+98. PROVIDER PREVIEW SNAPSHOT
+======================================================================
+
+If used, show:
+
+broker estimated commission
+
+broker estimated cost
+
+broker warnings
+
+without changing confirmed order parameters.
+
+If provider says order invalid:
+
+block.
+
+If provider changes estimated economics materially:
+
+require user review according to explicit policy.
+
+======================================================================
+99. COMMISSION / FEE
+======================================================================
+
+Persist actual broker-reported commissions/fees once available.
+
+Do not invent.
+
+Show estimate vs actual distinctly.
+
+======================================================================
+100. ORDER STATUS REFRESH
+======================================================================
+
+Manual button:
+
+Refresh Broker Status
+
+Read-only.
+
+Safe.
+
+No new submission.
+
+======================================================================
+101. BROKER ORDER LOOKUP
+======================================================================
+
+Use brokerOrderRef as strongest ID once known.
+
+Persist immediately after acknowledgement.
+
+======================================================================
+102. WEBHOOKS
+======================================================================
+
+If provider webhook infrastructure exists:
+
+audit.
+
+Do not add external webhook architecture unless current stack supports it
+cleanly.
+
+Polling is acceptable for first release.
+
+======================================================================
+103. POSITION LINK SECURITY
+======================================================================
+
+Execution belongs to same authenticated user as portfolio position.
+
+No cross-user links.
+
+======================================================================
+104. PLATFORM HEALTH
+======================================================================
+
+Add:
+
+Broker Submission
+
+Execution Reconciliation
+
+Execution Status
+
+Fill Tracking
+
+Position Linking
+
+Metrics:
+
+submissionAttempts
+
+brokerAcknowledged
+
+brokerRejected
+
+submissionUnknown
+
+reconciliations
+
+partialFills
+
+fills
+
+positionLinks
+
+failedPositionSyncs
+
+averageSubmissionLatencyMs
+
+executionMode
+
+brokerSubmissionEnabled
+
+No symbols/accounts/quantities.
+
+======================================================================
+105. OPERATIONS CENTER
+======================================================================
+
+Execution pipeline:
+
+Execution Preflight
+✓
+
+Order Preparation
+✓
+
+Equity Preview
+✓
+
+Options Preview
+✓
+
+Final Validation
+✓
+
+Explicit Confirmation
+✓
+
+Broker Submission
+SANDBOX / TEST_LIVE
+
+Reconciliation
+status
+
+Fill Tracking
+status
+
+Production General Execution
+DISABLED
+
+======================================================================
+106. EXECUTION KILL SWITCH OPS
+======================================================================
+
+Operator must immediately see:
+
+global execution flag
+
+mode
+
+provider flags
+
+TEST_LIVE armed/unarmed
+
+submission health
+
+ambiguity count
+
+stuck intents
+
+No secret values.
+
+======================================================================
+107. COMPLIANCE UI
+======================================================================
+
+Before actual sandbox/live-test submit:
+
+Use factual language.
+
+For TEST_LIVE:
+
+"This is a live test order in your dedicated test brokerage account and
+can result in a real position and real gain or loss."
+
+Do not use:
+
+Recommended
+
+Best Trade
+
+AI Approved
+
+Safe Trade
+
+Guaranteed Fill
+
+======================================================================
+108. USER AGENCY
+======================================================================
+
+Maintain audit chain:
+
+USER chose broad expression
+
+USER chose specific strategy
+
+USER chose contract
+
+USER saved Trade Plan
+
+USER selected quantity/order parameters
+
+USER reviewed preview
+
+USER acknowledged final review
+
+USER explicitly initiated broker submission
+
+No AI submission.
+
+======================================================================
+109. AI HARD BLOCK
+======================================================================
+
+AI tools/system prompts cannot call submission endpoint.
+
+No MCP tool for submit unless future specifically approved.
+
+Do not expose broker mutation to generic AI tool registry.
+
+Add architectural test.
+
+======================================================================
+110. BACKGROUND AGENT HARD BLOCK
+======================================================================
+
+No scheduler/monitor/lifecycle job may submit.
+
+Only reconciliation/status reads allowed.
+
+Add tests.
+
+======================================================================
+111. CSRF / REQUEST SECURITY
+======================================================================
+
+Audit current auth model.
+
+Submission endpoint must use existing strongest request protections.
+
+Validate:
+
+session
+
+origin/CSRF strategy if applicable
+
+content type
+
+replay protections where architecture supports
+
+Do not weaken current controls.
+
+======================================================================
+112. API — EXECUTION INTENT
+======================================================================
+
+Suggested:
+
+POST /api/executions/from-confirmation/:confirmationId
+
+Creates execution intent but does not necessarily submit until exact
+explicit submit action if architecture prefers two steps.
+
+Then:
+
+POST /api/executions/:id/submit
+
+This endpoint is the ONLY new submission entry point.
+
+Avoid multiple submission routes.
+
+======================================================================
+113. API — STATUS
+======================================================================
+
+GET /api/executions
+
+GET /api/executions/:id
+
+GET /api/executions/:id/status
+
+GET /api/executions/:id/activity
+
+POST /api/executions/:id/reconcile
+
+Optional:
+
+POST /api/executions/:id/cancel
+
+if implemented.
+
+No generic provider payload endpoint.
+
+======================================================================
+114. SUBMIT REQUEST BODY
+======================================================================
+
+Prefer minimal:
+
+{}
+
+or:
+
+{ confirmationToken/version }
+
+No:
+
+symbol
+
+account
+
+quantity
+
+legs
+
+price
+
+order type
+
+provider
+
+Those come from persisted confirmed state.
+
+======================================================================
+115. SUBMISSION RESPONSE
+======================================================================
+
+Return:
+
+executionIntentId
+
+state
+
+broker status if known
+
+masked account
+
+provider
+
+submittedAt
+
+brokerOrderRef if known
+
+No token.
+
+======================================================================
+116. PERSISTENT IDEMPOTENCY UNIQUE CONSTRAINT
+======================================================================
+
+Database must enforce uniqueness.
+
+Test:
+
+same confirmation
+
+sequential duplicate
+
+concurrent duplicate
+
+multiple browser tabs
+
+server restart
+
+All result in max ONE broker mutation.
+
+======================================================================
+117. TEST BROKER ADAPTER
+======================================================================
+
+Build deterministic test adapter capable of:
+
+accepted
+
+rejected
+
+partial fill
+
+full fill
+
+timeout-before-send
+
+ambiguous timeout-after-send
+
+429
+
+500 accepted-but-response-lost simulation
+
+cancel
+
+reconciliation match
+
+reconciliation no-match
+
+Use for automated tests.
+
+======================================================================
+118. SANDBOX INTEGRATION TESTS
+======================================================================
+
+When credentials available:
+
+run actual sandbox broker integration.
+
+At minimum:
+
+submit small equity paper order
+
+retrieve order
+
+observe state
+
+cancel if open
+
+or observe fill
+
+No live money.
+
+Document provider/account.
+
+======================================================================
+119. TEST_LIVE INTEGRATION
+======================================================================
+
+Do NOT make automated CI place live orders.
+
+Live test must be manually armed.
+
+Create explicit UAT workflow.
+
+No unattended live brokerage mutation.
+
+======================================================================
+120. TEST_LIVE UAT — EQUITY
+======================================================================
+
+Only after sandbox passes.
+
+Operator checklist:
+
+1. Confirm dedicated test account.
+2. Confirm TEST_LIVE mode.
+3. Confirm account allowlisted.
+4. Confirm symbol allowlisted.
+5. Confirm quantity <= cap.
+6. Confirm notional <= cap.
+7. Confirm LIMIT order.
+8. Confirm normal market hours.
+9. Confirm current quote.
+10. Confirm Trade Plan.
+11. Confirm lifecycle current.
+12. Confirm Preflight.
+13. Confirm OrderDraft.
+14. Confirm Preview.
+15. Confirm final snapshot hash.
+16. Confirm acknowledgements.
+17. Explicit live-test acknowledgement.
+18. Click Submit Live Test Order once.
+19. Verify one execution intent.
+20. Verify one broker order.
+21. Verify broker order ID.
+22. Refresh status.
+23. Verify no duplicate.
+24. Verify audit trail.
+25. If filled, verify position sync.
+26. Do NOT automatically close the position.
+
+======================================================================
+121. SANDBOX UAT — AMBIGUOUS FAILURE
+======================================================================
+
+Use mock/test adapter:
+
+simulate broker accepts order but response times out.
+
+Verify:
+
+SUBMISSION_UNKNOWN
+
+no retry
+
+reconcile
+
+broker order discovered
+
+transition to BROKER_ACCEPTED
+
+broker mutation count = 1.
+
+Mandatory before TEST_LIVE.
+
+======================================================================
+122. DUPLICATE CLICK UAT
+======================================================================
+
+Double click submit.
+
+Assert:
+
+one broker mutation.
+
+Two server requests return same execution intent/state.
+
+======================================================================
+123. MULTI-TAB UAT
+======================================================================
+
+Two tabs.
+
+Same confirmed order.
+
+Submit simultaneously.
+
+One broker mutation.
+
+Mandatory.
+
+======================================================================
+124. SERVER CRASH UAT
+======================================================================
+
+Simulate:
+
+persist SUBMISSION_IN_PROGRESS
+
+broker receives order
+
+server crashes before response persistence.
+
+Restart.
+
+System finds stuck intent.
+
+No resubmit.
+
+Reconcile.
+
+Mandatory fixture/integration test.
+
+======================================================================
+125. QUOTE CHANGE BEFORE SUBMIT
+======================================================================
+
+Confirmation exists.
+
+Move quote beyond policy threshold / expire quote.
+
+Submit.
+
+Final validation blocks.
+
+No broker call.
+
+User must review again.
+
+======================================================================
+126. PLAN CHANGE BEFORE SUBMIT
+======================================================================
+
+New Trade Plan version.
+
+Old confirmation submission:
+
+blocked.
+
+No broker call.
+
+======================================================================
+127. LIFECYCLE INVALIDATION BEFORE SUBMIT
+======================================================================
+
+THESIS_INVALIDATED.
+
+Submit:
+
+blocked.
+
+No broker call.
+
+No exit advice.
+
+======================================================================
+128. POSITION CHANGE BEFORE COVERED CALL
+======================================================================
+
+Confirmed Covered Call.
+
+Shares removed before submission.
+
+Final validation:
+
+block.
+
+Zero broker mutation.
+
+======================================================================
+129. BUYING POWER CHANGE BEFORE CSP
+======================================================================
+
+Confirmed CSP.
+
+Buying power insufficient at final validation.
+
+Block.
+
+Zero broker mutation.
+
+======================================================================
+130. CONFIRMATION REPLAY
+======================================================================
+
+After successful submission:
+
+same confirmation cannot submit again.
+
+Return existing execution.
+
+======================================================================
+131. EXECUTION MODE CROSSOVER TEST
+======================================================================
+
+Confirmation created in SANDBOX.
+
+Mode changed to TEST_LIVE.
+
+Do not reuse confirmation automatically.
+
+Require revalidation/new confirmation if environment changes.
+
+Environment is part of snapshot/fingerprint.
+
+======================================================================
+132. TEST ACCOUNT CROSSOVER
+======================================================================
+
+Confirmed account A.
+
+Attempt submission account B:
+
+impossible because request does not accept account override.
+
+Test.
+
+======================================================================
+133. PRODUCTION BLOCK TEST
+======================================================================
+
+BROKER_EXECUTION_MODE=production
+
+Sprint 2.8.6:
+
+general production submission blocked.
+
+Mandatory test.
+
+======================================================================
+134. TEST_LIVE KILL SWITCH TEST
+======================================================================
+
+TEST_LIVE armed.
+
+After confirmation, turn:
+
+BROKER_EXECUTION_ENABLED=false.
+
+Submit:
+
+blocked.
+
+Zero broker mutation.
+
+======================================================================
+135. PROVIDER DISABLE TEST
+======================================================================
+
+Same for provider flag.
+
+======================================================================
+136. SECURITY TESTS
+======================================================================
+
+Cover:
+
+unauthenticated
+
+cross-user execution
+
+confirmation ID injection
+
+execution ID injection
+
+client account injection
+
+client symbol injection
+
+client price injection
+
+client quantity injection
+
+client legs injection
+
+forceSubmit
+
+retry=true
+
+skipValidation
+
+mode override
+
+testAccount override
+
+notional cap bypass
+
+quantity cap bypass
+
+symbol allowlist bypass
+
+live arm bypass
+
+confirmation replay
+
+idempotency collision
+
+audit leakage
+
+token leakage
+
+======================================================================
+137. COMPLIANCE TESTS
+======================================================================
+
+Ensure no:
+
+AI Recommended Order
+
+Best Trade
+
+Safe Trade
+
+Guaranteed Fill
+
+Expected Fill
+
+Guaranteed Profit
+
+Approved Investment
+
+Suitable Trade
+
+Context-aware disclaimer exceptions.
+
+======================================================================
+138. PERFORMANCE
+======================================================================
+
+Measure:
+
+final validation
+
+submission request latency excluding broker
+
+broker latency
+
+status lookup
+
+reconciliation
+
+fill sync
+
+No artificial timeout too short to safely interpret broker response.
+
+Report real observed sandbox latency separately.
+
+======================================================================
+139. RATE LIMITS
+======================================================================
+
+Order status polling must respect provider rate limits.
+
+Bound polling.
+
+Backoff reads.
+
+No mutation retry.
+
+======================================================================
+140. OBSERVABILITY
+======================================================================
+
+Structured logs should make execution incidents diagnosable using:
+
+executionIntentId
+
+state
+
+provider
+
+correlation IDs
+
+without sensitive details.
+
+======================================================================
+141. ALERTING
+======================================================================
+
+Operational attention should surface when:
+
+SUBMISSION_UNKNOWN
+
+stuck SUBMISSION_IN_PROGRESS
+
+reconciliation failure
+
+position sync failure
+
+repeated broker rejection surge
+
+No user trade recommendation alerts.
+
+======================================================================
+142. TASK #131
+======================================================================
+
+Lifecycle scheduler was assigned before submission.
+
+Audit whether it is now complete from 2.8.4.
+
+If NOT:
+
+actual submission remains BLOCKED.
+
+Do not proceed with mutation.
+
+======================================================================
+143. AUTHENTICATED E2E
+======================================================================
+
+Critical authenticated browser flows must pass for execution.
+
+No skipped submission-critical tests counted as PASS.
+
+At minimum sandbox UI flow.
+
+TEST_LIVE manual UAT separately.
+
+======================================================================
+144. PRODUCTION SMOKE
+======================================================================
+
+Normal production smoke must remain NON-MUTATING.
+
+Do NOT place real order in generic smoke suite.
+
+Execution smoke should verify:
+
+submission feature gates
+
+mode
+
+health
+
+API authorization
+
+without mutation.
+
+Separate manual controlled TEST_LIVE certification.
+
+======================================================================
+145. QUALITY GATES
+======================================================================
+
+Run all permanent suites:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+npm run test:migrations
+
+npm run test:compliance
+
+npm run test:db
+
+npm run test:performance
+
+npm run test:invariants
+
+npm run test:idempotency
+
+npm run test:trade-preferences
+
+npm run test:order-preparation
+
+npm run test:equity-preview
+
+npm run test:options-preview
+
+all 2.8.4 tests
+
+all 2.8.5 confirmation tests
+
+npm run test:release
+
+Add:
+
+npm run test:execution
+
+if appropriate.
+
+======================================================================
+146. EXECUTION TEST SUITE
+======================================================================
+
+Target 250+ meaningful execution assertions if architecture warrants.
+
+Must include:
+
+state machine
+
+allowed transitions
+
+invalid transitions
+
+confirmation binding
+
+confirmation expiry
+
+acknowledgements
+
+snapshot hash
+
+fresh validation
+
+sandbox mode
+
+test-live mode
+
+production block
+
+allowlists
+
+caps
+
+arming
+
+equity translation
+
+option translation
+
+multi-leg translation
+
+idempotency
+
+duplicate click
+
+multi-tab
+
+network timeout
+
+ambiguous response
+
+reconciliation
+
+rejected
+
+partial fill
+
+full fill
+
+cancel
+
+restart recovery
+
+position link
+
+kill switch
+
+provider kill switch
+
+AI block
+
+scheduler block
+
+cross-user
+
+audit
+
+compliance
+
+======================================================================
+147. DATABASE MIGRATION
+======================================================================
+
+Additive only.
+
+Test:
+
+fresh DB
+
+existing DB
+
+restart
+
+idempotency
+
+unique idempotency constraints
+
+state persistence
+
+crash recovery.
+
+======================================================================
+148. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/14-disaster-recovery.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+docs/operations/23-platform-operations-center.md
+
+docs/operations/37-execution-architecture-and-broker-preflight.md
+
+docs/operations/38-order-preparation-engine.md
+
+docs/operations/39-trade-preferences-and-expression-selection.md
+
+docs/operations/40-equity-order-preview.md
+
+docs/operations/41-options-and-multileg-order-preview.md
+
+all 2.8.4/2.8.5 execution docs
+
+Create:
+
+docs/operations/44-broker-submission-execution-status-and-fills.md
+
+Document:
+
+execution modes
+
+sandbox
+
+TEST_LIVE
+
+production block
+
+test account allowlist
+
+symbol allowlist
+
+caps
+
+arming
+
+state machine
+
+confirmation consumption
+
+snapshot binding
+
+final validation
+
+provider translation
+
+idempotency
+
+submission lock
+
+ambiguous response
+
+reconciliation
+
+status
+
+fills
+
+partial fills
+
+position linking
+
+cancel policy
+
+retry policy
+
+restart recovery
+
+audit
+
+logging
+
+security
+
+compliance
+
+health
+
+operator playbooks
+
+sandbox UAT
+
+TEST_LIVE UAT
+
+incident response
+
+kill switch
+
+2.8.7 handoff
+
+======================================================================
+149. EXECUTION INCIDENT RUNBOOK
+======================================================================
+
+Create explicit runbooks:
+
+Duplicate submission suspected
+
+SUBMISSION_UNKNOWN
+
+Broker outage during submit
+
+Confirmation hash mismatch
+
+Unexpected fill
+
+Partial fill
+
+Position sync failed
+
+Broker order rejected
+
+Kill switch activation
+
+Live test accidentally armed
+
+Wrong account suspected
+
+No automatic remediation that trades.
+
+======================================================================
+150. TEST_LIVE OPERATOR RUNBOOK
+======================================================================
+
+Include exact safe checklist.
+
+Must begin:
+
+Verify this is the dedicated test brokerage account.
+
+Verify maximum notional.
+
+Verify order quantity.
+
+Verify limit order.
+
+Verify environment.
+
+Verify kill switch.
+
+Verify symbol.
+
+No raw credentials in documentation.
+
+======================================================================
+151. 2.8.7 HANDOFF
+======================================================================
+
+Next:
+
+Sprint 2.8.7 — Actual-vs-Plan Tracking & Trade Journal
+
+Will consume:
+
+Trade Plan
+
+ExecutionIntent
+
+Broker Order
+
+Fills
+
+Position Link
+
+It may compare:
+
+planned quantity vs filled
+
+draft price vs fill price
+
+risk assumptions vs actual execution
+
+Research Plan vs actual position
+
+No performance recommendation.
+
+======================================================================
+152. PRODUCTION CUSTOMER EXECUTION DEFERRED
+======================================================================
+
+Even after this sprint:
+
+general customer production execution should remain disabled until a
+separate production execution certification is explicitly approved.
+
+TEST_LIVE success does NOT automatically authorize general production.
+
+Document.
+
+======================================================================
+153. ACCEPTANCE CRITERIA
+======================================================================
+
+GO for SANDBOX/TEST execution infrastructure only if:
+
+A. Persistent ExecutionIntent exists.
+
+B. State machine enforced server-side.
+
+C. Final validation reruns immediately before mutation.
+
+D. Confirmation hash exact match.
+
+E. Confirmation current.
+
+F. Acknowledgements current.
+
+G. Confirmation single-use.
+
+H. Environment part of binding.
+
+I. Account immutable.
+
+J. Structure immutable.
+
+K. Quantity immutable.
+
+L. Price immutable.
+
+M. Idempotency persistent.
+
+N. Atomic submission lock.
+
+O. One broker mutation maximum per attempt.
+
+P. No blind mutation retry.
+
+Q. Ambiguous response → SUBMISSION_UNKNOWN.
+
+R. Reconciliation exists.
+
+S. Restart recovery exists.
+
+T. Equity submission mapping works.
+
+U. Single-leg option mapping works if included.
+
+V. Multi-leg sandbox mapping works if included.
+
+W. Covered Call position revalidated.
+
+X. CSP buying power revalidated.
+
+Y. Test account allowlist enforced.
+
+Z. Test symbol allowlist enforced if implemented.
+
+AA. Test notional cap enforced.
+
+AB. Quantity cap enforced.
+
+AC. Live-test arming enforced.
+
+AD. TEST_LIVE visually distinct.
+
+AE. Production general execution blocked.
+
+AF. Order status normalized.
+
+AG. Partial fills supported.
+
+AH. Fills persisted.
+
+AI. Position linking works.
+
+AJ. No auto-close.
+
+AK. No AI submission.
+
+AL. No background-agent submission.
+
+AM. Cross-user security passes.
+
+AN. Audit trail complete.
+
+AO. Kill switch checked immediately before mutation.
+
+AP. Provider kill switch checked.
+
+AQ. Sandbox integration test passes.
+
+AR. Ambiguous-response test passes.
+
+AS. Duplicate click test passes.
+
+AT. Multi-tab concurrency test passes.
+
+AU. Crash recovery test passes.
+
+AV. Confirmation replay blocked.
+
+AW. Full quality gates pass.
+
+AX. Build passes.
+
+AY. Zero new TS errors.
+
+AZ. Operations Manual updated.
+
+BA. Production customer execution remains disabled.
+
+======================================================================
+154. TEST_LIVE GO CONDITION
+======================================================================
+
+Do NOT perform the real test-account order automatically.
+
+Return one of:
+
+READY_FOR_MANUAL_TEST_LIVE
+
+NOT_READY_FOR_TEST_LIVE
+
+Only READY if:
+
+sandbox submission passed
+
+reconciliation passed
+
+idempotency passed
+
+duplicate protection passed
+
+final validation passed
+
+security passed
+
+caps/allowlists configured
+
+TEST_LIVE mode implemented
+
+production mode blocked
+
+operator checklist complete.
+
+Then stop and return the report.
+
+A human/user performs or explicitly authorizes the controlled TEST_LIVE
+UAT afterward.
+
+======================================================================
+155. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing broker submit surfaces
+3. Provider environment audit
+4. Files changed
+5. Schema impact
+6. ExecutionIntent model
+7. Execution state machine
+8. Allowed transitions
+9. Final validation
+10. Confirmation hash binding
+11. Confirmation expiry
+12. Acknowledgement validation
+13. Single-use confirmation
+14. Environment binding
+15. Sandbox configuration
+16. TEST_LIVE configuration
+17. Production block
+18. Test account allowlist
+19. Test symbol allowlist
+20. Notional caps
+21. Quantity caps
+22. Live arming
+23. Equity provider translation
+24. Single-leg option translation
+25. Multi-leg translation
+26. Covered Call final validation
+27. CSP final validation
+28. Order fingerprint
+29. Idempotency
+30. Atomic submission lock
+31. Persist-before-send
+32. One network-call rule
+33. Timeout policy
+34. 429 policy
+35. 5xx policy
+36. Ambiguous response handling
+37. SUBMISSION_UNKNOWN
+38. Reconciliation
+39. Reconciliation matching
+40. Crash/restart recovery
+41. Provider acknowledgement
+42. Order status normalization
+43. Polling/status refresh
+44. Fill model
+45. Partial fills
+46. Multi-leg fills
+47. Position linking
+48. Post-fill portfolio sync
+49. Cancellation policy
+50. Replacement deferral
+51. Execution UI
+52. TEST_LIVE UI
+53. Compliance
+54. Security
+55. AI hard block
+56. Background-agent hard block
+57. Audit events
+58. Logging/privacy
+59. Platform Health
+60. Operations Center
+61. Incident runbooks
+62. Sandbox UAT
+63. Duplicate click result
+64. Multi-tab result
+65. Ambiguous-response result
+66. Crash recovery result
+67. Confirmation replay result
+68. Production block result
+69. Test-live gate result
+70. New execution tests
+71. Full automated test count
+72. Smoke
+73. Regression
+74. Integration
+75. Security
+76. Lifecycle
+77. Compliance
+78. DB
+79. Migrations
+80. Performance
+81. Invariants
+82. Idempotency
+83. Equity Preview regression
+84. Options Preview regression
+85. Confirmation regression
+86. npm run build
+87. Typecheck
+88. Server startup
+89. Authenticated browser E2E
+90. Sandbox broker integration
+91. Operations Manual Updated YES/NO
+92. Operations Manual files
+93. 2.8.7 handoff
+94. Improvement suggestions
+95. Deferred backlog
+96. Roadmap Alignment
+97. READY_FOR_MANUAL_TEST_LIVE / NOT_READY_FOR_TEST_LIVE
+98. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+156. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.8.6
+Sandbox/Test-Account Broker Submission,
+Execution Status, Fills & Position Linking
+
+NEXT AFTER GO:
+
+controlled manual TEST_LIVE validation using dedicated test brokerage
+account
+
+THEN:
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+SEPARATE FUTURE GATE:
+
+General Production Customer Broker Submission Certification
+
+Do not automatically enable it.
+
+======================================================================
+157. PERMANENT EXECUTION INVARIANT
+======================================================================
+
+Document permanently:
+
+A confirmed order may produce at most one broker submission attempt unless
+an ambiguous/failed execution has first been safely reconciled and a new
+explicitly authorized attempt is created.
+
+No timeout, HTTP error, process crash, repeated click, browser refresh,
+multiple tab, AI action, scheduler, or automatic retry may cause a second
+broker order for the same confirmed snapshot.
+
+======================================================================
+158. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not place a real-money test order automatically.
+
+Implement and certify SANDBOX submission first.
+
+Implement TEST_LIVE safety mode for the dedicated test brokerage account.
+
+Keep general PRODUCTION customer submission disabled.
+
+Use tiny operator-configured caps.
+
+Prefer LIMIT orders for initial TEST_LIVE testing.
+
+Require allowlisted account.
+
+Require allowlisted symbol.
+
+Require manual test-live arming.
+
+Persist before broker mutation.
+
+Never blindly retry an ambiguous submission.
+
+Run every permanent quality gate.
+
+Run sandbox integration.
+
+Update Operations Manual.
+
+Return:
+
+READY_FOR_MANUAL_TEST_LIVE
+
+only when the platform is safe for the user to perform a deliberately
+controlled order in the dedicated test brokerage account.

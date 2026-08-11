@@ -1,0 +1,596 @@
+PRODUCTION DEPLOYMENT BLOCKER FIX
+Sprint 2.7.7A — Railway npm ci / Playwright Lockfile Resolution
+
+IMPORTANT
+
+The latest Railway deployment failed before build execution.
+
+This is a RELEASE BLOCKER for Sprint 2.7.7A certification.
+
+Do NOT begin Sprint 2.8.0 yet.
+
+Do NOT deploy automatically after making changes.
+
+============================================================
+CONFIRMED RAILWAY FAILURE
+============================================================
+
+Railway/Nixpacks runs:
+
+npm ci
+npm run build
+npx tsx script/migrate.ts && npm run start
+
+The deployment failed during:
+
+npm ci
+
+Exact error:
+
+npm error code ENOTFOUND
+npm error syscall getaddrinfo
+
+request to:
+
+http://package-firewall.replit.local/npm/playwright-core/-/playwright-core-1.62.1.tgz
+
+failed because Railway cannot resolve:
+
+package-firewall.replit.local
+
+This indicates package-lock.json contains one or more Replit-local
+package-firewall resolved URLs.
+
+We previously fixed this class of problem for other packages.
+
+============================================================
+1. AUDIT PACKAGE-LOCK FIRST
+============================================================
+
+Inspect:
+
+package.json
+package-lock.json
+.npmrc
+railway.toml
+nixpacks.toml if present
+Dockerfile if present
+Replit npm configuration
+
+Search package-lock.json for ALL occurrences of:
+
+package-firewall.replit.local
+
+Do not fix only playwright-core.
+
+Report:
+
+- total number of firewall URLs
+- packages affected
+- whether URLs occur in resolved fields only
+- whether package integrity hashes are present
+- whether package-lock root/package metadata is consistent with package.json
+
+Also search for:
+
+registry.npmjs.org
+
+and confirm expected registry conventions.
+
+============================================================
+2. REMOVE REPLIT-LOCAL RESOLUTION FROM LOCKFILE
+============================================================
+
+The committed package-lock.json used by Railway must not depend on
+Replit-local DNS names.
+
+Correct all package-lock resolved URLs that point to:
+
+http://package-firewall.replit.local/npm/...
+
+to the canonical public registry location:
+
+https://registry.npmjs.org/...
+
+ONLY where that is the correct package tarball source.
+
+Do not blindly string-replace unrelated URLs.
+
+For each affected package validate:
+
+package name
+version
+resolved URL
+integrity
+
+The final lockfile must contain:
+
+ZERO occurrences of:
+
+package-firewall.replit.local
+
+============================================================
+3. REGENERATE LOCKFILE SAFELY IF NECESSARY
+============================================================
+
+Prefer using npm to produce a valid lockfile rather than manually
+constructing lockfile metadata.
+
+If the current Replit npm environment regenerates firewall URLs,
+determine why.
+
+Possible options:
+
+npm config get registry
+
+inspect .npmrc
+
+environment-level registry/proxy settings
+
+Do NOT commit a Replit-specific registry.
+
+The repository must remain portable to:
+
+Railway
+local development
+CI/CD
+future hosting environments
+
+Do not remove package-lock.json.
+
+We want reproducible npm ci.
+
+============================================================
+4. PLAYWRIGHT DEPENDENCY AUDIT
+============================================================
+
+Inspect:
+
+playwright
+@playwright/test
+playwright-core
+
+Determine:
+
+which package is direct
+which is transitive
+versions installed
+whether playwright-core 1.62.1 is expected
+
+Ensure dependency graph is internally consistent.
+
+Do not downgrade Playwright merely to avoid the problem.
+
+This is a registry-resolution problem unless dependency analysis proves
+otherwise.
+
+============================================================
+5. NODE VERSION FIX
+============================================================
+
+Railway currently reports:
+
+Node v20.18.1
+
+Vite reports required:
+
+^20.19.0 || >=22.12.0
+
+This warning should be resolved now.
+
+Audit current Node-version declarations:
+
+package.json engines
+railway.toml
+nixpacks config
+.nvmrc
+.node-version
+Dockerfile
+
+Choose ONE authoritative project Node version compatible with all current
+dependencies.
+
+Preferred safe target:
+
+Node 20.19.x or a current compatible Node 20 LTS version
+
+unless project dependencies clearly support Node 22 and there is a
+deliberate migration reason.
+
+Do not jump major versions unnecessarily.
+
+Make Railway build and runtime use the same supported Node version.
+
+Report exact selected version and configuration source.
+
+============================================================
+6. NPM VERSION
+============================================================
+
+Nixpacks display may indicate npm-9_x setup while runtime npm output shows
+npm 10.8.2.
+
+Audit this inconsistency.
+
+Do not change npm unless required.
+
+Ensure the actual build environment uses a package-lock-compatible npm
+version and npm ci succeeds reproducibly.
+
+============================================================
+7. .NPMRC AUDIT
+============================================================
+
+Inspect repository .npmrc if present.
+
+Ensure it does NOT contain:
+
+package-firewall.replit.local
+
+Replit-specific proxy
+
+hard-coded authentication token
+
+private registry credentials
+
+If no repository .npmrc exists, document that.
+
+Do not commit secrets.
+
+============================================================
+8. CLEAN INSTALL VALIDATION
+============================================================
+
+After fix:
+
+remove node_modules in a safe test context
+
+run:
+
+npm ci
+
+This must complete with:
+
+zero ENOTFOUND
+zero package-firewall errors
+zero lockfile mismatch
+
+Report warnings separately.
+
+Then search again:
+
+grep / equivalent for package-firewall.replit.local
+
+Result must be:
+
+0 occurrences
+
+============================================================
+9. PLAYWRIGHT INSTALL VALIDATION
+============================================================
+
+After npm ci:
+
+verify:
+
+node_modules/@playwright/test
+node_modules/playwright
+node_modules/playwright-core
+
+as applicable to actual dependencies.
+
+Run:
+
+npx playwright --version
+
+Do NOT require browser binary installation as part of normal Railway
+application deployment unless the production application actually needs
+a browser at runtime.
+
+IMPORTANT ARCHITECTURE QUESTION:
+
+Playwright is release/test infrastructure.
+
+Determine whether it should be:
+
+devDependency
+
+rather than production dependency.
+
+If Railway npm ci installs devDependencies during build, it may remain a
+devDependency.
+
+Do not move it to runtime dependencies without a reason.
+
+============================================================
+10. PRODUCTION IMAGE / PLAYWRIGHT REVIEW
+============================================================
+
+We do NOT need Chromium in the production VCP Trader runtime merely because
+Playwright tests exist.
+
+Audit whether:
+
+npm ci
+
+or any lifecycle script triggers:
+
+playwright install
+
+If so, determine whether this is necessary.
+
+The normal Railway application build should not download large Playwright
+browser binaries unless production functionality requires them.
+
+E2E browser binaries belong in:
+
+CI
+release-certification environment
+
+not necessarily production application image.
+
+Keep the production deployment lean.
+
+============================================================
+11. BUILD VALIDATION
+============================================================
+
+Run:
+
+npm run build
+
+Must PASS.
+
+Then:
+
+npx tsc --noEmit
+
+Report:
+
+new errors = 0
+
+existing baseline separately.
+
+============================================================
+12. FULL RELEASE GATES
+============================================================
+
+Because package/dependency files changed, rerun:
+
+npm run test:smoke
+npm run test:regression
+npm run test:integration
+npm run test:security
+npm run test:lifecycle
+npm run test:migrations
+npm run test:compliance
+npm run test:db
+npm run test:performance
+npm run test:invariants
+npm run test:idempotency
+npm run test:release
+
+All mandatory gates must PASS.
+
+============================================================
+13. DEPENDENCY AUDIT
+============================================================
+
+Run approved npm dependency audit again.
+
+Confirm the previous dependency remediation remains intact:
+
+drizzle-orm upgrade
+adm-zip upgrade
+express upgrade
+vite upgrade
+ws upgrade
+postcss upgrade
+
+Report:
+
+Critical
+High
+Moderate
+Low
+
+Do not undo previous security fixes.
+
+============================================================
+14. RAILWAY BUILD PORTABILITY TEST
+============================================================
+
+Review package-lock.json as if installation is occurring outside Replit.
+
+Nothing required by npm ci may depend on:
+
+package-firewall.replit.local
+localhost
+Replit-only filesystem
+Replit-only DNS
+
+Create a regression test/script if useful:
+
+check-lockfile-portability
+
+It should fail if package-lock.json contains:
+
+package-firewall.replit.local
+
+Make this a permanent release-quality check.
+
+============================================================
+15. SECURITY WARNING REVIEW
+============================================================
+
+Railway also reports Docker/Nixpacks warnings:
+
+SecretsUsedInArgOrEnv
+
+for secret variable names.
+
+These warnings are NOT the current npm ci failure.
+
+Do not conflate them.
+
+However re-audit whether secret values could be embedded into build layers.
+
+Confirm:
+
+- secrets remain Railway environment variables
+- secret VALUES are not committed
+- secret VALUES are not written into generated Dockerfile
+- secret VALUES are not included in client bundle
+- VITE_* variables contain only intentionally public values
+
+If current Nixpacks-generated Dockerfile causes unavoidable name-based
+warnings but values remain safely injected, document this accurately.
+
+Do not call warnings harmless without verifying value handling.
+
+============================================================
+16. NIXPACKS UNDEFINED VARIABLE WARNING
+============================================================
+
+Railway also reports:
+
+UndefinedVar:
+Usage of undefined variable '$NIXPACKS_PATH'
+
+Investigate whether this originates from:
+
+generated Nixpacks Dockerfile
+project Nixpacks configuration
+
+Determine whether action is required.
+
+It did NOT cause this build failure.
+
+If generated upstream behavior and non-impacting:
+
+document.
+
+If project config owns it:
+
+fix safely.
+
+============================================================
+17. OPERATIONS MANUAL
+============================================================
+
+Update:
+
+docs/operations/11-troubleshooting-runbook.md
+
+Add incident:
+
+Railway npm ci ENOTFOUND package-firewall.replit.local
+
+Include:
+
+symptom
+root cause
+affected lockfile
+resolution
+validation
+prevention
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+Add:
+
+2.7.7A Deployment Blocker Fix
+
+Update:
+
+docs/operations/36-production-certification-closure.md
+
+Record that production deployment was blocked before smoke testing because
+of non-portable Replit package-lock resolution.
+
+Update release artifact accordingly.
+
+============================================================
+18. PERMANENT QUALITY INVARIANT
+============================================================
+
+Add permanent release invariant:
+
+Committed dependency manifests and lockfiles must not contain environment-
+specific package registry or proxy URLs.
+
+Examples prohibited:
+
+package-firewall.replit.local
+
+local package proxy hostnames
+
+developer-machine-only registries
+
+unless explicitly required by a documented private registry architecture.
+
+Add automated regression test.
+
+============================================================
+19. DEPLOYMENT DECISION
+============================================================
+
+After local/Replit validation:
+
+DO NOT deploy automatically.
+
+Return:
+
+READY_FOR_RAILWAY_RETRY
+
+or:
+
+NOT_READY
+
+Only READY if:
+
+npm ci PASS
+zero package-firewall URLs
+Node engine warning resolved
+build PASS
+no new TypeScript errors
+release gates PASS
+dependency audit reviewed
+
+============================================================
+20. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact deployment root cause
+2. Total Replit firewall URLs discovered
+3. Packages affected
+4. package-lock changes
+5. package.json changes
+6. .npmrc findings
+7. Playwright dependency architecture
+8. Whether Playwright stays devDependency
+9. Node version before
+10. Node version after
+11. Node configuration location
+12. npm version findings
+13. npm ci result
+14. package-firewall search result
+15. Playwright package verification
+16. Browser binary production decision
+17. npm run build
+18. Typecheck
+19. Full release gate result
+20. Dependency audit
+21. Security warning assessment
+22. NIXPACKS_PATH warning assessment
+23. Files changed
+24. Regression test added
+25. Operations Manual updates
+26. Release artifact update
+27. READY_FOR_RAILWAY_RETRY / NOT_READY
+
+Do not deploy automatically.

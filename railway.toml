@@ -4,7 +4,7 @@ buildCommand = "npm run build"
 
 [build.env]
 NPM_CONFIG_PRODUCTION = "false"
-NIXPACKS_NODE_VERSION = "20"
+NIXPACKS_NODE_VERSION = "20.19"
 
 [deploy]
 startCommand = "npx tsx script/migrate.ts && npm run start"

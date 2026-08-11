@@ -36,6 +36,33 @@ Sprint 2.7.7A changes applied to release candidate:
 
 ---
 
+## 1A. Deployment Blocker Resolution (Sprint 2.7.7A Deployment Fix — 2026-08-11)
+
+**Status: RESOLVED**
+
+Production deployment was initially blocked by a Railway `npm ci ENOTFOUND` failure:
+
+```
+npm error code ENOTFOUND
+npm error request to http://package-firewall.replit.local/npm/playwright-core/-/playwright-core-1.62.1.tgz failed
+```
+
+**Root Cause:** Replit's npm registry proxy (`http://package-firewall.replit.local/npm/`) writes local-only hostnames into `package-lock.json` `resolved` fields whenever packages are installed or upgraded in Replit. Railway cannot resolve this hostname.
+
+**Resolution:**
+- 21 `resolved` fields in `package-lock.json` rewritten: `http://package-firewall.replit.local/npm/` → `https://registry.npmjs.org/`
+- Integrity hashes remain intact (844 total)
+- Permanent portability invariant added: `scripts/check-lockfile-portability.ts`
+- `npm run test:lockfile` → exit 0 (PASS) confirmed
+- Node version pinned: `NIXPACKS_NODE_VERSION = "20.19"` (resolves Vite 7 engine warning)
+- `package.json engines` field added: `{ "node": ">=20.19.0" }`
+
+**Updated Deployment Status:** READY_FOR_RAILWAY_RETRY (after git push)
+
+**Permanent Prevention:** Run `npm run test:lockfile` before every Railway deployment. The check is also included in `test:release:full`.
+
+---
+
 ## 2. Dependency Vulnerability Disposition
 
 ### Before Sprint 2.7.7A

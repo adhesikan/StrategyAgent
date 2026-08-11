@@ -1,5 +1,67 @@
 # Sprint Change Log
 
+## Sprint 2.7.7A — Deployment Blocker Fix (2026-08-11)
+
+### Summary
+Fixed Railway production deployment blocker: `package-lock.json` contained 21 Replit-local firewall URLs (`package-firewall.replit.local`) causing `npm ci ENOTFOUND` failures on Railway. All URLs rewritten to `https://registry.npmjs.org/`. Node version pinned to 20.19. Permanent portability invariant added. All 313 tests pass after fix. Build passes.
+
+### Root Cause
+Replit's npm registry is `http://package-firewall.replit.local/npm/`. Every `npm install`/`npm upgrade` inside Replit writes that hostname into `resolved` fields of `package-lock.json`. Railway cannot resolve that hostname — it is Replit-internal.
+
+### Packages Affected (21 firewall URL entries → 0)
+`@playwright/test`, `adm-zip`, `body-parser`, `debug`, `drizzle-orm`, `express`, `fsevents`, `http-errors` (×2), `iconv-lite`, `ms`, `nanoid`, `playwright`, `playwright-core`, `postcss`, `qs`, `raw-body`, `statuses` (×2), `vite`, `ws`
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `package-lock.json` | 21 `resolved` fields rewritten: `http://package-firewall.replit.local/npm/` → `https://registry.npmjs.org/` |
+| `railway.toml` | `NIXPACKS_NODE_VERSION` updated `"20"` → `"20.19"` (Vite 7.x requires `^20.19.0 \|\| >=22.12.0`) |
+| `package.json` | Added `"engines": { "node": ">=20.19.0" }` |
+| `package.json` | Added `test:lockfile` script and `test:release:full` script |
+| `scripts/check-lockfile-portability.ts` | New: permanent portability invariant, exit 1 if any prohibited URLs found |
+| `docs/operations/11-troubleshooting-runbook.md` | Added Railway npm ci ENOTFOUND incident |
+
+### Validation Results
+| Check | Result |
+|-------|--------|
+| `npm run test:lockfile` | ✅ PASS — 0 firewall URLs |
+| `npm run test:release` (313 tests) | ✅ PASS |
+| `npm run build` | ✅ PASS (4.6 MB) |
+| Integrity hashes intact | ✅ PASS — 844 integrity hashes |
+| Dep audit (Critical/High) | ✅ 0 Critical, 10 High (unchanged from 2.7.7A) |
+
+### Permanent Invariant Added
+`scripts/check-lockfile-portability.ts` — must run before every Railway deployment:
+```bash
+npm run test:lockfile   # quick check
+npm run test:release:full  # full gate including portability
+```
+
+### Node Version Fix
+| Setting | Before | After |
+|---------|--------|-------|
+| `NIXPACKS_NODE_VERSION` in railway.toml | `"20"` | `"20.19"` |
+| `engines` in package.json | not set | `">=20.19.0"` |
+| Reason | Node 20.18.1 doesn't satisfy vite `^20.19.0 \|\| >=22.12.0` | 20.19 satisfies `^20.19.0` |
+
+### Playwright Architecture
+- `@playwright/test` — correctly a **devDependency** (not production)
+- `playwright` and `playwright-core` — transitive under `@playwright/test`
+- `NPM_CONFIG_PRODUCTION = "false"` in railway.toml ensures devDependencies are installed during build (needed for vite, tsc, etc.)
+- **Playwright browser binaries are NOT installed by npm ci** — no `postinstall` or `prepare` lifecycle script triggers `playwright install`
+- E2E browser binaries belong in CI/release-certification environment only; production image stays lean
+
+### Security Warning Assessment
+Railway/Nixpacks reports `SecretsUsedInArgOrEnv` warnings for secret variable names. These are name-based warnings only — secret VALUES are not committed, not written to Dockerfile layers, and not included in the client bundle. No VITE_* secrets found in client source. Warnings are Nixpacks-generated behavior, not a project defect.
+
+### NIXPACKS_PATH Warning
+`UndefinedVar: Usage of undefined variable '$NIXPACKS_PATH'` — this originates from Nixpacks' generated Dockerfile, not from project configuration. It is not project-owned and did not cause the build failure. Non-impacting; no action required.
+
+### Deployment Decision
+**READY_FOR_RAILWAY_RETRY** — all local validations pass. Push to `origin/main` and trigger Railway redeploy.
+
+---
+
 ## Sprint 2.7.7A — Production Certification Closure (2026-08-10)
 
 ### Summary

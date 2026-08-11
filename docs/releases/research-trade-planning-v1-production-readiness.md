@@ -17,6 +17,8 @@ All critical acceptance criteria pass. Five of 17 HIGH dependency vulnerabilitie
 
 **To convert to FULL GO:** Configure TEST_USER_EMAIL + TEST_USER_PASSWORD, run `npm run test:e2e` (flows A–F must PASS), deploy to Railway, run production smoke, update this document.
 
+**Deployment Blocker (2026-08-11 — RESOLVED):** Railway `npm ci` was failing with `ENOTFOUND package-firewall.replit.local`. Root cause: Replit's npm proxy writes local-only URLs into `package-lock.json`. All 21 affected `resolved` fields rewritten to `https://registry.npmjs.org/`. Node version pinned to 20.19. Permanent portability check added (`npm run test:lockfile`). Status: **READY_FOR_RAILWAY_RETRY**.
+
 ---
 
 ## 1. Release Scope

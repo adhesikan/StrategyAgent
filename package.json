@@ -23,7 +23,9 @@
     "test:idempotency": "npx vitest run --root . server/routes/__tests__/idempotency.test.ts",
     "test:e2e": "npx playwright test",
     "test:smoke:production": "tsx scripts/smoke-production.ts",
-    "test:release": "npx vitest run --root . server/routes/__tests__/smoke.test.ts server/routes/__tests__/regression.test.ts server/routes/__tests__/integration.test.ts server/routes/__tests__/security.test.ts server/routes/__tests__/trade-plan-lifecycle.test.ts server/routes/__tests__/migrations.test.ts server/routes/__tests__/compliance.test.ts server/routes/__tests__/db-schema.test.ts server/routes/__tests__/business-logic-invariants.test.ts server/routes/__tests__/idempotency.test.ts"
+    "test:release": "npx vitest run --root . server/routes/__tests__/smoke.test.ts server/routes/__tests__/regression.test.ts server/routes/__tests__/integration.test.ts server/routes/__tests__/security.test.ts server/routes/__tests__/trade-plan-lifecycle.test.ts server/routes/__tests__/migrations.test.ts server/routes/__tests__/compliance.test.ts server/routes/__tests__/db-schema.test.ts server/routes/__tests__/business-logic-invariants.test.ts server/routes/__tests__/idempotency.test.ts",
+    "test:lockfile": "npx tsx scripts/check-lockfile-portability.ts",
+    "test:release:full": "npx vitest run --root . server/routes/__tests__/smoke.test.ts server/routes/__tests__/regression.test.ts server/routes/__tests__/integration.test.ts server/routes/__tests__/security.test.ts server/routes/__tests__/trade-plan-lifecycle.test.ts server/routes/__tests__/migrations.test.ts server/routes/__tests__/compliance.test.ts server/routes/__tests__/db-schema.test.ts server/routes/__tests__/business-logic-invariants.test.ts server/routes/__tests__/idempotency.test.ts && npx tsx scripts/check-lockfile-portability.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -153,5 +155,8 @@
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   }
 }

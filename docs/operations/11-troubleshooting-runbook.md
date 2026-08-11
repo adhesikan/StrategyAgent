@@ -6,6 +6,74 @@ Format: **Symptom → Diagnostic → Likely Cause → Safe Remediation → Verif
 
 ## RAILWAY BUILD
 
+### Railway npm ci fails — ENOTFOUND package-firewall.replit.local
+
+**Symptom:**
+```
+npm error code ENOTFOUND
+npm error syscall getaddrinfo
+npm error request to http://package-firewall.replit.local/npm/<package>/-/<package-x.y.z>.tgz failed
+```
+Railway deployment fails before build execution. `npm ci` exits non-zero.
+
+**Root Cause:**
+Replit's npm environment uses a local package proxy (`http://package-firewall.replit.local/npm/`) as its registry. Every `npm install` or `npm upgrade` run inside Replit writes that local hostname into the `resolved` fields of `package-lock.json`. Railway cannot resolve `package-firewall.replit.local` — that hostname is Replit-internal and not available outside the Replit network.
+
+**Affected Lockfile:** Any entry with `"resolved": "http://package-firewall.replit.local/npm/..."`.
+
+**Diagnostic:**
+```bash
+# Count occurrences (0 = clean, >0 = blocked)
+grep -c "package-firewall.replit.local" package-lock.json
+
+# List affected packages
+grep "package-firewall.replit.local" package-lock.json | \
+  sed 's|.*http://package-firewall.replit.local/npm/||;s|".*||' | sort -u
+
+# Run permanent portability check
+npx tsx scripts/check-lockfile-portability.ts
+```
+
+**Remediation (in Replit workspace):**
+```bash
+node -e "
+  const fs=require('fs');
+  const raw=fs.readFileSync('package-lock.json','utf8');
+  const fixed=raw.replace(
+    /http:\/\/package-firewall\.replit\.local\/npm\//g,
+    'https://registry.npmjs.org/'
+  );
+  const before=(raw.match(/package-firewall\.replit\.local/g)||[]).length;
+  const after=(fixed.match(/package-firewall\.replit\.local/g)||[]).length;
+  console.log('Before:', before, 'After:', after);
+  if(after!==0){console.error('REWRITE FAILED');process.exit(1);}
+  fs.writeFileSync('package-lock.json',fixed);
+  console.log('Done');
+"
+```
+Then verify: `npx tsx scripts/check-lockfile-portability.ts` → must output `PORTABILITY CHECK PASSED`.
+
+**Important:** Do NOT run `npm install` afterward in Replit — that will re-introduce firewall URLs. Commit the fixed lockfile directly.
+
+**Validation:**
+1. `npx tsx scripts/check-lockfile-portability.ts` → PASS (0 occurrences)
+2. `npm run test:release` → 313/313 PASS
+3. `npm run build` → PASS
+4. Integrity hashes remain intact (rewrite only changes `resolved` field, not `integrity`)
+5. Push to Railway → `npm ci` succeeds
+
+**Prevention:**
+- `test:lockfile` script (`npm run test:lockfile`) is a permanent release gate
+- Run it after every `npm install`, `npm upgrade`, or dependency change in Replit
+- `test:release:full` includes the portability check in the full release gate
+
+**When this occurs:**
+Every time a dependency is installed or upgraded in the Replit environment, the resulting lockfile entries will contain firewall URLs. Run the portability check before every Railway deployment.
+
+**Escalation:** If Replit's npm config changes (e.g., `npm config get registry` returns a different URL), update the `PROHIBITED_PATTERNS` array in `scripts/check-lockfile-portability.ts`.
+
+---
+
 ### "No matching export getLatestRanking" (or similar import mismatch)
 
 **Symptom:** Railway build fails with `SyntaxError: The requested module does not provide an export named 'X'`

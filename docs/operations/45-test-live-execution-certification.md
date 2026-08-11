@@ -1,8 +1,60 @@
 # Doc 45 — TEST_LIVE Execution Certification
 
-**Sprint:** 2.8.6A  
+**Sprint:** 2.8.6A / 2.8.6A-defect-1  
 **Classification:** Controlled Certification  
 **Purpose:** Record and guide the controlled TEST_LIVE certification of the Sprint 2.8.6 broker-submission pipeline.
+
+---
+
+## Production Defect Record — TEST_LIVE Admin Authorization Mismatch
+
+**Defect ID:** 2.8.6A-defect-1  
+**Severity:** High (certification page returns 403 for valid admin session)  
+**Status:** FIXED
+
+### Symptom
+`GET /api/admin/test-live/config-audit` returned `{"error":"Admin access required for TEST_LIVE certification."}` for a logged-in administrator who could access all other admin surfaces (Platform Health, Operations Manual, etc.).
+
+### Root Cause
+`registerTestLiveCertificationRoutes` only accepted `isAuthenticated` — `isAdmin` was not passed to it. Instead, the function contained an inline `requireAdmin` middleware that had two bugs:
+
+1. **Wrong storage**: Used `storage.getUser()` (the in-memory stub, always returns undefined for real users) instead of `authStorage.getUser()` (the real PostgreSQL user rows). This is the established footgun documented in [User lookup — authStorage vs storage](../agents/memory/user-lookup-storage.md).
+2. **Role string mismatch**: Compared `user.role !== "admin"` (string literal) instead of `user.role !== UserRole.ADMIN` (canonical enum used by all other admin guards).
+
+### Canonical Admin Authorization Mechanism
+The application defines **one** `isAdmin` middleware in `server/routes.ts`:
+```typescript
+const isAdmin: RequestHandler = async (req, res, next) => {
+  if (!req.session.userId) return res.status(401).json({ message: "Unauthorized" });
+  const user = await authStorage.getUser(req.session.userId);  // real DB rows
+  if (!user || user.role !== UserRole.ADMIN) return res.status(403).json({ message: "Forbidden: Admin access required" });
+  next();
+};
+```
+This is passed as a parameter to all admin route registration functions (Platform Health, Operations Manual, News Sentiment, MCP Status, etc.).
+
+### Fix
+1. Updated `registerTestLiveCertificationRoutes(app, isAuthenticated, isAdmin)` to accept `isAdmin` as a 3rd parameter.
+2. Removed the inline `requireAdmin` — all 5 routes now use `isAuthenticated, isAdmin` (identical to Platform Health).
+3. Passed `isAdmin` in the call site (`server/routes.ts`).
+
+### Behavior After Fix
+| Caller | Status |
+|---|---|
+| Unauthenticated | 401 (from `isAuthenticated`) |
+| Authenticated non-admin | 403 (from `isAdmin`) |
+| Authenticated admin | 200 |
+
+### Invariant Added
+`registerTestLiveCertificationRoutes.length === 3` — tested in `§11 Admin consistency` suite. Any future change that removes `isAdmin` from the signature will fail this test.
+
+### Files Changed
+- `server/routes/test-live-certification.ts` — removed inline `requireAdmin`, added `isAdmin` param, all 5 routes updated
+- `server/routes.ts` — passes `isAdmin` to `registerTestLiveCertificationRoutes`
+- `client/src/pages/admin-test-live-certification.tsx` — added 401/403/500 error states to config audit, market status, and account panels
+- `server/routes/__tests__/test-live-certification.test.ts` — added §11 (admin consistency), §12 (security negative tests), §17 (admin does not bypass safety gates)
+
+---
 
 ---
 

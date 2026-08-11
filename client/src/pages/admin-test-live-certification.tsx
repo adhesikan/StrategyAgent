@@ -168,23 +168,41 @@ export default function AdminTestLiveCertificationPage() {
   const qc = useQueryClient();
 
   // ── Data fetching ──────────────────────────────────────────────────────────
-  const { data: auditData, isLoading: auditLoading, refetch: refetchAudit } = useQuery<{ ok: boolean; audit: ConfigAuditResult }>({
+  const {
+    data: auditData, isLoading: auditLoading, refetch: refetchAudit,
+    error: auditError,
+  } = useQuery<{ ok: boolean; audit: ConfigAuditResult }>({
     queryKey: ["/api/admin/test-live/config-audit"],
     retry: false,
   });
-  const { data: marketData, isLoading: marketLoading, refetch: refetchMarket } = useQuery<{ ok: boolean; market: MarketStatusResult }>({
+  const {
+    data: marketData, isLoading: marketLoading, refetch: refetchMarket,
+    error: marketError,
+  } = useQuery<{ ok: boolean; market: MarketStatusResult }>({
     queryKey: ["/api/admin/test-live/market-status"],
     retry: false,
     refetchInterval: 60_000, // refresh market status every minute
   });
-  const { data: accountData, isLoading: accountLoading, refetch: refetchAccount } = useQuery<{ ok: boolean; accountStatus: AccountStatusResult }>({
+  const {
+    data: accountData, isLoading: accountLoading, refetch: refetchAccount,
+    error: accountError,
+  } = useQuery<{ ok: boolean; accountStatus: AccountStatusResult }>({
     queryKey: ["/api/admin/test-live/account-status"],
     retry: false,
   });
-  const { data: reportData, refetch: refetchReport } = useQuery<{ ok: boolean; report: CompletionReport }>({
+  const { data: reportData, refetch: refetchReport, error: reportError } = useQuery<{ ok: boolean; report: CompletionReport }>({
     queryKey: ["/api/admin/test-live/completion-report"],
     retry: false,
   });
+
+  // ── HTTP error interpretation ──────────────────────────────────────────────
+  function httpErrorMessage(err: unknown): string {
+    if (!err) return "";
+    const status = (err as any)?.status ?? (err as any)?.response?.status;
+    if (status === 401) return "Authentication required. Please sign in.";
+    if (status === 403) return "Administrator access is required. This page is restricted to admin accounts.";
+    return "Certification service could not be loaded. Check server logs.";
+  }
 
   // ── Disarm mutation ────────────────────────────────────────────────────────
   const disarmMutation = useMutation({
@@ -269,6 +287,15 @@ export default function AdminTestLiveCertificationPage() {
 
           {auditLoading && <p className="text-slate-400 text-sm">Loading config audit…</p>}
 
+          {auditError && !auditLoading && (
+            <div className="p-3 bg-red-950/30 border border-red-800/50 rounded-lg">
+              <p className="text-red-300 text-sm font-medium flex items-center gap-2">
+                <XCircle className="h-4 w-4 shrink-0" />
+                {httpErrorMessage(auditError)}
+              </p>
+            </div>
+          )}
+
           {audit && (
             <div className="space-y-2">
               {audit.gates.map((gate) => (
@@ -309,6 +336,15 @@ export default function AdminTestLiveCertificationPage() {
               <RefreshCw className={`h-3.5 w-3.5 mr-1 ${marketLoading ? "animate-spin" : ""}`} /> Refresh
             </Button>
           </div>
+          {marketError && !marketLoading && (
+            <div className="p-3 bg-red-950/30 border border-red-800/50 rounded-lg">
+              <p className="text-red-300 text-sm font-medium flex items-center gap-2">
+                <XCircle className="h-4 w-4 shrink-0" />
+                {httpErrorMessage(marketError)}
+              </p>
+            </div>
+          )}
+
           {market && (
             <div className="space-y-1 text-sm">
               <div className="flex gap-2 text-slate-400">
@@ -341,6 +377,15 @@ export default function AdminTestLiveCertificationPage() {
           </div>
 
           {accountLoading && <p className="text-slate-400 text-sm">Checking broker account…</p>}
+
+          {accountError && !accountLoading && (
+            <div className="p-3 bg-red-950/30 border border-red-800/50 rounded-lg">
+              <p className="text-red-300 text-sm font-medium flex items-center gap-2">
+                <XCircle className="h-4 w-4 shrink-0" />
+                {httpErrorMessage(accountError)}
+              </p>
+            </div>
+          )}
 
           {account && (
             <div className="space-y-3">
@@ -699,6 +744,15 @@ export default function AdminTestLiveCertificationPage() {
               <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh Report
             </Button>
           </div>
+
+          {reportError && (
+            <div className="p-3 bg-red-950/30 border border-red-800/50 rounded-lg mb-3">
+              <p className="text-red-300 text-sm font-medium flex items-center gap-2">
+                <XCircle className="h-4 w-4 shrink-0" />
+                {httpErrorMessage(reportError)}
+              </p>
+            </div>
+          )}
 
           {report && (
             <>

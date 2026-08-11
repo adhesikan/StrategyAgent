@@ -454,6 +454,189 @@ describe("buildCompletionReport", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// §11 — Admin consistency: canonical admin helper used across all admin families
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("§11 Admin consistency: registerTestLiveCertificationRoutes accepts isAdmin", () => {
+  it("registerTestLiveCertificationRoutes has arity 3 (app, isAuthenticated, isAdmin)", async () => {
+    // Verifies the route registration function takes the canonical isAdmin
+    // middleware as its 3rd argument — same pattern as registerPlatformHealthRoutes.
+    // This prevents future drift where TEST_LIVE reverts to inline admin logic.
+    const mod = await import("../test-live-certification");
+    expect(typeof mod.registerTestLiveCertificationRoutes).toBe("function");
+    expect(mod.registerTestLiveCertificationRoutes.length).toBe(3);
+  });
+
+  it("no inline storage.getUser appears inside registerTestLiveCertificationRoutes body", async () => {
+    // Read the source to confirm no inline admin check remains inside the function.
+    const fs = await import("fs");
+    const src = fs.readFileSync(
+      new URL("../test-live-certification.ts", import.meta.url).pathname,
+      "utf8",
+    );
+    // Find the function body start
+    const fnStart = src.indexOf("export function registerTestLiveCertificationRoutes");
+    expect(fnStart).toBeGreaterThan(-1);
+    const fnBody = src.slice(fnStart);
+    // No inline storage.getUser (the in-memory stub) should appear in the registration body
+    expect(fnBody).not.toContain("storage.getUser");
+  });
+
+  it("no inline role comparison or requireAdmin appears inside registerTestLiveCertificationRoutes body", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync(
+      new URL("../test-live-certification.ts", import.meta.url).pathname,
+      "utf8",
+    );
+    const fnStart = src.indexOf("export function registerTestLiveCertificationRoutes");
+    const fnBody = src.slice(fnStart);
+    // No hardcoded role comparison inside the registration body
+    expect(fnBody).not.toContain(`user.role !== "admin"`);
+    expect(fnBody).not.toContain(`user.role !== UserRole.ADMIN`);
+    expect(fnBody).not.toContain("requireAdmin");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §12 — Security negative tests: client-supplied admin indicators are ignored
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("§12 Security: admin role resolved server-side only", () => {
+  it("computeConfigAudit ignores any role passed via its deps", () => {
+    // ConfigAuditDeps has no role field — no client-controlled escalation possible
+    const deps = makeFullyConfiguredDeps();
+    expect("role" in deps).toBe(false);
+    expect("isAdmin" in deps).toBe(false);
+    expect("admin" in deps).toBe(false);
+  });
+
+  it("ConfigAuditDeps type has no role, isAdmin, or admin field", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync(
+      new URL("../test-live-certification.ts", import.meta.url).pathname,
+      "utf8",
+    );
+    // Find ConfigAuditDeps interface
+    const ifaceStart = src.indexOf("export interface ConfigAuditDeps");
+    const ifaceEnd = src.indexOf("}", ifaceStart);
+    expect(ifaceStart).toBeGreaterThan(-1);
+    const iface = src.slice(ifaceStart, ifaceEnd + 1);
+    expect(iface).not.toContain("role");
+    expect(iface).not.toContain("isAdmin");
+    expect(iface).not.toContain("admin");
+  });
+
+  it("computeConfigAudit productionBlocked cannot be falsified by any dep combination", () => {
+    // Even if a crafted dep overrides everything, productionBlocked stays true
+    const crafted = makeFullyConfiguredDeps({
+      isExecutionEnabled: () => true,
+      getExecutionMode: () => "production" as any,
+    });
+    const audit = computeConfigAudit(crafted);
+    expect(audit.productionBlocked).toBe(true);
+  });
+
+  it("computeConfigAudit never returns raw account IDs regardless of deps", () => {
+    const deps = makeFullyConfiguredDeps({
+      getTestLiveAllowlistedAccounts: () => ["RAWACCT-FORGED-0001", "RAWACCT-FORGED-0002"],
+    });
+    const audit = computeConfigAudit(deps);
+    const serialized = JSON.stringify(audit);
+    expect(serialized).not.toContain("RAWACCT-FORGED-0001");
+    expect(serialized).not.toContain("RAWACCT-FORGED-0002");
+    // Count is safe to expose
+    expect(audit.accountAllowlistCount).toBe(2);
+  });
+
+  it("completion report never surfaces raw account IDs regardless of audit deps", () => {
+    const deps = makeFullyConfiguredDeps({
+      getTestLiveAllowlistedAccounts: () => ["RAWACCT-REPORT-9999"],
+    });
+    const audit = computeConfigAudit(deps);
+    const report = buildCompletionReport(audit, computeMarketStatus(OPEN_TUESDAY_ET));
+    expect(JSON.stringify(report)).not.toContain("RAWACCT-REPORT-9999");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §17 — Admin cannot bypass execution safety gates
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("§17 Admin does not bypass execution safety gates", () => {
+  it("allRequiredPass is false when execution is disabled even for a fully-configured admin audit", () => {
+    const deps = makeFullyConfiguredDeps({ isExecutionEnabled: () => false });
+    const audit = computeConfigAudit(deps);
+    expect(audit.allRequiredPass).toBe(false);
+    expect(audit.missingRequired).toContain("BROKER_EXECUTION_ENABLED");
+  });
+
+  it("allRequiredPass is false when mode is not test_live even for a fully-configured admin audit", () => {
+    const deps = makeFullyConfiguredDeps({ getExecutionMode: () => "sandbox" as any });
+    const audit = computeConfigAudit(deps);
+    expect(audit.allRequiredPass).toBe(false);
+    expect(audit.missingRequired).toContain("BROKER_EXECUTION_MODE");
+  });
+
+  it("allRequiredPass is false when not armed even for a fully-configured admin audit", () => {
+    const deps = makeFullyConfiguredDeps({ isTestLiveArmed: () => false });
+    const audit = computeConfigAudit(deps);
+    expect(audit.allRequiredPass).toBe(false);
+    expect(audit.missingRequired).toContain("EXECUTION_TEST_LIVE_ARMED");
+  });
+
+  it("allRequiredPass is false when account allowlist is empty", () => {
+    const deps = makeFullyConfiguredDeps({ getTestLiveAllowlistedAccounts: () => [] });
+    const audit = computeConfigAudit(deps);
+    expect(audit.allRequiredPass).toBe(false);
+  });
+
+  it("allRequiredPass is false when symbol allowlist is empty", () => {
+    const deps = makeFullyConfiguredDeps({ getTestLiveAllowlistedSymbols: () => [] });
+    const audit = computeConfigAudit(deps);
+    expect(audit.allRequiredPass).toBe(false);
+  });
+
+  it("allRequiredPass is false when notional cap is null", () => {
+    const deps = makeFullyConfiguredDeps({ getTestLiveMaxNotional: () => null });
+    const audit = computeConfigAudit(deps);
+    expect(audit.allRequiredPass).toBe(false);
+  });
+
+  it("allRequiredPass is false when equity qty cap is null", () => {
+    const deps = makeFullyConfiguredDeps({ getTestLiveMaxEquityQty: () => null });
+    const audit = computeConfigAudit(deps);
+    expect(audit.allRequiredPass).toBe(false);
+  });
+
+  it("marketOrderPolicy is always 'banned' regardless of config — cannot be overridden", () => {
+    const deps = makeFullyConfiguredDeps();
+    const audit = computeConfigAudit(deps);
+    expect(audit.marketOrderPolicy).toBe("banned");
+  });
+
+  it("multiLegPolicy is always 'banned' regardless of config — cannot be overridden", () => {
+    const deps = makeFullyConfiguredDeps();
+    const audit = computeConfigAudit(deps);
+    expect(audit.multiLegPolicy).toBe("banned");
+  });
+
+  it("productionBlocked is always true — cannot be overridden by admin or any dep", () => {
+    const deps = makeFullyConfiguredDeps({ getExecutionMode: () => "production" as any });
+    const audit = computeConfigAudit(deps);
+    expect(audit.productionBlocked).toBe(true);
+  });
+
+  it("completion report decision is NO_GO when market is closed even if all config gates pass", () => {
+    const closedMarket = computeMarketStatus(new Date("2026-08-15T16:00:00Z")); // Saturday
+    expect(closedMarket.open).toBe(false);
+    const audit = computeConfigAudit(makeFullyConfiguredDeps());
+    const report = buildCompletionReport(audit, closedMarket);
+    // Cannot be GO when market is closed — must be CONDITIONAL_GO or NO_GO
+    expect(report.decision).not.toBe("GO");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Security invariants
 // ─────────────────────────────────────────────────────────────────────────────
 

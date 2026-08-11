@@ -1,0 +1,542 @@
+Sprint 2.8.6A production defect — TEST_LIVE admin authorization mismatch.
+
+CURRENT PRODUCTION SYMPTOM
+
+I am logged into VCP Trader AI using an administrator account.
+
+The frontend page:
+
+/admin/test-live-certification
+
+loads.
+
+But directly calling:
+
+GET /api/admin/test-live/config-audit
+
+returns:
+
+{"error":"Admin access required for TEST_LIVE certification."}
+
+Therefore the TEST_LIVE backend admin authorization does not recognize the
+same administrator session that the rest of the application recognizes.
+
+DO NOT weaken admin security.
+
+DO NOT remove admin authorization.
+
+DO NOT make TEST_LIVE APIs available to normal users.
+
+DO NOT enable execution.
+
+DO NOT modify any TEST_LIVE safety gate.
+
+The goal is to make these routes use the EXISTING CANONICAL ADMIN AUTH MODEL.
+
+======================================================================
+1. AUDIT EXISTING ADMIN AUTH FIRST
+======================================================================
+
+Find the authorization mechanism used by working existing admin surfaces,
+especially:
+
+/admin/platform-health
+
+/api/admin/platform-health
+
+/admin/operations-manual
+
+any existing admin APIs
+
+Find:
+
+middleware
+helper functions
+session fields
+role enums
+database fields
+
+Report exactly how the existing application determines:
+
+"this authenticated user is an admin."
+
+Examples to inspect, but do not assume:
+
+session.userId
+session.role
+user.role
+isAdmin
+admin flag
+RBAC permissions
+requireAdmin middleware
+
+Identify the SINGLE canonical admin authorization path currently used by
+working production admin routes.
+
+======================================================================
+2. AUDIT TEST_LIVE AUTHORIZATION
+======================================================================
+
+Inspect:
+
+server/routes/test-live-certification.ts
+or actual file implementing:
+
+/api/admin/test-live/config-audit
+/api/admin/test-live/market-status
+/api/admin/test-live/account-status
+/api/admin/test-live/disarm
+/api/admin/test-live/completion-report
+
+Find the exact admin check.
+
+Report:
+
+what session field it reads
+
+what role/value it expects
+
+whether it performs a DB lookup
+
+whether it differs from the working Platform Health admin check
+
+likely mismatch.
+
+Do not modify anything until root cause identified.
+
+======================================================================
+3. COMPARE SESSION SHAPES
+======================================================================
+
+Inspect current authentication/session architecture.
+
+Determine actual authenticated session shape in production.
+
+For example:
+
+(req as any).session?.userId
+
+and how role is subsequently resolved.
+
+IMPORTANT:
+
+Do not print session tokens or sensitive session values.
+
+Safe report only:
+
+userId present YES/NO
+role source
+normalized role value
+admin result
+
+======================================================================
+4. CHECK FOR KNOWN req.user FOOTGUN
+======================================================================
+
+Sprint 2.8.1 previously found that this codebase uses:
+
+(req as any).session?.userId
+
+rather than:
+
+req.user
+
+Audit whether TEST_LIVE routes accidentally introduced:
+
+req.user
+req.user.role
+session.user
+session.isAdmin
+
+or another incompatible pattern.
+
+If so, use the established authentication pattern.
+
+======================================================================
+5. CHECK ROLE VALUE MISMATCH
+======================================================================
+
+Check whether existing user role values are such as:
+
+admin
+
+ADMIN
+
+administrator
+
+super_admin
+
+or another canonical enum.
+
+Do not simply add a list of guessed accepted strings.
+
+Use the actual existing RBAC definition.
+
+======================================================================
+6. REUSE EXISTING ADMIN MIDDLEWARE
+======================================================================
+
+Preferred fix:
+
+reuse the exact existing helper/middleware used by:
+
+/api/admin/platform-health
+
+or another established protected admin route.
+
+Examples conceptually:
+
+requireAdmin
+
+isAdminUser
+
+requireRole("admin")
+
+Do not duplicate admin logic inside TEST_LIVE routes.
+
+If no reusable helper exists but working routes duplicate logic:
+
+extract a small canonical helper only if safe and regression-tested.
+
+======================================================================
+7. FAIL CLOSED
+======================================================================
+
+Required behavior after fix:
+
+Unauthenticated user:
+401
+
+Authenticated non-admin:
+403
+
+Authenticated admin:
+200
+
+or preserve current application's established status-code semantics.
+
+Do not return admin data simply because client URL starts with /admin.
+
+Server authorization remains authoritative.
+
+======================================================================
+8. VERIFY ALL FIVE TEST_LIVE ENDPOINTS
+======================================================================
+
+Ensure canonical admin authorization applies consistently to:
+
+GET /api/admin/test-live/config-audit
+
+GET /api/admin/test-live/market-status
+
+GET /api/admin/test-live/account-status
+
+POST /api/admin/test-live/disarm
+
+GET /api/admin/test-live/completion-report
+
+No endpoint may accidentally use different admin logic.
+
+======================================================================
+9. FRONTEND ADMIN GUARD
+======================================================================
+
+Inspect /admin/test-live-certification client routing.
+
+It should use the same admin-page protection convention as:
+
+/admin/platform-health
+
+But remember:
+
+frontend guard is supplementary.
+
+Backend authorization remains mandatory.
+
+Do not weaken either.
+
+======================================================================
+10. VERIFY CURRENT ADMIN USER
+======================================================================
+
+Using the existing authenticated account in development/test fixture,
+verify that the same account which can access Platform Health can also
+access TEST_LIVE certification APIs.
+
+Add regression invariant:
+
+If user X passes canonical admin check for Platform Health,
+the same user X must pass canonical admin check for TEST_LIVE APIs.
+
+Do not create a second definition of "admin."
+
+======================================================================
+11. ADMIN CONSISTENCY TEST
+======================================================================
+
+Add a permanent test that enumerates/admin-checks all admin API families.
+
+At minimum:
+
+Platform Health
+Operations Manual if API-backed
+TEST_LIVE Certification
+
+Assert they share the canonical admin authorization helper.
+
+This prevents future admin drift.
+
+======================================================================
+12. SECURITY NEGATIVE TESTS
+======================================================================
+
+Test:
+
+no session → denied
+
+normal authenticated user → denied
+
+forged role field in request body → ignored
+
+forged role query string → ignored
+
+forged x-admin header → ignored
+
+user cannot make themselves admin
+
+admin role resolved server-side only
+
+======================================================================
+13. DO NOT TRUST CLIENT ROLE
+======================================================================
+
+Ensure APIs never accept:
+
+role
+isAdmin
+admin=true
+
+from:
+
+request body
+query
+headers
+
+except any established secure server/internal mechanism.
+
+No client-controlled admin escalation.
+
+======================================================================
+14. CONFIG AUDIT RESPONSE AFTER FIX
+======================================================================
+
+Once admin auth succeeds:
+
+GET /api/admin/test-live/config-audit
+
+must return the canonical audit response.
+
+Verify the page then renders its configuration gates.
+
+If the panel remains blank after API returns 200:
+
+fix client response rendering separately.
+
+Do not combine unrelated changes unless actually required.
+
+======================================================================
+15. ACCOUNT STATUS
+======================================================================
+
+After auth fix also test:
+
+GET /api/admin/test-live/account-status
+
+It should return only safe/masked account status.
+
+No raw broker account ID unless deliberately required server-side.
+
+No token.
+
+======================================================================
+16. COMPLETION REPORT
+======================================================================
+
+Verify:
+
+GET /api/admin/test-live/completion-report
+
+works for canonical admin.
+
+Normal user cannot retrieve it.
+
+======================================================================
+17. SUBMISSION SECURITY UNAFFECTED
+======================================================================
+
+Critical regression:
+
+Fixing admin access to certification endpoints must NOT grant admin the
+ability to bypass normal execution controls.
+
+Admin status does NOT override:
+
+BROKER_EXECUTION_ENABLED
+
+TEST_LIVE mode
+
+arming
+
+account allowlist
+
+symbol allowlist
+
+quantity cap
+
+notional cap
+
+market-hours gate
+
+confirmation
+
+idempotency
+
+final validation
+
+Admin is an operator role, not a safety bypass.
+
+Add test.
+
+======================================================================
+18. ADMIN DOES NOT BYPASS USER OWNERSHIP
+======================================================================
+
+If the actual execution workflow requires a user-owned:
+
+Trade Plan
+broker account
+confirmation
+
+do not allow the admin certification page itself to bypass ownership.
+
+The certification operator must still use the correctly authenticated test
+user/account context according to existing architecture.
+
+Document the actual behavior.
+
+======================================================================
+19. STATUS CODE / ERROR UI
+======================================================================
+
+Improve certification page handling:
+
+401:
+"Authentication required."
+
+403:
+"Administrator access is required."
+
+500:
+"Certification service could not be loaded."
+
+No blank accordion.
+
+Do not expose server errors/stacks.
+
+======================================================================
+20. TESTS
+======================================================================
+
+Add tests covering:
+
+canonical admin helper
+working Platform Health admin parity
+TEST_LIVE admin access
+normal user denial
+unauthenticated denial
+forged client admin indicators
+all five endpoints
+frontend 403 state
+config panel rendering after 200
+admin cannot bypass execution safety gates
+
+======================================================================
+21. QUALITY GATES
+======================================================================
+
+Run:
+
+2.8.6A tests
+
+execution tests
+
+security
+
+smoke
+
+regression
+
+compliance
+
+npm run test:release
+
+npm run build
+
+npx tsc --noEmit
+
+Report exact counts.
+
+Zero new TS errors.
+
+======================================================================
+22. DOCUMENTATION
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/45-test-live-execution-certification.md
+
+Add production defect:
+
+TEST_LIVE API admin authorization mismatch.
+
+Document:
+
+symptom
+root cause
+canonical admin mechanism
+fix
+regression coverage
+
+======================================================================
+23. DO NOT DEPLOY
+======================================================================
+
+Do not deploy automatically.
+
+Do not change Railway TEST_LIVE variables yet.
+
+Return:
+
+1. Root cause
+2. Canonical existing admin authorization mechanism
+3. TEST_LIVE authorization mechanism before fix
+4. Exact mismatch
+5. Files changed
+6. Shared admin middleware/helper used
+7. Platform Health admin parity result
+8. Unauthenticated result
+9. Normal-user result
+10. Admin result
+11. All five TEST_LIVE endpoint results
+12. Frontend error-state fix
+13. Config panel result
+14. Admin-safety-bypass regression
+15. Security tests
+16. Full test count
+17. Build
+18. TypeScript
+19. Docs updated
+20. READY_FOR_RAILWAY_REDEPLOY / NOT_READY

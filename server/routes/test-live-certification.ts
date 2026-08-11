@@ -500,26 +500,19 @@ export function buildCompletionReport(
 export function registerTestLiveCertificationRoutes(
   app: Express,
   isAuthenticated: RequestHandler,
+  isAdmin: RequestHandler,
 ): void {
 
-  // Admin guard: reuse the established inline pattern
-  const requireAdmin: RequestHandler = async (req, res, next) => {
-    const { storage } = await import("../storage");
-    const user = req.session?.userId
-      ? await storage.getUser(req.session.userId).catch(() => null)
-      : null;
-    if (!user || user.role !== "admin") {
-      res.status(403).json({ error: "Admin access required for TEST_LIVE certification." });
-      return;
-    }
-    next();
-  };
+  // Admin guard: uses the canonical isAdmin passed from routes.ts.
+  // No inline admin logic — same middleware as Platform Health and all other
+  // admin surfaces. Unauthenticated → 401 (from isAuthenticated). Non-admin
+  // authenticated → 403 (from isAdmin).
 
   // ── GET /api/admin/test-live/config-audit ──────────────────────────────
   app.get(
     "/api/admin/test-live/config-audit",
     isAuthenticated,
-    requireAdmin,
+    isAdmin,
     async (_req, res) => {
       try {
         const audit = computeConfigAudit();
@@ -534,7 +527,7 @@ export function registerTestLiveCertificationRoutes(
   app.get(
     "/api/admin/test-live/market-status",
     isAuthenticated,
-    requireAdmin,
+    isAdmin,
     async (_req, res) => {
       try {
         const market = computeMarketStatus();
@@ -549,7 +542,7 @@ export function registerTestLiveCertificationRoutes(
   app.get(
     "/api/admin/test-live/account-status",
     isAuthenticated,
-    requireAdmin,
+    isAdmin,
     async (req, res) => {
       try {
         const { storage } = await import("../storage");
@@ -614,7 +607,7 @@ export function registerTestLiveCertificationRoutes(
   app.post(
     "/api/admin/test-live/disarm",
     isAuthenticated,
-    requireAdmin,
+    isAdmin,
     async (_req, res) => {
       try {
         const wasArmed = isTestLiveArmed();
@@ -630,7 +623,7 @@ export function registerTestLiveCertificationRoutes(
   app.get(
     "/api/admin/test-live/completion-report",
     isAuthenticated,
-    requireAdmin,
+    isAdmin,
     async (_req, res) => {
       try {
         const audit = computeConfigAudit();

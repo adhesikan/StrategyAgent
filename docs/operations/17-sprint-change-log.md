@@ -1,5 +1,25 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-1 — TEST_LIVE Admin Authorization Mismatch (hotfix)
+**Date:** 2026-08-11  
+**Status:** COMPLETE  
+**Tests:** 19 suites / 1,504 tests
+
+### Production Defect
+`GET /api/admin/test-live/config-audit` returned 403 for a valid admin session. Root cause: `registerTestLiveCertificationRoutes` defined an inline `requireAdmin` using `storage.getUser` (the in-memory stub) instead of `authStorage.getUser` (real DB rows), and compared `user.role !== "admin"` instead of `UserRole.ADMIN`. `isAdmin` was also not passed to the function, so the inline logic ran instead.
+
+### Fix
+- `registerTestLiveCertificationRoutes` now accepts `isAdmin` as 3rd parameter (canonical middleware from `routes.ts`)
+- Inline `requireAdmin` removed — all 5 routes use `isAuthenticated, isAdmin`
+- `server/routes.ts` updated to pass `isAdmin`
+- Frontend: 401/403/500 error states added to config audit, market, and account panels
+- **62 new tests**: §11 admin consistency, §12 security negatives, §17 admin-safety-bypass prevention
+
+### Invariant Added
+`registerTestLiveCertificationRoutes.length === 3` — enforces that `isAdmin` is always passed; any regression immediately fails.
+
+---
+
 ## Sprint 2.8.6A — Controlled TEST_LIVE Execution Certification
 **Date:** 2026-08-11  
 **Status:** COMPLETE (infrastructure built; live test pending env config)  

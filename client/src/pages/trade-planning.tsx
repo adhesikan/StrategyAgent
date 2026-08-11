@@ -47,6 +47,7 @@ import type { EquityPlanningScenario } from "@shared/equity-planning-types";
 import { EquityOrderPreviewPanel } from "@/components/execution/EquityOrderPreviewPanel";
 import { OptionsOrderPreviewPanel } from "@/components/execution/OptionsOrderPreviewPanel";
 import { ExecutionReadinessPanel } from "@/components/execution/ExecutionReadinessPanel";
+import { FinalOrderReviewPanel } from "@/components/execution/FinalOrderReviewPanel";
 import {
   EQUITY_PLANNING_DISCLAIMER, SIZING_DISCLAIMER, SCENARIO_DISCLAIMER,
 } from "@shared/equity-planning-types";
@@ -2783,6 +2784,21 @@ export default function TradePlanningPage() {
                 tradePlanId={sessionId}
                 orderDraftId={activeDraftId}
                 onEditDraft={() => window.history.back()}
+              />
+            )}
+
+            {/* Final Order Review Panel — Sprint 2.8.5
+                Shown below ExecutionReadinessPanel only when readiness is READY or READY_WITH_WARNINGS.
+                Generates an immutable snapshot, collects acknowledgements, records explicit confirmation.
+                THIS DOES NOT SUBMIT AN ORDER TO A BROKER.
+                Pipeline: Options Preview → Execution Readiness → Final Review → (2.8.6) Broker Submission */}
+            {sessionId && selectedFamily && [
+              "long_option", "income", "defined_risk_directional",
+              "covered_call", "cash_secured_put", "vertical_spread",
+              "neutral_options", "advanced_options",
+            ].includes(selectedFamily) && (
+              <FinalOrderReviewPanel
+                tradePlanId={sessionId}
               />
             )}
 

@@ -1,0 +1,1250 @@
+# Sprint 2.8.5 — Review, Consent & Final Order Confirmation
+
+You are working in the existing **VCP Trader** application built in Replit.
+
+This sprint belongs in the **main VCP Trader repo**, NOT the MCP repo.
+
+Sprint 2.8.4 is complete with:
+
+* 16 release suites
+* 1,018 tests passing
+* deterministic execution readiness
+* no LLM involvement in readiness
+* `brokerSubmissionEnabled: false`
+* client broker-data injection blocked
+* missing positions/buying power handled safely
+* no live execution
+
+Do not regress any of those invariants.
+
+---
+
+# 1. Sprint goal
+
+Build the final **human review and explicit consent layer** that sits between Execution Readiness and future broker submission.
+
+The workflow should become:
+
+Trade Plan
+→ Options Order Preview
+→ Execution Readiness
+→ Review & Confirm
+→ Future Broker Submission
+
+Sprint 2.8.5 must implement:
+
+* immutable final order review snapshot
+* user-visible final review
+* clear risk/economic summary
+* required acknowledgements where appropriate
+* explicit user confirmation
+* audit trail
+* confirmation expiration / invalidation rules
+* protection against stale or changed order data
+
+This sprint must NOT submit anything to a broker.
+
+Do NOT create:
+
+* order placement
+* cancel/replace
+* smart routing
+* broker submission
+* auto-execution
+* AI execution authority
+
+---
+
+# 2. Inspect before changing code
+
+First inspect:
+
+* Sprint 2.8.3 options preview implementation
+* Sprint 2.8.4 execution readiness types/service/routes
+* `ExecutionReadinessPanel`
+* `OptionsOrderPreviewPanel`
+* `trade-planning.tsx`
+* trade plan lifecycle/state handling
+* database schema
+* activity/audit tables
+* any existing confirmation/consent patterns
+* authentication/user identity handling
+* broker/account context
+* quote freshness logic
+* existing hashing/serialization utilities
+* test structure
+* operations docs
+
+Report briefly:
+
+1. Current relevant architecture
+2. Existing reusable types/services
+3. Existing audit/event model
+4. Current trade-plan lifecycle states
+5. Existing confirmation/consent patterns
+6. Files likely to change
+7. Any conflicts with this sprint plan
+
+Then proceed.
+
+Do not rebuild existing preview or readiness logic.
+
+---
+
+# 3. Core concept
+
+The user must confirm a **specific immutable order snapshot**.
+
+The confirmation must answer:
+
+> “Did this authenticated user explicitly review and confirm this exact proposed order, with this exact pricing snapshot, readiness state, and risk context?”
+
+The confirmation must NOT be a generic:
+
+“User clicked confirm.”
+
+It must bind to the exact final review snapshot.
+
+---
+
+# 4. Final Order Review Snapshot
+
+Create canonical types, preferably in:
+
+`shared/order-confirmation-types.ts`
+
+or extend an appropriate existing shared file.
+
+Suggested model:
+
+```ts
+type FinalOrderReviewSnapshot = {
+  id: string;
+  tradePlanId: string;
+  orderPreviewId: string;
+  executionReadinessId: string;
+
+  userId: string;
+
+  strategyFamily: string;
+  symbol: string;
+
+  legs: FinalOrderReviewLeg[];
+
+  quantity: number;
+
+  pricing: {
+    pricingType: "DEBIT" | "CREDIT" | "EVEN" | "UNKNOWN";
+    netPrice: number | null;
+    limitPrice: number | null;
+    estimatedNotional: number | null;
+  };
+
+  economics: {
+    estimatedMaxProfit: number | null;
+    estimatedMaxLoss: number | null;
+    estimatedCapitalRequired: number | null;
+    breakEvenPoints: number[];
+  };
+
+  readiness: {
+    status: "READY" | "READY_WITH_WARNINGS";
+    blockerCount: number;
+    warningCount: number;
+    findingCodes: string[];
+  };
+
+  marketDataObservedAt: string | null;
+  reviewedDataVersion: string;
+
+  snapshotHash: string;
+
+  createdAt: string;
+  expiresAt: string;
+};
+```
+
+Reuse existing types wherever possible.
+
+Do not create duplicate leg/pricing representations unnecessarily.
+
+---
+
+# 5. Snapshot eligibility
+
+A final review snapshot may only be created if:
+
+* execution readiness exists
+* execution readiness status is not `BLOCKED`
+* required preview exists
+* preview has not been superseded
+* quote freshness is still acceptable
+* user owns/has access to the trade plan
+* required server-side broker/account context was used
+
+If readiness is `BLOCKED`:
+
+do not create a confirmation snapshot.
+
+Return a deterministic error.
+
+Suggested code:
+
+`FR_CONFIRMATION_NOT_ALLOWED_BLOCKED`
+
+or use existing naming conventions.
+
+---
+
+# 6. Snapshot immutability
+
+Once created, a final review snapshot must be treated as immutable.
+
+Do not mutate:
+
+* legs
+* quantity
+* pricing
+* account context
+* readiness result
+* capital estimate
+* risk metrics
+
+If underlying order inputs change:
+
+create a NEW snapshot.
+
+Never update the old confirmed snapshot in place.
+
+This is critical for auditability.
+
+---
+
+# 7. Canonical hashing
+
+Create a deterministic canonical representation of the snapshot and compute:
+
+`snapshotHash`
+
+Use a stable cryptographic hash such as SHA-256.
+
+Do not include volatile fields such as:
+
+* createdAt
+* expiresAt
+* random IDs
+
+inside the hashed business payload unless there is a clear reason.
+
+The hash should bind the business-relevant order state.
+
+Example canonical payload:
+
+```ts
+{
+  tradePlanId,
+  orderPreviewId,
+  executionReadinessId,
+  userId,
+  strategyFamily,
+  symbol,
+  legs,
+  quantity,
+  pricing,
+  economics,
+  readiness,
+  marketDataObservedAt,
+  reviewedDataVersion
+}
+```
+
+Sort object keys deterministically.
+
+Ensure repeated creation from identical business state yields the same business hash.
+
+Add tests for determinism.
+
+---
+
+# 8. Snapshot invalidation
+
+A confirmation snapshot becomes invalid if:
+
+* it expires
+* the order preview changes
+* quantity changes
+* legs change
+* strikes change
+* expirations change
+* pricing changes beyond permitted tolerance
+* execution readiness changes
+* readiness becomes `BLOCKED`
+* account changes
+* broker changes
+* market data becomes stale beyond policy
+* trade plan is cancelled/invalidated
+* user changes relevant order inputs
+
+Do not silently carry confirmation forward.
+
+Require a fresh review snapshot.
+
+---
+
+# 9. Confirmation expiration
+
+Create configurable expiry.
+
+Example:
+
+```ts
+FINAL_REVIEW_CONFIG = {
+  snapshotTtlSeconds: 120,
+};
+```
+
+Do not hard-code magic numbers.
+
+If expired:
+
+status should be:
+
+`EXPIRED`
+
+Require fresh review.
+
+This is especially important for options where quotes move quickly.
+
+---
+
+# 10. Confirmation state model
+
+Create a lifecycle such as:
+
+* `CREATED`
+* `VIEWED`
+* `CONFIRMED`
+* `EXPIRED`
+* `INVALIDATED`
+
+Do not use `APPROVED`.
+
+Avoid compliance-sensitive wording implying investment approval.
+
+Use:
+
+`CONFIRMED`
+
+not:
+
+`AUTHORIZED_BY_AI`
+`APPROVED`
+`RECOMMENDED`
+
+---
+
+# 11. User consent record
+
+Create a separate confirmation/consent record from the snapshot if practical.
+
+Suggested:
+
+```ts
+type OrderConfirmation = {
+  id: string;
+  snapshotId: string;
+  userId: string;
+
+  status: "CONFIRMED";
+
+  acknowledgements: string[];
+
+  confirmedAt: string;
+
+  ipMetadata?: string | null;
+  userAgentMetadata?: string | null;
+
+  snapshotHash: string;
+};
+```
+
+Only store metadata consistent with existing privacy/security practices.
+
+Do not collect new sensitive metadata unless already supported.
+
+---
+
+# 12. Acknowledgements
+
+Use targeted acknowledgements rather than a giant legal checkbox wall.
+
+Possible acknowledgements depend on the order.
+
+Examples:
+
+## All options orders
+
+* I reviewed the order details.
+* I understand options involve risk and may lose value.
+
+## Short options
+
+* I understand short options may be assigned before expiration.
+
+## Defined-risk spread
+
+* I understand the displayed max loss is an estimate based on the entered order terms and may differ because of execution, fees, assignment, or early exercise.
+
+## 0DTE
+
+* I understand this option expires today and can change rapidly.
+
+## Undefined-risk
+
+If future workflow ever supports this:
+
+* I understand potential loss may be substantial or theoretically unlimited.
+
+But Sprint 2.8.4 readiness rules may already block or warn such structures.
+
+Generate acknowledgement requirements deterministically based on findings/order structure.
+
+Do not let the LLM decide which acknowledgements apply.
+
+---
+
+# 13. Required vs informational acknowledgements
+
+Each acknowledgement should contain:
+
+```ts
+{
+  code: string;
+  required: boolean;
+  title: string;
+  text: string;
+}
+```
+
+Examples:
+
+* `ACK_OPTIONS_RISK`
+* `ACK_SHORT_ASSIGNMENT`
+* `ACK_ZERO_DTE`
+* `ACK_DEFINED_RISK_ESTIMATE`
+* `ACK_MARKET_CLOSED`
+* `ACK_BUYING_POWER_ESTIMATE`
+
+Use stable codes.
+
+---
+
+# 14. Prevent fake consent
+
+The server must verify:
+
+* authenticated user identity
+* snapshot belongs to user/trade plan
+* required acknowledgement codes were supplied
+* all required acknowledgements are present
+* snapshot is unexpired
+* snapshot is not invalidated
+* hash matches current stored snapshot
+* current readiness is still acceptable
+
+Do not trust client-side booleans alone.
+
+Client sends acknowledgement codes.
+
+Server validates them.
+
+---
+
+# 15. Server-side revalidation at confirm time
+
+Immediately before accepting confirmation:
+
+revalidate:
+
+* snapshot exists
+* snapshot not expired
+* snapshot hash valid
+* execution readiness not `BLOCKED`
+* relevant quote freshness still acceptable
+* trade plan unchanged
+* preview unchanged
+* broker/account identity unchanged where applicable
+
+If anything changed:
+
+return:
+
+`CONFIRMATION_REVIEW_REQUIRED`
+
+Do not silently regenerate and confirm.
+
+User must see the new state.
+
+---
+
+# 16. Pricing movement tolerance
+
+Define whether slight price movement should invalidate the snapshot.
+
+For v1, use a conservative rule:
+
+If the final order preview price has changed at all in a way that changes the reviewed net/limit economics:
+
+invalidate snapshot.
+
+Do not implement complicated slippage tolerances unless equivalent logic already exists.
+
+A future sprint may add user-defined limit flexibility.
+
+---
+
+# 17. Economics shown to user
+
+The final review page/panel should display, where calculable:
+
+* strategy
+* symbol
+* legs
+* quantity
+* expiration(s)
+* strikes
+* call/put
+* long/short
+* order type
+* net debit/credit
+* limit price
+* estimated premium
+* estimated capital required
+* max profit
+* max loss
+* break-even point(s)
+
+For metrics that cannot be reliably calculated:
+
+show:
+
+`Not available`
+
+Do not fabricate.
+
+---
+
+# 18. Fees and commissions
+
+If fee data is not available:
+
+show:
+
+“Broker fees/commissions, exchange fees, and regulatory fees may not be included.”
+
+Do not estimate fees without a source.
+
+If broker fee estimation already exists:
+
+reuse it and label as estimate.
+
+---
+
+# 19. Assignment / exercise disclosure
+
+If any short leg exists via `isShortIntent()`:
+
+show a prominent risk item:
+
+“Short option legs may be assigned before expiration.”
+
+If in-the-money data exists:
+
+show additional context.
+
+Do not imply assignment probability is known unless actually calculated from supported data.
+
+---
+
+# 20. Final Review UI
+
+Create:
+
+`client/src/components/execution/FinalOrderReviewPanel.tsx`
+
+or equivalent.
+
+Wire it below:
+
+`ExecutionReadinessPanel`
+
+The visual flow should be obvious:
+
+1. Order Preview
+2. Execution Readiness
+3. Final Review & Confirmation
+
+Do not show Final Review if readiness is `BLOCKED`.
+
+---
+
+# 21. Final Review panel layout
+
+Suggested sections:
+
+## Review Order
+
+Strategy
+Underlying
+Quantity
+
+## Legs
+
+Readable table/card per leg.
+
+## Estimated Economics
+
+Net debit/credit
+Capital required
+Max profit
+Max loss
+Break-even
+
+## Execution Readiness
+
+READY or READY WITH WARNINGS
+
+Show warning count and link/expand details.
+
+## Important Risks
+
+Only relevant deterministic warnings.
+
+## Acknowledgements
+
+Checkboxes.
+
+## Confirm
+
+Button:
+
+`Confirm Order for Submission`
+
+Important:
+
+The wording means confirmation for a FUTURE submission step.
+
+It must not submit an order.
+
+Below button:
+
+“Confirmation does not send the order to your broker.”
+
+---
+
+# 22. Button behavior
+
+The button should:
+
+1. validate acknowledgements client-side
+2. call confirmation endpoint
+3. server revalidates snapshot
+4. persist confirmation
+5. return confirmed state
+6. show:
+
+`Order Confirmed`
+
+and:
+
+“Ready for the next submission step.”
+
+Do NOT call broker APIs.
+
+---
+
+# 23. No broker submission
+
+Maintain:
+
+`brokerSubmissionEnabled: false`
+
+or equivalent compile-time invariant from Sprint 2.8.4.
+
+Sprint 2.8.5 must not alter it.
+
+Add tests proving:
+
+* confirmation route does not invoke Tradier submission
+* confirmation route does not invoke TradeStation submission
+* no broker order API is reachable from this flow
+
+---
+
+# 24. Database
+
+Inspect existing schema first.
+
+Prefer minimal tables.
+
+Suggested:
+
+`finalOrderReviewSnapshots`
+
+Fields:
+
+* id
+* tradePlanId
+* orderPreviewId
+* executionReadinessId
+* userId
+* snapshotJson
+* snapshotHash
+* state
+* createdAt
+* expiresAt
+* invalidatedAt
+* invalidationReason
+
+Suggested:
+
+`orderConfirmations`
+
+Fields:
+
+* id
+* snapshotId
+* userId
+* snapshotHash
+* acknowledgementCodes
+* confirmedAt
+
+If current audit/activity schema can safely hold some of this, reuse it.
+
+Do not overload unrelated tables.
+
+---
+
+# 25. API routes
+
+Suggested routes:
+
+## Create final review snapshot
+
+`POST /api/trade-plans/:id/final-review`
+
+Returns:
+
+* snapshot
+* acknowledgements required
+* expiry
+
+## Get current review snapshot
+
+`GET /api/trade-plans/:id/final-review`
+
+## Confirm
+
+`POST /api/trade-plans/:id/final-review/:snapshotId/confirm`
+
+Input:
+
+```ts
+{
+  acknowledgementCodes: string[];
+}
+```
+
+Server validates all required acknowledgement codes.
+
+Use existing route conventions if better.
+
+---
+
+# 26. Audit/activity events
+
+Record lifecycle events.
+
+Examples:
+
+* `FINAL_REVIEW_CREATED`
+* `FINAL_REVIEW_VIEWED`
+* `FINAL_REVIEW_INVALIDATED`
+* `FINAL_REVIEW_EXPIRED`
+* `ORDER_CONFIRMED`
+
+Include:
+
+* tradePlanId
+* snapshotId
+* userId
+* timestamp
+* snapshotHash
+* relevant non-sensitive metadata
+
+Never log secrets or raw broker credentials.
+
+---
+
+# 27. Trade plan lifecycle integration
+
+If the project already has `currentState`, reuse it.
+
+Possible state transitions:
+
+`READINESS_COMPLETE`
+→ `AWAITING_CONFIRMATION`
+→ `CONFIRMED`
+
+Do not invent a parallel lifecycle if one already exists.
+
+Do not move to:
+
+`SUBMITTED`
+
+or equivalent.
+
+---
+
+# 28. Client refresh behavior
+
+If the user refreshes:
+
+* confirmed snapshot remains visible
+* expiry/invalidation state is respected
+* acknowledgement state should not falsely appear unconfirmed if confirmation exists
+* no duplicate confirmation record should be created
+
+Confirm endpoint should be idempotent for the same user + snapshot.
+
+Repeated call should return existing confirmation.
+
+---
+
+# 29. Idempotency
+
+Confirmation must be idempotent.
+
+Same:
+
+* snapshotId
+* userId
+* snapshotHash
+
+should not create duplicate confirmations.
+
+Add DB uniqueness if appropriate.
+
+---
+
+# 30. Race conditions
+
+Handle:
+
+* snapshot expires during confirmation
+* readiness changes between page load and click
+* preview regenerated before confirmation
+* user double-clicks confirm
+* concurrent tabs
+
+Use DB transaction/locking semantics appropriate to current stack.
+
+At minimum:
+
+server revalidation + uniqueness constraint.
+
+---
+
+# 31. Security
+
+Server must derive:
+
+* user identity
+* trade plan ownership
+* snapshot ownership
+* broker/account context
+
+Do not accept these from client.
+
+Reject forbidden fields if client attempts to send:
+
+* userId
+* account balance
+* broker permissions
+* readiness status
+* snapshotHash override
+* broker account ID
+* buying power
+* positions
+
+Use the same defensive pattern as Sprint 2.8.4.
+
+---
+
+# 32. Compliance wording
+
+Forbidden user-facing labels:
+
+* Approved
+* Recommended
+* Guaranteed
+* Safe Trade
+* Best Trade
+* AI Approved
+* Trade Approved
+
+Allowed:
+
+* Ready for Review
+* Ready With Warnings
+* Blocked
+* Confirmed
+* Ready for Submission Step
+
+Add tests preventing forbidden labels in the confirmation UI.
+
+---
+
+# 33. AI boundary
+
+No LLM is required in this sprint.
+
+If existing AI explanation UI is present:
+
+AI may explain:
+
+* what a warning means
+* what assignment means
+* what max loss means
+
+But AI cannot:
+
+* waive acknowledgements
+* confirm for user
+* alter snapshot
+* alter readiness
+* change blocked state
+* approve submission
+
+Document this explicitly.
+
+---
+
+# 34. Review snapshot versioning
+
+Add:
+
+`reviewedDataVersion`
+
+or:
+
+`confirmationSchemaVersion`
+
+Example:
+
+`"1"`
+
+This allows future changes without breaking old audit records.
+
+Also version:
+
+acknowledgement rules if appropriate.
+
+---
+
+# 35. Tests
+
+Create dedicated suite:
+
+`test:order-confirmation`
+
+Add to:
+
+`test:release`
+and
+`test:release:full`
+
+Do not reduce existing release coverage.
+
+Minimum scenarios:
+
+1. READY readiness creates review snapshot
+
+2. READY_WITH_WARNINGS creates review snapshot
+
+3. BLOCKED readiness cannot create snapshot
+
+4. snapshot contains exact preview legs
+
+5. snapshot contains exact pricing
+
+6. snapshot contains readiness status
+
+7. deterministic identical payload produces same business hash
+
+8. changed quantity changes hash
+
+9. changed strike changes hash
+
+10. changed expiration changes hash
+
+11. changed limit price changes hash
+
+12. expired snapshot cannot confirm
+
+13. invalidated snapshot cannot confirm
+
+14. missing required acknowledgement rejects confirmation
+
+15. extra irrelevant acknowledgement does not bypass required ones
+
+16. all required acknowledgements → confirmation succeeds
+
+17. short leg requires assignment acknowledgement
+
+18. 0DTE requires 0DTE acknowledgement
+
+19. defined-risk trade gets defined-risk estimate acknowledgement
+
+20. user cannot confirm someone else's snapshot
+
+21. client cannot inject userId
+
+22. client cannot inject snapshotHash
+
+23. client cannot inject broker/account state
+
+24. readiness changed to BLOCKED → confirmation rejected
+
+25. preview changed → confirmation rejected
+
+26. pricing changed → confirmation rejected
+
+27. market data stale → confirmation rejected
+
+28. double-click / duplicate confirm is idempotent
+
+29. concurrent confirm calls create one confirmation
+
+30. confirmed record persists correct snapshotHash
+
+31. confirmed snapshot remains immutable
+
+32. old snapshot invalidated after new preview
+
+33. confirmation route makes zero LLM calls
+
+34. confirmation route makes zero broker submission calls
+
+35. `brokerSubmissionEnabled` remains false
+
+36. forbidden wording not present in UI
+
+37. missing max-profit displays unavailable
+
+38. missing max-loss displays unavailable
+
+39. missing fee data clearly disclaimed
+
+40. refresh retrieves confirmed state
+
+41. snapshot expiration uses config
+
+42. audit events created correctly
+
+43. no sensitive broker fields logged
+
+44. TypeScript prevents unsupported confirmation states
+
+---
+
+# 36. Regression gate
+
+At completion run:
+
+```bash
+npm run test:options-preview
+npm run test:execution-readiness
+npm run test:order-confirmation
+npm run test:release
+```
+
+Also run TypeScript checks.
+
+Acceptance target:
+
+* existing 1,018 tests remain passing
+* all Sprint 2.8.5 tests pass
+* no regressions
+* zero new TS errors in sprint files
+* no live broker submission path introduced
+
+---
+
+# 37. Documentation
+
+Create:
+
+`docs/operations/43-review-consent-and-final-order-confirmation.md`
+
+Document:
+
+* architecture
+* snapshot model
+* hashing
+* immutability
+* expiration
+* invalidation
+* acknowledgements
+* confirmation revalidation
+* idempotency
+* audit trail
+* security boundaries
+* broker submission prohibition
+* AI boundary
+* lifecycle
+* tests
+* limitations
+
+Update:
+
+`docs/operations/17-sprint-change-log.md`
+
+Prepend Sprint 2.8.5 entry.
+
+Update:
+
+`.agents/memory/`
+
+Add topic memory + MEMORY.md entry.
+
+---
+
+# 38. Follow-up tasks
+
+Track, but do not implement unless directly required:
+
+#138 — Broker timeout handling
+
+#139 — Live quote integration tests
+
+Also propose:
+
+#140 — Broker Submission Orchestration
+
+But do NOT implement #140 in Sprint 2.8.5.
+
+---
+
+# 39. Acceptance criteria
+
+Sprint 2.8.5 is COMPLETE only when:
+
+* final review snapshot is server-generated
+* snapshot is immutable
+* snapshot is cryptographically hashed
+* snapshot expires
+* changed order data invalidates confirmation
+* BLOCKED readiness cannot proceed
+* final economics are displayed
+* relevant risks are displayed
+* required acknowledgements are deterministic
+* server validates acknowledgements
+* confirmation is explicit
+* confirmation is authenticated
+* confirmation is persisted
+* confirmation is idempotent
+* audit events are persisted
+* confirmed snapshot is bound to its hash
+* user cannot confirm stale/changed order
+* no AI can confirm
+* no client can fake readiness/account state
+* no broker order is submitted
+* `brokerSubmissionEnabled` remains false
+* all prior tests remain green
+* new release suite is green
+* zero new TypeScript errors
+* docs complete
+
+---
+
+# 40. Intentionally deferred
+
+Do NOT implement:
+
+* live broker submission
+* Tradier order placement
+* TradeStation order placement
+* order cancel/replace
+* order status polling/streaming
+* fills
+* partial fills
+* smart order routing
+* automated repricing
+* AI execution
+* automatic confirmation
+* unattended trading
+
+These belong later.
+
+---
+
+# 41. Recommended Sprint 2.8.6
+
+After 2.8.5, propose:
+
+## Sprint 2.8.6 — Broker Submission Orchestration
+
+But treat that as a major safety boundary.
+
+Before any live submission, require:
+
+* explicit feature flag
+* broker adapter isolation
+* idempotency keys
+* broker timeout handling (#138)
+* live quote integration tests (#139)
+* dry-run/paper environment where available
+* immutable confirmed snapshot
+* final server-side stale-data check
+* strict account ownership
+* broker response persistence
+* zero autonomous execution
+* audit trail
+
+Do not implement 2.8.6 during this sprint.
+
+---
+
+# Final response required
+
+When complete, return:
+
+### Sprint 2.8.5 Summary
+
+* Status
+* Release suites
+* Tests passing / total
+* Files created
+* Files modified
+* Schema changes
+* Routes added
+* Snapshot/hash design
+* Expiry policy
+* Invalidation rules
+* Acknowledgements
+* UI changes
+* Audit events
+* Security controls
+* Compliance controls
+* TypeScript status
+* Deferred items
+* Recommended 2.8.6 scope
+
+Explicitly confirm:
+
+**No broker order submission was introduced in Sprint 2.8.5.**
+
+Also confirm:
+
+**A user confirmation is cryptographically bound to the exact immutable order snapshot that was reviewed.**

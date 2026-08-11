@@ -1,5 +1,64 @@
 # Sprint Change Log
 
+## Sprint 2.8.5 — Review, Consent & Final Order Confirmation
+**Date:** 2026-08-11  
+**Status:** COMPLETE  
+**Tests:** 1,090 (17 suites, all passing)
+
+### What Was Built
+Human review and explicit consent layer between Execution Readiness (2.8.4) and future broker submission. Creates an immutable `FinalOrderReviewSnapshot` cryptographically hashed with SHA-256. Generates deterministic required acknowledgements from order structure. Server-side revalidation before accepting confirmation. Confirmation is idempotent (unique constraint on snapshot_id + user_id). No broker order submission.
+
+**Key invariant (user-stated):** Confirmation cannot survive a changed preview or changed readiness result.
+
+### New Files
+- `shared/order-confirmation-types.ts` — all canonical types, acknowledgement definitions and codes, lifecycle states, compliance constants, forbidden label list, `BROKER_SUBMISSION_ENABLED: false` compile-time literal
+- `server/services/order-confirmation-service.ts` — pure engine: `buildFinalOrderReviewSnapshot`, `computeSnapshotHash`, `determineRequiredAcknowledgements`, `revalidateBeforeConfirm`, `checkAllRequiredAcknowledgementsPresent`, DB helpers, audit logging
+- `server/routes/order-confirmation.ts` — 3 routes (static `/health` before dynamic); forbidden-field guard; idempotency; server-side revalidation before confirm
+- `server/routes/__tests__/order-confirmation.test.ts` — 72 scenarios covering all spec requirements
+- `client/src/components/execution/FinalOrderReviewPanel.tsx` — order summary, legs table, economics, readiness summary, acknowledgement checkboxes, confirm button, confirmed banner
+- `docs/operations/43-review-consent-and-final-order-confirmation.md` — full architecture doc
+
+### Modified Files
+- `server/routes.ts` — registered `registerOrderConfirmationRoutes` + `ensureOrderConfirmationTables`
+- `package.json` — added `test:order-confirmation`; updated `test:release` + `test:release:full` (17 suites)
+- `client/src/pages/trade-planning.tsx` — `FinalOrderReviewPanel` wired below `ExecutionReadinessPanel` for all options families
+
+### DB Changes
+3 new raw-SQL tables (no Drizzle schema change):
+- `final_order_review_snapshots` — immutable snapshot store
+- `order_confirmations` — confirmation records, UNIQUE(snapshot_id, user_id)
+- `order_confirmation_audit_events` — full audit trail
+
+### Key Invariants Introduced
+- Confirmation cannot survive a changed preview or changed readiness result
+- `BROKER_SUBMISSION_ENABLED: false` — literal type constant (compile-time)
+- Snapshot hash = SHA-256(sortObjectKeys(canonicalPayload)) — deterministic, field-sensitive
+- BLOCKED readiness → no snapshot created
+- Missing max profit/loss → null, never fabricated
+- Idempotent confirm endpoint (same snapshot + user → same confirmation)
+- Forbidden labels enforced: APPROVED, AUTHORIZED, RECOMMENDED, GUARANTEED, etc.
+
+### Snapshot Hash Design
+SHA-256 of canonical payload with sorted keys. Includes: tradePlanId, orderPreviewId, executionReadinessId, userId, strategyFamily, symbol, legs, quantity, pricing, economics, readiness, marketDataObservedAt, reviewedDataVersion. Excludes volatile fields (id, createdAt, expiresAt).
+
+### Expiry Policy
+Default 120s TTL (intentionally short for options). Configurable via `FinalReviewConfig.snapshotTtlSeconds`.
+
+### Acknowledgements (deterministic, no LLM)
+- `ACK_REVIEWED_ORDER` — always required
+- `ACK_OPTIONS_RISK` — always required
+- `ACK_SHORT_ASSIGNMENT` — any short intent leg
+- `ACK_ZERO_DTE` — any 0DTE leg
+- `ACK_DEFINED_RISK_ESTIMATE` — spreads/condors/collar
+- `ACK_BUYING_POWER_ESTIMATE` — capital estimate present
+- `ACK_MULTI_LEG` — MULTI_LEG_OPTION
+- `ACK_NEAR_EXPIRATION`, `ACK_MARKET_CLOSED` — conditional
+
+### 2.8.6 Handoff
+Next: Sprint 2.8.6 — Broker Submission Orchestration (major safety boundary requiring all guards listed in §26 of doc 43).
+
+---
+
 ## Sprint 2.8.4 — Execution Readiness & Guardrails
 **Date:** 2026-08-11  
 **Status:** COMPLETE  

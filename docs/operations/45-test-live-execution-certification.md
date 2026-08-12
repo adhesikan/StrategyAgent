@@ -6,6 +6,52 @@
 
 ---
 
+## Production Defect Record — Self-Healing Ranking Hydration (Defect-3)
+
+**Defect ID:** 2.8.6A-defect-3  
+**Severity:** Critical (BLOCKING — same symptom as Defect-2 after deploy)  
+**Status:** FIXED
+
+### Symptom
+After Defect-2 fix was deployed to Railway: WMT still rejected with "WMT is not a current research candidate" from Trade Planning.
+
+### Why Defect-2 Was Insufficient
+`scheduleOpportunityEngine()` is fire-and-forget (returns void immediately). The HTTP server was accepting requests while `initOpportunityEngine()` (and its new `computeRankingForSnapshot`) was still running async. Requests in this startup window saw `getLatestRanking() === null`. Additionally `getOpportunityIntelligence()` had no DB fallback — null ranking = null result, immediately.
+
+### Root Cause
+- **Startup ordering gap**: async init vs synchronous server-ready state
+- **No lazy hydration**: `getOpportunityIntelligence()` had zero fallback when ranking was null
+- **Error conflation**: 503 (infra down) and 404 (symbol absent) produced identical user messages
+
+### Architecture Fix
+`getOpportunityIntelligence()` now calls `ensureRankingHydrated()` before reading the ranking:
+1. Fast path: ranking non-null → proceed immediately (no DB overhead)
+2. Ranking is null → load persisted snapshot from DB, compute ranking, set it
+3. Stampede protection: shared `rankingHydrationPromise` prevents concurrent DB floods
+4. After hydration (success or failure), proceed with whatever ranking state is available
+
+### Error Distinction
+- `503 OPPORTUNITY_DATA_UNAVAILABLE` — ranking could not be hydrated (infrastructure)
+- `404 NOT_IN_CURRENT_SNAPSHOT` — ranking hydrated, symbol genuinely absent
+
+### New Client Behavior
+Trade Planning shows "Try Again" button for 503. Shows "not a candidate" only for 404. Opportunity Workspace shows degraded notice when `opportunityEngineAvailable: false`.
+
+### Railway UAT Protocol (Post-Deploy)
+1. Open `/trade-planning/WMT` — should load (not reject)
+2. Refresh 10 times — every request must consistently load Trade Planning
+3. Navigate `/opportunities/WMT` → "Open Trade Planning" → `/trade-planning/WMT` — repeat 5 times, no intermittent rejection
+4. Restart a Railway replica — immediately after healthy startup, Trade Planning should work without winning advisory scan lock
+5. Check Platform Health `/admin/platform-health` — Opportunity Intelligence card should show `rankingAvailable: true` and `hydrationFailureCount: 0` after successful startup
+
+### Permanent Invariant
+Advisory lock controls expensive scan only. Read eligibility (ranking access) is independent of lock ownership. Every instance self-heals from the persisted DB snapshot.
+
+### Test Coverage  
+Comprehensive tests in `candidate-consistency-v2.test.ts` covering §13–§18, §26, §29.
+
+---
+
 ## Production Defect Record — Trade Planning Candidate Consistency Mismatch
 
 **Defect ID:** 2.8.6A-defect-2  

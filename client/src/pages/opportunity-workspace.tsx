@@ -258,6 +258,12 @@ interface WorkspaceV2Response {
   companyName: string | null;
   opportunity: CanonicalOpportunity | null;
   /**
+   * true → the Opportunity Engine ranking is hydrated; data is reliable.
+   * false → ranking could not be loaded (infrastructure/transient issue).
+   * When false, show a degraded state rather than implying the symbol is unqualified.
+   */
+  opportunityEngineAvailable: boolean;
+  /**
    * Server-authoritative flag: true when this symbol is in the current
    * canonical opportunity snapshot and Trade Planning will accept it.
    * Gate the "Open Trade Planning" CTA on this field — do not re-derive
@@ -1706,7 +1712,8 @@ export default function OpportunityWorkspacePage() {
   const ranking = todayQuery.data?.ranking ?? null;
   const ws = workspaceQuery.data;
   const opportunity = ws?.opportunity ?? null;
-  // Server-authoritative eligibility: never re-derive from `opportunity` client-side.
+  // Server-authoritative flags: never re-derive client-side.
+  const opportunityEngineAvailable = ws?.opportunityEngineAvailable ?? true; // default true to avoid false degraded state while loading
   const tradePlanningEligible = ws?.tradePlanningEligible ?? false;
   const candidate = ranking ? findScoredCandidate(symbol, ranking) : null;
   const score = candidate?.opportunityScore ?? null;
@@ -1979,7 +1986,15 @@ export default function OpportunityWorkspacePage() {
         <AIResearchSection symbol={symbol} navigate={navigate} />
 
         {/* Trade Planning Handoff — gated on server-authoritative eligibility */}
-        {tradePlanningEligible && opportunity && <TradePlanningHandoff opportunity={opportunity} />}
+        {opportunityEngineAvailable && tradePlanningEligible && opportunity && (
+          <TradePlanningHandoff opportunity={opportunity} />
+        )}
+        {/* Engine degraded — show notice instead of CTA */}
+        {!opportunityEngineAvailable && ws && (
+          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-300 text-center">
+            Opportunity data is temporarily unavailable. Trade Planning will be accessible once data reloads.
+          </div>
+        )}
 
         {/* Limitations */}
         {limitations.length > 0 && (

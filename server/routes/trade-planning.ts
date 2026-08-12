@@ -939,13 +939,26 @@ export function registerTradePlanningRoutes(
         noRanking:          NO_RANKING_DISCLAIMER,
       });
     } catch (err: any) {
-      if (err?.message?.includes("No qualified research candidate")) {
+      // 503 — infrastructure issue: ranking unavailable (transient, retriable)
+      if (err?.code === "OPPORTUNITY_DATA_UNAVAILABLE") {
+        return res.status(503).json({
+          message: err.message,
+          code:    "OPPORTUNITY_DATA_UNAVAILABLE",
+          symbol,
+          hint:    "The opportunity ranking data is temporarily unavailable. This is a transient infrastructure condition. Please try again in a moment.",
+        });
+      }
+      // 404 — symbol genuinely absent from the current ranked snapshot
+      if (
+        err?.code === "NOT_IN_CURRENT_SNAPSHOT" ||
+        err?.message?.includes("No qualified research candidate")
+      ) {
         return res.status(404).json({
           message: err.message,
-          code: "NOT_IN_CURRENT_SNAPSHOT",
+          code:    "NOT_IN_CURRENT_SNAPSHOT",
           symbol,
-          hint: "Only qualified research candidates can be used as the basis for trade planning.",
-          detail: "The symbol is not present in the current opportunity ranking snapshot. " +
+          hint:    "Only qualified research candidates can be used as the basis for trade planning.",
+          detail:  "The symbol is not present in the current opportunity ranking snapshot. " +
             "The ranking updates on each scan cycle. Navigate to the Opportunity Workspace " +
             "to confirm the symbol is in the current snapshot before opening Trade Planning.",
         });

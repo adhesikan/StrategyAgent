@@ -1,0 +1,922 @@
+# Sprint 2.8.6A — BLOCKING DEFECT-3
+
+## Railway Trade Planning Still Rejects Current Candidate After Defect-2 Fix
+
+### Production evidence
+
+Defect-2 was deployed to Railway.
+
+After deployment:
+
+1. All Ranked Opportunities loads normally.
+2. WMT appears as a current ranked opportunity.
+3. `/opportunities/WMT` loads the WMT Opportunity Workspace.
+4. `Open Trade Planning` is visible.
+5. Clicking it correctly navigates to:
+
+`/trade-planning/WMT`
+
+6. Trade Planning STILL displays:
+
+> WMT is not a current research candidate
+
+> Trade Planning requires a qualified research candidate from the Opportunity Engine.
+
+Therefore the Defect-2 startup hydration fix is insufficient in the real Railway runtime.
+
+This remains a BLOCKING TEST_LIVE certification defect.
+
+DO NOT:
+
+* bypass qualification
+* special-case WMT
+* use the TEST_LIVE allowlist to qualify a stock
+* lower score thresholds
+* make Trade Planning accept arbitrary symbols
+* weaken execution controls
+* change broker submission logic
+* continue TEST_LIVE until this is resolved
+
+---
+
+# 1. Treat the Previous Root Cause as Incomplete
+
+Defect-2 concluded that lock-losing Railway instances had:
+
+`getLatestRanking() === null`
+
+because `initOpportunityEngine()` loaded the DB snapshot but did not derive and set ranking.
+
+The deployed fix added:
+
+`computeRankingForSnapshot(stored, null)`
+
+and:
+
+`setLatestRanking(ranking)`
+
+during initialization.
+
+Production still fails.
+
+Therefore determine WHY the Trade Planning request can still see no canonical WMT opportunity.
+
+Do not assume the previous diagnosis remains sufficient.
+
+---
+
+# 2. Reproduce Using Production-Equivalent Multi-Instance Semantics
+
+Trace the exact request:
+
+`GET /api/trade-planning/WMT/context`
+
+or actual endpoint called by `/trade-planning/WMT`.
+
+Instrument safely in development to capture:
+
+* process/instance identifier
+* initialized yes/no
+* current snapshot ID
+* latestRanking present yes/no
+* ranking snapshot ID if available
+* ranking bucket counts
+* whether WMT exists in ranking
+* result of `getCanonicalOpportunity("WMT")`
+* initialization timestamp
+* last ranking update timestamp
+
+Do not log sensitive information.
+
+Add temporary structured diagnostics if necessary, then retain only useful safe operational metrics.
+
+---
+
+# 3. Verify Trade Planning Endpoint Actually Uses the Expected Module
+
+Inspect imports for:
+
+`getCanonicalOpportunity`
+
+`getLatestRanking`
+
+`initOpportunityEngine`
+
+`setLatestRanking`
+
+`computeRankingForSnapshot`
+
+Determine whether:
+
+* Trade Planning imports the same opportunity-engine module instance
+* Opportunity Workspace imports the same module path
+* ranking routes import the same module path
+* aliases / relative imports cause duplicate compiled modules
+* server bundling produces multiple module instances
+* ESM/CJS path differences duplicate singleton state
+
+Search for alternate paths such as:
+
+`../services/opportunity-engine`
+
+`@server/services/opportunity-engine`
+
+compiled aliases
+
+barrel exports
+
+duplicate files
+
+A process-local singleton is only useful if all consumers share the same module instance.
+
+Report exact findings.
+
+---
+
+# 4. Audit Startup Ordering
+
+Determine exactly when:
+
+`initOpportunityEngine()`
+
+runs relative to:
+
+* route registration
+* HTTP listener start
+* database connection readiness
+* snapshot-table availability
+* background opportunity scan
+* reference-data initialization
+
+Check whether Railway can accept requests before initialization finishes.
+
+If yes:
+
+fix startup so critical opportunity initialization completes before the application is considered ready.
+
+Do not merely add arbitrary sleep.
+
+Preferred:
+
+`await initOpportunityEngine()`
+
+before serving dependent routes, where architecturally safe.
+
+---
+
+# 5. Verify Initialization Happens on EVERY Web Instance
+
+The prior fix assumes each Railway web process executes `initOpportunityEngine()`.
+
+Prove it.
+
+Search all server entrypoints.
+
+Determine whether Railway may launch:
+
+* web process
+* worker process
+* multiple web replicas
+* alternate server entrypoints
+
+Confirm the web process serving `/api/trade-planning/...` invokes initialization.
+
+Add safe startup log:
+
+`opportunity_engine_initialized`
+
+with:
+
+* snapshotId
+* rankedSymbols
+* process instance identifier
+* initializedAt
+
+No private data.
+
+---
+
+# 6. Check Initialization Failure Handling
+
+Inspect:
+
+`initOpportunityEngine()`
+
+Determine what happens if:
+
+* latest snapshot query fails
+* reference data unavailable
+* `computeRankingForSnapshot()` throws
+* ranking contains malformed data
+* no snapshot exists
+* startup database is temporarily unavailable
+
+Do not swallow initialization errors and continue with:
+
+`latestRanking = null`
+
+while serving candidate-dependent routes as healthy.
+
+If initialization fails:
+
+Platform Health should show degraded/not ready.
+
+Trade Planning should return a data-unavailable diagnostic, not falsely say the ticker isn't a candidate.
+
+---
+
+# 7. Separate Two Different Conditions
+
+Currently Trade Planning appears to collapse:
+
+A. Current ranking exists, WMT absent
+
+and
+
+B. Current ranking is unavailable/null
+
+into the same user message:
+
+"not a current research candidate"
+
+This is incorrect operationally.
+
+Create canonical distinctions:
+
+`NOT_IN_CURRENT_SNAPSHOT`
+
+`OPPORTUNITY_RANKING_UNAVAILABLE`
+
+`OPPORTUNITY_ENGINE_NOT_INITIALIZED`
+
+`OPPORTUNITY_DATA_DEGRADED`
+
+or equivalent existing conventions.
+
+Only return:
+
+`NOT_IN_CURRENT_SNAPSHOT`
+
+when a valid current ranking exists and the symbol is genuinely absent.
+
+If ranking is unavailable:
+
+fail as infrastructure/data availability, not candidate rejection.
+
+---
+
+# 8. Make Canonical Opportunity Lookup Self-Healing
+
+This is the preferred architectural improvement.
+
+The persisted PostgreSQL snapshot is the canonical durable source.
+
+Process-local ranking should be an optimization, NOT a single point of truth.
+
+Refactor safely so:
+
+`getCanonicalOpportunity(symbol)`
+
+or the lower-level canonical current-ranking getter can recover if:
+
+`latestRanking == null`
+
+or ranking snapshot identity is stale/missing.
+
+Preferred conceptual flow:
+
+1. Check current in-memory ranking.
+2. If valid/current → use it.
+3. If missing/uninitialized → load latest persisted snapshot.
+4. Compute ranking deterministically.
+5. setLatestRanking().
+6. retry canonical symbol lookup.
+7. Return result.
+
+This should happen through ONE canonical helper, not independently in Trade Planning.
+
+Do not create DB query duplication across every route.
+
+---
+
+# 9. Avoid Request-Level Stampede
+
+If several requests hit an unhydrated instance simultaneously:
+
+only one hydration should occur.
+
+Use:
+
+* shared hydration promise
+* mutex
+* existing concurrency primitive
+
+Do not let 50 requests all recompute the ranking from DB.
+
+Example conceptual state:
+
+`rankingHydrationPromise`
+
+Requests await the same promise.
+
+---
+
+# 10. Snapshot Identity
+
+Add ranking metadata if not already present:
+
+`sourceSnapshotId`
+
+The in-memory ranking must identify the persisted snapshot from which it was derived.
+
+Canonical getter should be able to determine:
+
+* current DB snapshot ID
+* in-memory ranking snapshot ID
+
+If they differ and the ranking must represent the latest snapshot:
+
+rehydrate/recompute safely.
+
+Do not query DB on every request if unnecessary; use appropriate snapshot/version signalling.
+
+---
+
+# 11. Review runOpportunityEngine()
+
+Inspect whether:
+
+`runOpportunityEngine()`
+
+or other processes later set:
+
+`latestRanking = null`
+
+clear caches
+
+replace ranking
+
+fail after acquiring the advisory lock
+
+or create a window where ranking disappears.
+
+Ranking updates should preferably be atomic:
+
+compute new ranking fully
+
+then replace old ranking
+
+Do not clear current valid ranking before the replacement is ready.
+
+---
+
+# 12. Advisory Lock Semantics
+
+Re-audit the PostgreSQL advisory lock.
+
+The lock should control:
+
+expensive scan/recomputation
+
+NOT whether an individual web replica can READ the canonical persisted current result.
+
+Every instance must be capable of hydrating read state from the DB regardless of lock ownership.
+
+Add a permanent invariant for this.
+
+---
+
+# 13. Multi-Instance Invariant
+
+Create a test model representing:
+
+Instance A:
+wins scan lock
+
+Instance B:
+loses scan lock
+
+Both have DB access.
+
+After initialization:
+
+A.getCanonicalOpportunity(WMT) != null
+
+B.getCanonicalOpportunity(WMT) != null
+
+A and B must derive from the same persisted snapshot.
+
+Lock ownership must not affect read eligibility.
+
+---
+
+# 14. Lazy-Hydration Invariant
+
+Test:
+
+`latestRanking = null`
+
+persisted latest snapshot contains WMT
+
+Call:
+
+`getCanonicalOpportunity("WMT")`
+
+Expected:
+
+* ranking hydrated
+* WMT returned
+* no arbitrary rejection
+
+Then second call:
+
+does not unnecessarily rehydrate.
+
+---
+
+# 15. Concurrent Lazy-Hydration Test
+
+Set:
+
+`latestRanking = null`
+
+Fire 20 concurrent canonical opportunity requests.
+
+Expected:
+
+* one snapshot load / one ranking hydration
+* all 20 receive consistent results
+* no null race
+* no partial ranking
+
+---
+
+# 16. Genuine Absent-Symbol Test
+
+Persisted latest snapshot does NOT contain XYZ.
+
+Hydrate ranking.
+
+`getCanonicalOpportunity("XYZ")`
+
+Expected:
+
+null / NOT_IN_CURRENT_SNAPSHOT
+
+This preserves qualification security.
+
+---
+
+# 17. Snapshot Rollover Test
+
+Persist snapshot S1 with WMT.
+
+Hydrate.
+
+Persist newer S2 without WMT.
+
+Trigger canonical refresh mechanism.
+
+Expected:
+
+all routes converge to S2.
+
+No permanent stale WMT eligibility.
+
+---
+
+# 18. Cross-Surface Production Contract
+
+With one canonical snapshot S:
+
+`/api/opportunities/today`
+
+`/api/opportunities/workspace/WMT`
+
+`/api/trade-planning/WMT/context`
+
+must agree.
+
+For a ranked WMT:
+
+Ranked Opportunities:
+present
+
+Workspace:
+opportunity non-null
+tradePlanningEligible = true
+
+Trade Planning:
+accepted
+
+For absent symbol:
+
+Ranked Opportunities:
+absent
+
+Workspace:
+tradePlanningEligible = false
+
+Trade Planning:
+NOT_IN_CURRENT_SNAPSHOT
+
+---
+
+# 19. Opportunity Workspace Must Not Mask Missing Opportunity Data
+
+Review the existing `Promise.allSettled` behavior.
+
+If canonical opportunity lookup fails because the Opportunity Engine is unavailable:
+
+do not render a normal-looking Workspace as if everything is fine.
+
+Differentiate:
+
+partial supporting subsystem unavailable
+
+from:
+
+PRIMARY canonical opportunity unavailable.
+
+The primary opportunity object is foundational.
+
+If it cannot be resolved:
+
+show appropriate degraded/unavailable state.
+
+Do not show Trade Planning CTA.
+
+---
+
+# 20. Platform Health
+
+Enhance Opportunity Intelligence / Opportunity Engine health with safe fields:
+
+* initialized
+* sourceSnapshotId
+* rankingAvailable
+* rankedSymbolCount
+* initializedAt
+* lastRankingUpdatedAt
+* hydrationFailures
+* lastHydrationFailureAt
+
+On every Railway instance where possible.
+
+Health should not say HEALTHY when:
+
+latest persisted snapshot exists
+
+but canonical ranking cannot be produced.
+
+---
+
+# 21. Railway Operational Diagnostics
+
+Add enough safe structured logging to verify after deployment:
+
+Instance starts:
+
+`opportunity_engine_initialized`
+
+with:
+
+snapshotId
+rankedSymbols
+instance/process ref
+
+When self-healing occurs:
+
+`opportunity_ranking_hydrated`
+
+When it fails:
+
+`opportunity_ranking_hydration_failed`
+
+When Trade Planning rejects a genuine symbol:
+
+`trade_planning_candidate_not_in_snapshot`
+
+When Trade Planning cannot determine eligibility due to data unavailability:
+
+`trade_planning_opportunity_data_unavailable`
+
+No noisy logs on every successful request.
+
+---
+
+# 22. Trade Planning Route Behavior
+
+After fix:
+
+If ranking available and WMT current:
+
+200
+
+If ranking available and symbol absent:
+
+404 with:
+
+`code: NOT_IN_CURRENT_SNAPSHOT`
+
+If ranking unavailable / hydration failed:
+
+prefer:
+
+503
+
+with safe code such as:
+
+`OPPORTUNITY_DATA_UNAVAILABLE`
+
+Do not return 404 for infrastructure failure.
+
+This distinction is important.
+
+---
+
+# 23. Client Behavior
+
+Update `/trade-planning/:symbol` UI accordingly.
+
+For real absent symbol:
+
+"WMT is not a current research candidate"
+
+For data infrastructure issue:
+
+"Current opportunity data is temporarily unavailable. Please try again."
+
+Provide:
+
+Retry
+
+Do not tell the user the security is unqualified when the system simply lacks its ranking state.
+
+---
+
+# 24. TEST_LIVE Certification Remains Blocked
+
+Do not resume TEST_LIVE in code.
+
+Do not alter:
+
+BROKER_EXECUTION_ENABLED
+
+BROKER_EXECUTION_MODE
+
+EXECUTION_TEST_LIVE_ARMED
+
+account allowlist
+
+symbol allowlist
+
+caps
+
+submission logic
+
+This is a research-data consistency defect only.
+
+---
+
+# 25. Candidate Allowlist Independence
+
+Retain invariant:
+
+`EXECUTION_TEST_SYMBOL_ALLOWLIST`
+
+never influences:
+
+Opportunity Engine
+
+ranking
+
+getCanonicalOpportunity
+
+Trade Planning eligibility
+
+---
+
+# 26. Deployment Readiness Test
+
+Create production-equivalent sequence:
+
+1. Persist current snapshot containing WMT.
+2. Start simulated Instance A.
+3. Start simulated Instance B.
+4. Only A wins scan lock.
+5. Both initialize.
+6. Query Ranked Opportunities on A.
+7. Query Workspace on B.
+8. Query Trade Planning on alternating instances.
+9. Repeat 20 times.
+
+Expected:
+
+WMT consistently accepted.
+
+No instance-dependent null.
+
+---
+
+# 27. Repeated-Request UAT
+
+After Railway deployment:
+
+Open:
+
+`/trade-planning/WMT`
+
+Refresh at least 10 times.
+
+Every request must consistently load Trade Planning.
+
+Also alternate:
+
+`/opportunities/WMT`
+
+→ `/trade-planning/WMT`
+
+several times.
+
+No intermittent rejection.
+
+Add this to Doc 45.
+
+---
+
+# 28. Railway Replica Restart UAT
+
+If feasible operationally:
+
+restart/redeploy a replica.
+
+Immediately after healthy startup:
+
+Trade Planning should work.
+
+No dependency on that replica winning the advisory scan lock.
+
+---
+
+# 29. Tests
+
+Add comprehensive Defect-3 tests covering:
+
+* startup hydration
+* lazy hydration
+* hydration concurrency
+* lock winner
+* lock loser
+* same snapshot across instances
+* missing ranking with persisted snapshot
+* missing persisted snapshot
+* hydration failure
+* correct 503 vs 404 semantics
+* WMT present
+* absent symbol
+* snapshot rollover
+* Opportunity Workspace CTA
+* cross-surface consistency
+* TEST_LIVE independence
+* no qualification weakening
+
+---
+
+# 30. Permanent Quality Gates
+
+Run:
+
+`npm run test:candidate-consistency`
+
+Opportunity Engine tests
+
+Opportunity Workspace tests
+
+Trade Planning tests
+
+Trade Preferences tests
+
+Execution Preflight
+
+Order Preparation
+
+Equity Preview
+
+Options Preview
+
+Execution Readiness / 2.8.4
+
+Order Confirmation / 2.8.5
+
+Execution / 2.8.6
+
+TEST_LIVE certification / 2.8.6A
+
+Smoke
+
+Regression
+
+Integration
+
+Security
+
+Compliance
+
+DB
+
+Migrations
+
+Performance
+
+Invariants
+
+Idempotency
+
+`npm run test:release`
+
+`npm run build`
+
+TypeScript
+
+Report exact counts.
+
+---
+
+# 31. Documentation
+
+Update:
+
+`docs/operations/17-sprint-change-log.md`
+
+`docs/operations/45-test-live-execution-certification.md`
+
+appropriate Opportunity Engine operations doc
+
+Opportunity Workspace doc
+
+Trade Planning doc
+
+Document:
+
+* Defect-2 fix and why it was insufficient
+* Defect-3 root cause
+* durable snapshot vs in-memory derived ranking
+* self-healing ranking hydration
+* multi-instance invariant
+* 404 vs 503 distinction
+* Railway UAT
+
+---
+
+# 32. Do Not Deploy Automatically
+
+Do not deploy.
+
+Do not submit broker orders.
+
+Return the fix for review.
+
+---
+
+# Completion Report
+
+Return:
+
+1. Exact Defect-3 root cause
+2. Why Defect-2 did not fully solve production
+3. Whether all Railway instances called initOpportunityEngine
+4. Startup-ordering findings
+5. Module singleton/import findings
+6. Advisory-lock findings
+7. Canonical persisted snapshot behavior
+8. In-memory ranking behavior
+9. Self-healing hydration design
+10. Concurrency/stampede protection
+11. Snapshot identity model
+12. Atomic ranking replacement
+13. Trade Planning 404 semantics
+14. Trade Planning 503 semantics
+15. Opportunity Workspace primary-data behavior
+16. Platform Health changes
+17. Structured logging added
+18. Files changed
+19. Schema impact
+20. WMT regression
+21. Absent-symbol regression
+22. Lock-winner test
+23. Lock-loser test
+24. Concurrent hydration test
+25. Snapshot rollover test
+26. Cross-surface consistency test
+27. TEST_LIVE independence test
+28. Opportunity Workspace tests
+29. Trade Planning tests
+30. Execution regressions
+31. Security tests
+32. Full automated test count
+33. Build result
+34. TypeScript result
+35. Operations Manual updates
+36. Railway repeated-refresh UAT instructions
+37. READY_FOR_RAILWAY_REDEPLOY / NOT_READY

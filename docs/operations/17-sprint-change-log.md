@@ -1,5 +1,39 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-3 — Self-Healing Lazy Ranking Hydration (hotfix)
+**Date:** 2026-08-12  
+**Status:** COMPLETE  
+**Tests:** 21 suites / N tests (see completion report)
+
+### Production Symptom
+Defect-2 fix was deployed. WMT still rejected with "not a current research candidate" on Railway.
+
+### Why Defect-2 Was Insufficient
+The Defect-2 fix added `computeRankingForSnapshot + setLatestRanking` to `initOpportunityEngine()`. However, `scheduleOpportunityEngine()` (which calls `initOpportunityEngine`) is **fire-and-forget** — it returns void immediately and the HTTP server is already accepting requests. The async `computeRankingForSnapshot` call (which queries the DB for institutional data) could take 100ms–2s. Any Trade Planning request that arrived in this window still saw `getLatestRanking() === null`. Additionally `getOpportunityIntelligence()` had **no fallback** — it returned null immediately if the ranking was null.
+
+### Root Cause (Defect-3)
+Three contributing factors:
+1. **Startup ordering**: `scheduleOpportunityEngine()` is fire-and-forget from `server/index.ts`. HTTP server accepts requests before `initOpportunityEngine()` (and its async `computeRankingForSnapshot`) completes.
+2. **No lazy hydration**: `getOpportunityIntelligence()` called `getLatestRanking()` and returned null immediately — no DB fallback.
+3. **Error conflation**: `getLatestRanking() === null` (infrastructure issue) and "symbol absent from ranking" produced the same user-facing message.
+
+### Fix
+1. **Self-healing lazy hydration** — `getOpportunityIntelligence()` now calls `await ensureRankingHydrated()` before reading `getLatestRanking()`. If the ranking is null, it loads the persisted DB snapshot, computes the ranking, and calls `setLatestRanking()`.
+2. **Stampede protection** — A single shared `rankingHydrationPromise` ensures that concurrent requests share ONE hydration cycle, not N parallel DB+compute operations.
+3. **`isOpportunityRankingAvailable()`** — new export; returns true when ranking is hydrated.
+4. **Trade Planning error codes** — distinguishes `OPPORTUNITY_DATA_UNAVAILABLE` (503) from `NOT_IN_CURRENT_SNAPSHOT` (404).
+5. **`opportunityEngineAvailable`** field added to `WorkspaceV2Response` — client shows degraded state vs "not a candidate" correctly.
+6. **Platform Health** — new `rankingAvailable`, `hydrationFailureCount`, `lastHydrationFailureAt`, `lastHydrationSuccessAt` fields.
+7. **Structured logs** — `opportunity_ranking_hydrated`, `opportunity_ranking_hydration_failed`, `trade_planning_candidate_not_in_snapshot`, `trade_planning_opportunity_data_unavailable`.
+
+### Multi-Instance Invariant (permanent)
+Every instance that needs `getLatestRanking()` is now self-healing: if null, it loads from DB rather than returning an error. The advisory lock controls the expensive scan only, not read eligibility.
+
+### Schema Impact
+None. No new DB tables or columns.
+
+---
+
 ## Sprint 2.8.6A-defect-2 — Trade Planning Candidate Consistency (hotfix)
 **Date:** 2026-08-12  
 **Status:** COMPLETE  

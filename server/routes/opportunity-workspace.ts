@@ -30,7 +30,10 @@ import { getSymbolHistory } from "../services/opportunity-snapshot-store";
 import { getInstitutionalSignal } from "../services/institutional/signal-engine";
 import { getLatestRanking } from "../services/opportunity-ranking-engine";
 import { explainSymbolChange, type SymbolHistoryRow } from "../services/opportunity-change-engine";
-import { getCanonicalOpportunity } from "../services/opportunity-intelligence-service";
+import {
+  getCanonicalOpportunity,
+  isOpportunityRankingAvailable,
+} from "../services/opportunity-intelligence-service";
 import {
   getLatestSectorDetail,
   getLatestThemeSnapshots,
@@ -133,6 +136,17 @@ export interface WorkspaceV2Response {
   symbol: string;
   companyName: string | null;
   opportunity: CanonicalOpportunity | null;
+  /**
+   * true  → the Opportunity Engine ranking is hydrated; symbol data is reliable.
+   * false → the ranking could not be loaded (infrastructure/transient issue).
+   *
+   * When false, the workspace is in a degraded state. The client MUST NOT show
+   * the Trade Planning CTA and SHOULD show a "data temporarily unavailable" notice
+   * rather than implying the symbol is unqualified.
+   *
+   * Sprint 2.8.6A-defect-3: distinguishes "engine down" from "symbol absent".
+   */
+  opportunityEngineAvailable: boolean;
   /**
    * Server-authoritative Trade Planning eligibility flag.
    *
@@ -537,6 +551,7 @@ export function registerOpportunityWorkspaceRoute(
           symbol: raw,
           companyName: opportunity?.companyName ?? COMPANY_NAMES[raw] ?? null,
           opportunity,
+          opportunityEngineAvailable: isOpportunityRankingAvailable(),
           tradePlanningEligible: opportunity !== null,
           history,
           institutional,

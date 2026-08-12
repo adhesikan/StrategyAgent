@@ -619,24 +619,31 @@ async function checkCollections(): Promise<HealthCard> {
 
 function checkOpportunityIntelligence(): HealthCard {
   const snap = getOpportunityIntelligenceHealth();
-  const status: HealthStatus = !snap.hasSnapshot ? "UNKNOWN"
-    : snap.totalOpportunities === 0              ? "DEGRADED"
+  const status: HealthStatus =
+    !snap.rankingAvailable             ? (snap.hydrationFailureCount > 0 ? "DEGRADED" : "UNKNOWN")
+    : snap.totalOpportunities === 0    ? "DEGRADED"
     : "HEALTHY";
   return {
     status,
-    summary: snap.hasSnapshot
+    summary: snap.rankingAvailable
       ? `${snap.totalOpportunities} opportunities — ${snap.growthCount} growth, ${snap.incomeCount} income, ${snap.watchlistCount} watch`
-      : "No opportunity snapshot available yet",
+      : snap.hydrationFailureCount > 0
+        ? `Ranking unavailable — ${snap.hydrationFailureCount} hydration failure(s)`
+        : "Ranking not yet initialized (startup in progress)",
     lastSuccessAt: snap.lastGeneratedAt,
     details: {
-      hasSnapshot:       snap.hasSnapshot,
-      totalOpportunities: snap.totalOpportunities,
-      growthCount:       snap.growthCount,
-      incomeCount:       snap.incomeCount,
-      watchlistCount:    snap.watchlistCount,
-      approachingCount:  snap.approachingCount,
-      lastGeneratedAt:   snap.lastGeneratedAt ?? "Never",
-      marketRegime:      snap.marketRegime     ?? "Unknown",
+      hasSnapshot:            snap.hasSnapshot,
+      rankingAvailable:       snap.rankingAvailable,
+      totalOpportunities:     snap.totalOpportunities,
+      growthCount:            snap.growthCount,
+      incomeCount:            snap.incomeCount,
+      watchlistCount:         snap.watchlistCount,
+      approachingCount:       snap.approachingCount,
+      lastGeneratedAt:        snap.lastGeneratedAt        ?? "Never",
+      marketRegime:           snap.marketRegime           ?? "Unknown",
+      hydrationFailureCount:  snap.hydrationFailureCount,
+      lastHydrationFailureAt: snap.lastHydrationFailureAt ?? "Never",
+      lastHydrationSuccessAt: snap.lastHydrationSuccessAt ?? "Never",
     },
   };
 }

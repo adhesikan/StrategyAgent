@@ -2489,28 +2489,56 @@ export default function TradePlanningPage() {
           </div>
         )}
 
-        {/* 404 — no qualified candidate */}
-        {contextQuery.isError && (
-          <Card className="border-border/50">
-            <CardContent className="p-8 text-center space-y-4">
-              <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto" aria-hidden="true" />
-              <div>
-                <p className="font-semibold">{symbol} is not a current research candidate</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Trade Planning requires a qualified research candidate from the Opportunity Engine.
-                </p>
-              </div>
-              <div className="flex justify-center gap-2">
-                <Link href="/opportunities">
-                  <Button size="sm" variant="outline">View Opportunities</Button>
-                </Link>
-                <Link href="/dashboard">
-                  <Button size="sm" variant="outline">Dashboard</Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Error — distinguish infrastructure (503) from absent candidate (404) */}
+        {contextQuery.isError && (() => {
+          const errMsg = (contextQuery.error as Error | undefined)?.message ?? "";
+          const isInfraError = errMsg.startsWith("503");
+          if (isInfraError) {
+            return (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center space-y-4">
+                  <AlertCircle className="h-8 w-8 text-yellow-400 mx-auto" aria-hidden="true" />
+                  <div>
+                    <p className="font-semibold">Opportunity data is temporarily unavailable</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      The opportunity ranking could not be loaded at this time. Please try again in a moment.
+                    </p>
+                  </div>
+                  <div className="flex justify-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => contextQuery.refetch()}>
+                      Try Again
+                    </Button>
+                    <Link href="/opportunities">
+                      <Button size="sm" variant="outline">View Opportunities</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+          // 404 — symbol genuinely not in the current ranked snapshot
+          return (
+            <Card className="border-border/50">
+              <CardContent className="p-8 text-center space-y-4">
+                <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto" aria-hidden="true" />
+                <div>
+                  <p className="font-semibold">{symbol} is not a current research candidate</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Trade Planning requires a qualified research candidate from the Opportunity Engine.
+                  </p>
+                </div>
+                <div className="flex justify-center gap-2">
+                  <Link href="/opportunities">
+                    <Button size="sm" variant="outline">View Opportunities</Button>
+                  </Link>
+                  <Link href="/dashboard">
+                    <Button size="sm" variant="outline">Dashboard</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Main content */}
         {ctx && (

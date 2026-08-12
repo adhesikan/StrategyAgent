@@ -28,6 +28,7 @@ import { db } from "../db";
 import { tradePlanningSessions } from "../../shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { getLatestRanking } from "./opportunity-ranking-engine";
 import {
   getCanonicalOpportunity,
 } from "./opportunity-intelligence-service";
@@ -580,11 +581,41 @@ export async function buildTradePlanningContext(
     ts:          new Date().toISOString(),
   }));
 
-  // Fetch canonical opportunity (authoritative — never client-supplied)
+  // Fetch canonical opportunity (authoritative — never client-supplied).
+  // getCanonicalOpportunity now auto-hydrates from the persisted DB snapshot
+  // if the in-memory ranking is null, so this call is self-healing.
   const opp = await getCanonicalOpportunity(symbol);
   if (!opp) {
     recordContextFailed();
-    throw new Error(`No qualified research candidate found for symbol: ${symbol}`);
+    // Distinguish: is the ranking infrastructure down, or is the symbol genuinely absent?
+    // After getCanonicalOpportunity returns, the ranking is either hydrated or definitively
+    // unavailable (no persisted snapshot or hydration failed).
+    if (getLatestRanking() === null) {
+      // Infrastructure issue: ranking could not be hydrated from DB.
+      process.stderr.write(
+        JSON.stringify({
+          event:  "trade_planning_opportunity_data_unavailable",
+          symbol,
+          detail: "Opportunity ranking unavailable after hydration attempt.",
+        }) + "\n",
+      );
+      const err = new Error(
+        "Opportunity data is temporarily unavailable. Please try again in a moment.",
+      );
+      (err as any).code = "OPPORTUNITY_DATA_UNAVAILABLE";
+      throw err;
+    }
+    // Ranking is available but the symbol is not in the current snapshot.
+    process.stderr.write(
+      JSON.stringify({
+        event:  "trade_planning_candidate_not_in_snapshot",
+        symbol,
+        detail: "Symbol not found in current ranked opportunity snapshot.",
+      }) + "\n",
+    );
+    const err = new Error(`No qualified research candidate found for symbol: ${symbol}`);
+    (err as any).code = "NOT_IN_CURRENT_SNAPSHOT";
+    throw err;
   }
 
   // Cache check

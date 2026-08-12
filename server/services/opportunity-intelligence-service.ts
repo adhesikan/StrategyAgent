@@ -23,7 +23,12 @@
 import { db } from "../db";
 import { marketDataSymbols } from "../../shared/schema";
 import { inArray } from "drizzle-orm";
-import { getLatestRanking } from "./opportunity-ranking-engine";
+import {
+  getLatestRanking,
+  setLatestRanking,
+  computeRankingForSnapshot,
+} from "./opportunity-ranking-engine";
+import { getLatestValidSnapshot } from "./opportunity-snapshot-store";
 import { getAllThemes } from "../config/theme-registry";
 import type {
   CanonicalOpportunity,
@@ -47,6 +52,113 @@ import type {
   OpportunityScore,
 } from "./opportunity-ranking-engine";
 import type { RankedTradeCandidate } from "../routes/ranked-trade-search";
+
+// ---------------------------------------------------------------------------
+// Lazy ranking hydration — self-healing, stampede-protected
+// ---------------------------------------------------------------------------
+//
+// ARCHITECTURE NOTE (Defect-3 fix):
+//
+// The in-memory ranking (getLatestRanking) starts as null and is only populated
+// after scheduleOpportunityEngine() completes initialization — which is fully
+// async and fire-and-forget from server/index.ts. On Railway, the HTTP server
+// starts accepting requests BEFORE this initialization completes. Any request
+// in that window (which can last several seconds) saw getLatestRanking()===null
+// and was rejected with "not a current research candidate."
+//
+// The fix: if getLatestRanking() is null when getOpportunityIntelligence() is
+// called, trigger ONE lazy hydration from the persisted PostgreSQL snapshot.
+// Concurrent callers share a single hydration promise (stampede protection).
+// The promise clears on completion so future null events can retry.
+//
+// This makes the process-local ranking an optimistic cache rather than a single
+// point of truth. The canonical durable source is always the persisted snapshot.
+
+/** Shared hydration promise — prevents ranking-from-DB recomputation stampede. */
+let rankingHydrationPromise: Promise<void> | null = null;
+
+/** Diagnostic counters — safe to expose on platform health. */
+let hydrationFailureCount  = 0;
+let lastHydrationFailureAt: string | null = null;
+let lastHydrationSuccessAt: string | null = null;
+
+/**
+ * Ensures the in-memory ranking is hydrated from the persisted DB snapshot.
+ *
+ * Flow:
+ *   1. If ranking is already present  → return immediately (fast path, no lock).
+ *   2. If hydration is already in-flight → await the same promise (stampede guard).
+ *   3. Otherwise → load latest valid snapshot, compute ranking, setLatestRanking.
+ *   4. Clear the promise on completion (success or failure) so the next null event
+ *      can trigger a fresh retry.
+ *
+ * Never throws. Failures are logged via structured stderr only.
+ */
+async function ensureRankingHydrated(): Promise<void> {
+  if (getLatestRanking() !== null) return; // fast path
+  if (rankingHydrationPromise)     return rankingHydrationPromise; // stampede guard
+
+  const pid = process.pid;
+
+  rankingHydrationPromise = (async () => {
+    try {
+      const stored = await getLatestValidSnapshot();
+      if (stored) {
+        const ranking = await computeRankingForSnapshot(stored, null);
+        setLatestRanking(ranking);
+        lastHydrationSuccessAt = new Date().toISOString();
+
+        const allSymbols = [
+          ...(ranking.topGrowth   ?? []).map((c) => c.symbol),
+          ...(ranking.topIncome   ?? []).map((c) => c.symbol),
+          ...(ranking.watchlist   ?? []).map((c) => c.symbol),
+          ...(ranking.approaching ?? []).map((c) => c.symbol),
+        ];
+        process.stderr.write(
+          JSON.stringify({
+            event:             "opportunity_ranking_hydrated",
+            snapshotId:        stored.id,
+            rankedSymbolCount: allSymbols.length,
+            rankedSymbols:     allSymbols.slice(0, 20),
+            pid,
+            hydratedAt:        lastHydrationSuccessAt,
+          }) + "\n",
+        );
+      } else {
+        process.stderr.write(
+          JSON.stringify({
+            event:  "opportunity_ranking_hydration_no_snapshot",
+            detail: "No valid persisted snapshot found; ranking remains null.",
+            pid,
+          }) + "\n",
+        );
+      }
+    } catch (err: any) {
+      hydrationFailureCount++;
+      lastHydrationFailureAt = new Date().toISOString();
+      process.stderr.write(
+        JSON.stringify({
+          event:                "opportunity_ranking_hydration_failed",
+          error:                String(err?.message ?? err).slice(0, 200),
+          hydrationFailureCount,
+          pid,
+        }) + "\n",
+      );
+    } finally {
+      rankingHydrationPromise = null; // clear so next null-ranking event can retry
+    }
+  })();
+
+  return rankingHydrationPromise;
+}
+
+/**
+ * Returns true if the in-memory ranking is currently hydrated.
+ * Used by routes to distinguish "symbol absent" from "engine unavailable".
+ */
+export function isOpportunityRankingAvailable(): boolean {
+  return getLatestRanking() !== null;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers — pure functions
@@ -468,6 +580,12 @@ export async function getOpportunityIntelligence(
   filters?: OpportunityFilterOptions,
   sort?:    OpportunitySortOptions,
 ): Promise<OpportunityIntelligenceResult | null> {
+  // Self-healing: if in-memory ranking is null, attempt lazy hydration from the
+  // persisted DB snapshot before giving up. Stampede-protected: concurrent callers
+  // share one hydration promise. After hydration completes (or fails), proceed with
+  // whatever ranking state is available.
+  await ensureRankingHydrated();
+
   const ranking = getLatestRanking();
   if (!ranking) return null;
 
@@ -577,19 +695,29 @@ export async function getCanonicalOpportunity(symbol: string): Promise<Canonical
  * getOpportunityIntelligenceHealth — platform health snapshot.
  */
 export function getOpportunityIntelligenceHealth(): {
-  hasSnapshot:      boolean;
-  totalOpportunities: number;
-  growthCount:      number;
-  incomeCount:      number;
-  watchlistCount:   number;
-  approachingCount: number;
-  lastGeneratedAt:  string | null;
-  marketRegime:     string | null;
+  hasSnapshot:           boolean;
+  rankingAvailable:      boolean;
+  totalOpportunities:    number;
+  growthCount:           number;
+  incomeCount:           number;
+  watchlistCount:        number;
+  approachingCount:      number;
+  lastGeneratedAt:       string | null;
+  marketRegime:          string | null;
+  hydrationFailureCount: number;
+  lastHydrationFailureAt: string | null;
+  lastHydrationSuccessAt: string | null;
 } {
   const ranking = getLatestRanking();
+  const base = {
+    hydrationFailureCount,
+    lastHydrationFailureAt,
+    lastHydrationSuccessAt,
+  };
   if (!ranking) {
     return {
       hasSnapshot:       false,
+      rankingAvailable:  false,
       totalOpportunities: 0,
       growthCount:       0,
       incomeCount:       0,
@@ -597,10 +725,12 @@ export function getOpportunityIntelligenceHealth(): {
       approachingCount:  0,
       lastGeneratedAt:   null,
       marketRegime:      null,
+      ...base,
     };
   }
   return {
     hasSnapshot:       true,
+    rankingAvailable:  true,
     totalOpportunities: (ranking.topGrowth?.length ?? 0)
                       + (ranking.topIncome?.length ?? 0)
                       + (ranking.watchlist?.length ?? 0)
@@ -611,5 +741,6 @@ export function getOpportunityIntelligenceHealth(): {
     approachingCount: ranking.approaching?.length  ?? 0,
     lastGeneratedAt:  ranking.generatedAt,
     marketRegime:     ranking.regime,
+    ...base,
   };
 }

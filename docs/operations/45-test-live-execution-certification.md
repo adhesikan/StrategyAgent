@@ -412,6 +412,40 @@ F. Log out → directly request `/api/trade-planning/WMT/context` → **MUST ret
 
 ---
 
+## 8C. Defect-7 — Trade Plan Detail React Hook Ordering Failure
+
+| Field | Value |
+|-------|-------|
+| Symptom | `/trade-plans/:id` (NVDA equity plan) crashes with Minified React error #310. Error boundary shown. Execution Preflight unreachable. |
+| Decoded error | "Rendered more hooks than expected." — 12 hooks on loading render, 18 hooks on loaded render. |
+| Root cause | 6 hooks (`useState×2`, `useBrokerStatus`, `useQuery×3`) were placed **after** the `if (isLoading) return` and `if (error || !plan) return` guards in `trade-plan-detail.tsx`. React detects hook count change between renders. |
+| Fix | All 6 hooks moved before the first early return guard (line 207). `enabled: !!id && !!plan` conditions prevent unnecessary requests during loading — no logic change. |
+| File | `client/src/pages/trade-plan-detail.tsx` |
+| Regression tests | `server/routes/__tests__/trade-plan-detail-hook-order.test.ts` — §HK1–§HK25 (37 tests) |
+| Release gate | 25 suites / 1,678 tests passing |
+| Bundle test | `NODE_ENV=production node dist/index.cjs` → GET `/trade-plans` → `ROUTE_STATUS=200`, `PROCESS_ALIVE=true` |
+| Status | **READY_FOR_RAILWAY_REDEPLOY** |
+
+**Railway UAT after redeploy (Defect-7)**:
+
+A. Login → navigate to `/trade-plans` → plan library renders ✓
+
+B. Click "Open" on NVDA plan → `/trade-plans/:id` → **MUST render without React error** (was: "Something went wrong rendering this page")
+
+C. Verify these sections render:
+  - Trade Plan summary (symbol, type, status, lifecycle, score, risk, version) ✓
+  - Thesis / What Changed / Structure Snapshot / Risk Summary ✓
+  - Invalidation Conditions / Checklist / Private Notes ✓
+  - Timeline / Activity / Related Research / Lifecycle Summary ✓
+
+D. Scroll to "Execution Preflight" section → **MUST be visible** (not behind error boundary)
+
+E. Open Trade Plan Detail for at least 2 different plans → no React error ✓
+
+F. Refresh `/trade-plans/:id` directly → no React error on cold load ✓
+
+---
+
 ## 8B. Defect-6B — POST /session Process Crash (Railway UAT)
 
 | Field | Value |

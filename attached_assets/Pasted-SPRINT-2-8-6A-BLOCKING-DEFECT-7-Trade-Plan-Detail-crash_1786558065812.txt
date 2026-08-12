@@ -1,0 +1,485 @@
+SPRINT 2.8.6A — BLOCKING DEFECT-7
+Trade Plan Detail crashes with React error #310
+
+PRODUCTION REPRODUCTION
+
+The previous Trade Planning session persistence issue has been bypassed
+successfully with NVDA.
+
+Production workflow now succeeds through:
+
+NVDA Opportunity
+→ Trade Planning
+→ Explore Equity
+→ "Planning session saved"
+→ Equity Research Scenario
+→ Create Trade Plan
+→ Trade Plans Library
+
+Trade Plan Library correctly shows:
+
+Symbol: NVDA
+Type: Equity
+Status: Draft
+Lifecycle: Current
+Score at creation: 67
+Current score: 67
+Risk: high
+Version: v1
+
+However:
+
+Trade Plans
+→ NVDA
+→ Open
+
+causes the Trade Plan Detail page to crash.
+
+Production UI displays:
+
+"Something went wrong rendering this page"
+
+"Minified React error #310"
+
+This is now a BLOCKING TEST_LIVE certification defect because the user
+cannot reach Execution Preflight.
+
+DO NOT:
+- delete the NVDA Trade Plan
+- bypass Trade Plan Detail
+- weaken execution gates
+- change Opportunity Engine qualification
+- change TEST_LIVE configuration
+- submit any broker order
+
+======================================================================
+1. REPRODUCE EXACT PRODUCTION FLOW
+======================================================================
+
+Use an existing EQUITY Trade Plan matching:
+
+symbol = NVDA
+status = DRAFT
+lifecycle = CURRENT
+broad expression = STOCK / Equity
+risk = high
+
+Navigate:
+
+/trade-plans
+→ Open NVDA plan
+→ /trade-plans/:id
+
+Reproduce the React #310 failure.
+
+Test both:
+
+A. development build
+B. production build
+
+Production build is mandatory because the observed error is minified.
+
+======================================================================
+2. DECODE REACT ERROR #310
+======================================================================
+
+Determine the full React development error corresponding to #310.
+
+Capture:
+
+full error message
+component name
+component stack
+source file
+source line
+
+Do not stop at "React #310."
+
+======================================================================
+3. AUDIT trade-plan-detail.tsx HOOK ORDER
+======================================================================
+
+Start with:
+
+client/src/pages/trade-plan-detail.tsx
+
+Audit EVERY React hook in this page and components added during:
+
+2.7.5 Trade Plan Workspace
+2.7.6 Lifecycle Intelligence
+2.8.0 Execution Preflight
+2.8.1 Order Preparation
+2.8.1A Trade Preferences
+2.8.2 Equity Preview
+2.8.3 Options Preview
+2.8.4 Execution Readiness
+2.8.5 Final Order Review
+2.8.6 Execution
+2.8.6A TEST_LIVE Certification
+
+Look specifically for:
+
+if (...) useQuery(...)
+if (...) useMemo(...)
+if (...) useEffect(...)
+if (...) useState(...)
+if (...) useCallback(...)
+
+and hooks appearing AFTER:
+
+if (isLoading) return ...
+if (!plan) return ...
+if (error) return ...
+if (!brokerConnected) return ...
+if (!preflight) return ...
+if (plan.type === ...) return ...
+
+React hooks must execute in identical order on every render.
+
+======================================================================
+4. AUDIT CHILD EXECUTION COMPONENTS
+======================================================================
+
+Audit all conditionally rendered children, especially:
+
+ExecutionPreflightPanel
+OrderPreparationPanel
+EquityOrderPreviewPanel
+OptionsOrderPreviewPanel
+ExecutionReadinessPanel
+FinalOrderReviewPanel
+
+and any lifecycle/activity components on Trade Plan Detail.
+
+A child component may contain the hook-order violation even if
+trade-plan-detail.tsx itself is correct.
+
+======================================================================
+5. PAY SPECIAL ATTENTION TO ASYNC PLAN LOADING
+======================================================================
+
+This is a high-probability pattern:
+
+Render 1:
+plan === undefined
+→ component returns early
+
+Render 2:
+plan loaded
+→ additional hooks execute
+
+or:
+
+Render 1:
+preflight absent
+Render 2:
+preflight present
+→ new hooks execute
+
+Find whether async loading changes the number/order of hooks.
+
+Do not assume this is the cause — prove it.
+
+======================================================================
+6. CHECK EQUITY-SPECIFIC PATH
+======================================================================
+
+The production fixture is an EQUITY plan.
+
+Verify whether code such as:
+
+if (plan.type === "equity") {
+   const query = useQuery(...)
+}
+
+exists anywhere.
+
+Hooks cannot be conditional based on:
+
+plan type
+selected expression
+preflight status
+broker status
+draft existence
+preview existence
+execution status
+
+Move hooks to unconditional component scope and control execution using
+query `enabled`, hook arguments, or child component boundaries.
+
+======================================================================
+7. FIX ARCHITECTURALLY
+======================================================================
+
+Preferred patterns:
+
+const query = useQuery({
+  ...,
+  enabled: Boolean(requiredCondition)
+});
+
+OR:
+
+function EquityExecutionSection(props) {
+   // equity-specific hooks live unconditionally inside this child
+}
+
+Then conditionally render the COMPONENT:
+
+{isEquity && <EquityExecutionSection ... />}
+
+Do NOT conditionally call the hook itself.
+
+Do not suppress the React error.
+
+Do not modify React internals.
+
+======================================================================
+8. ERROR BOUNDARY
+======================================================================
+
+Keep the existing render error boundary.
+
+Verify it:
+
+- catches unexpected rendering errors
+- does not expose stack traces/secrets
+- offers Try Again / Go Back
+- logs sufficient safe diagnostics
+
+But the error boundary is NOT the fix.
+
+======================================================================
+9. TEST THE EXISTING NVDA PLAN
+======================================================================
+
+After fixing:
+
+Trade Plans
+→ NVDA
+→ Open
+
+must render successfully.
+
+Verify these existing sections still render:
+
+Trade Plan summary
+Thesis
+What Changed
+Structure Snapshot
+Risk Summary
+Invalidation Conditions
+Checklist
+Private Notes
+Freshness
+Timeline / Activity
+Related Research
+Lifecycle Summary
+
+Then verify Execution Preflight is accessible.
+
+======================================================================
+10. PERMANENT HOOK REGRESSION TEST
+======================================================================
+
+Add a React rendering regression test that exercises at least:
+
+Render 1: loading
+Render 2: plan loaded
+Render 3: lifecycle loaded
+Render 4: broker state loaded
+Render 5: preflight state changes
+Render 6: order draft appears
+
+Assert:
+
+no hook-order exception
+no console React hook warning
+page remains mounted
+
+======================================================================
+11. PLAN TYPE MATRIX
+======================================================================
+
+Render Trade Plan Detail for:
+
+EQUITY
+LONG_OPTION
+COVERED_CALL
+CASH_SECURED_PUT
+VERTICAL_SPREAD
+ADVANCED_OPTIONS
+
+or the actual canonical equivalents.
+
+Every supported plan type must render without hook-order violations.
+
+======================================================================
+12. NULL / OPTIONAL DATA MATRIX
+======================================================================
+
+Test plans where:
+
+goalId = null
+portfolioId = null
+invalidation price = null
+capital at risk = null
+risk analysis = absent
+lifecycle activity = empty
+preflight = absent
+order draft = absent
+preview = absent
+execution = absent
+
+The newly created NVDA plan currently has several optional planning values,
+so this matrix is important.
+
+======================================================================
+13. EXECUTION GATING REGRESSION
+======================================================================
+
+The fix must NOT change execution gating.
+
+For a newly created Trade Plan:
+
+Execution Preflight may be shown.
+
+Order Preparation must remain unavailable until its required preflight
+state exists.
+
+Preview must require a valid draft.
+
+Final Review must require readiness prerequisites.
+
+Broker submission must remain separately gated.
+
+======================================================================
+14. BROKER MUTATION ASSERTION
+======================================================================
+
+Opening Trade Plan Detail must cause:
+
+placeOrder = 0
+submitOrder = 0
+replaceOrder = 0
+cancelOrder = 0
+
+Rendering a page must never mutate broker state.
+
+======================================================================
+15. TEST_LIVE SAFETY
+======================================================================
+
+Do not change:
+
+BROKER_EXECUTION_ENABLED
+BROKER_EXECUTION_MODE
+EXECUTION_TEST_LIVE_ARMED
+EXECUTION_TEST_ACCOUNT_ALLOWLIST
+EXECUTION_TEST_SYMBOL_ALLOWLIST
+EXECUTION_TEST_MAX_NOTIONAL
+EXECUTION_TEST_MAX_EQUITY_QTY
+
+NVDA remains the TEST_LIVE certification symbol.
+
+======================================================================
+16. PRODUCTION BUILD TEST
+======================================================================
+
+Run:
+
+npm run build
+
+Boot the actual production bundle.
+
+Navigate to:
+
+/trade-plans
+→ NVDA
+→ Open
+
+The production bundle must render the page without React #310.
+
+This is mandatory.
+
+======================================================================
+17. EXISTING QUALITY GATES
+======================================================================
+
+Run all current mandatory suites including:
+
+smoke
+regression
+integration
+security
+lifecycle
+migrations
+compliance
+db
+performance
+invariants
+idempotency
+candidate-consistency
+trade preferences
+execution preflight
+order preparation
+equity preview
+options preview
+execution readiness
+order confirmation
+execution
+TEST_LIVE certification
+release
+release:full
+
+Report exact counts.
+
+======================================================================
+18. DOCUMENTATION
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+docs/operations/33-trade-plan-workspace.md
+docs/operations/45-test-live-execution-certification.md
+
+Record this as:
+
+Sprint 2.8.6A-defect-7
+Trade Plan Detail React Hook Ordering Failure
+
+======================================================================
+COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Full decoded React #310 error
+2. Exact offending component
+3. Exact source file
+4. Exact source line
+5. Hook involved
+6. Why hook count/order changed between renders
+7. Root cause
+8. Files changed
+9. Architectural fix
+10. NVDA Trade Plan render result
+11. Loading → loaded render result
+12. Equity plan result
+13. Other plan-type results
+14. Null/optional-data matrix result
+15. Execution Preflight visible YES/NO
+16. Execution gates unchanged YES/NO
+17. Broker mutation count
+18. TEST_LIVE settings unchanged YES/NO
+19. New regression tests/count
+20. Full suite count
+21. Build result
+22. Production-bundle render result
+23. TypeScript result
+24. Documentation updated
+25. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not submit a broker order.

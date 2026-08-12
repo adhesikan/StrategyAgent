@@ -468,4 +468,19 @@ No entitlement enforcement in this sprint.
 
 ---
 
+---
+
+## Defect History
+
+### Defect-7 — Trade Plan Detail React Hook Ordering (Sprint 2.8.6A)
+**Date:** 2026-08-12 | **Status:** FIXED
+
+`/trade-plans/:id` crashed with Minified React error #310 on any equity plan. Root cause: 6 hooks (`useState×2`, `useBrokerStatus`, `useQuery×3` for lifecycle/preflight/activity data) were placed **after** the `if (isLoading)` and `if (error || !plan)` early return guards — added incrementally across Sprints 2.7.6, 2.8.0, and 2.8.1. Hook count was 12 on loading render and 18 on loaded render.
+
+**Fix:** All hooks moved before the first early return in `TradePlanDetailPage`. Queries use `enabled: !!id && !!plan` to avoid requests during loading. Regression test: `server/routes/__tests__/trade-plan-detail-hook-order.test.ts` (§HK1–§HK25, 37 tests).
+
+**Rule:** Any future hook added to `trade-plan-detail.tsx` must be placed before line 276 (`if (isLoading)`). Use `enabled:` conditions to gate queries — never conditionally call a hook.
+
+---
+
 *Sprint 2.7.5 — Trade Plan Workspace*

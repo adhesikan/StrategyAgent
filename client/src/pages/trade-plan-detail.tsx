@@ -205,43 +205,9 @@ export default function TradePlanDetailPage() {
     onError: () => toast({ title: "Duplicate failed", variant: "destructive" }),
   });
 
-  // Handlers
-  const handleSaveNotes = () => {
-    updateMutation.mutate({ userNotes: notes });
-  };
-
-  const handleChecklistChange = (key: keyof TradePlanChecklist, value: boolean) => {
-    const updated = { ...checklist, [key]: value };
-    setChecklist(updated);
-    updateMutation.mutate({ reviewChecklist: updated });
-  };
-
-  const handleStatusChange = (newStatus: string) => {
-    updateMutation.mutate({ status: newStatus });
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">
-        Loading trade plan…
-      </div>
-    );
-  }
-
-  if (error || !plan) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
-        <AlertCircle className="h-8 w-8 text-destructive" />
-        <p className="text-destructive">Trade plan not found.</p>
-        <Button variant="outline" onClick={() => navigate("/trade-plans")}>
-          <ChevronLeft className="h-4 w-4 mr-1.5" /> Back to Plans
-        </Button>
-      </div>
-    );
-  }
-
-  const change = changesData?.change ?? null;
-  const displayHealth: TradePlanHealth = changesData?.planHealth ?? plan.planHealth;
+  // ── Hooks that were incorrectly placed after early returns (Defect-7 fix) ──
+  // All hooks MUST execute unconditionally before any early return.
+  // The enabled: !!plan / brokerConnected guards prevent unnecessary requests.
 
   // Lifecycle data (Sprint 2.7.6)
   const [activityCategory, setActivityCategory] = useState<string>("all");
@@ -291,6 +257,44 @@ export default function TradePlanDetailPage() {
       setIsEvaluating(false);
     }
   };
+
+  // Handlers
+  const handleSaveNotes = () => {
+    updateMutation.mutate({ userNotes: notes });
+  };
+
+  const handleChecklistChange = (key: keyof TradePlanChecklist, value: boolean) => {
+    const updated = { ...checklist, [key]: value };
+    setChecklist(updated);
+    updateMutation.mutate({ reviewChecklist: updated });
+  };
+
+  const handleStatusChange = (newStatus: string) => {
+    updateMutation.mutate({ status: newStatus });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">
+        Loading trade plan…
+      </div>
+    );
+  }
+
+  if (error || !plan) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <AlertCircle className="h-8 w-8 text-destructive" />
+        <p className="text-destructive">Trade plan not found.</p>
+        <Button variant="outline" onClick={() => navigate("/trade-plans")}>
+          <ChevronLeft className="h-4 w-4 mr-1.5" /> Back to Plans
+        </Button>
+      </div>
+    );
+  }
+
+  const change = changesData?.change ?? null;
+  const displayHealth: TradePlanHealth = changesData?.planHealth ?? plan.planHealth;
 
   const lifecycle = lifecycleData?.lifecycleResult ?? null;
   const lifecycleState: LifecycleState | null = lifecycle?.lifecycleState ?? null;

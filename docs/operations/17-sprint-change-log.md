@@ -1,5 +1,74 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-7 — Trade Plan Detail React Hook Ordering Failure
+**Date:** 2026-08-12  
+**Status:** COMPLETE  
+**Tests:** 25 suites / 1,678 tests
+
+### Production Symptom (Railway UAT)
+Navigating to a Trade Plan Detail page (`/trade-plans/:id`) for the NVDA equity plan crashed the page with **Minified React error #310** — "Rendered more hooks than expected." The error boundary displayed "Something went wrong rendering this page." Execution Preflight was unreachable.
+
+### Decoded React Error #310
+Full error: `React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?`
+
+| Field | Value |
+|-------|-------|
+| Error code | #310 — Rendered more hooks than expected |
+| Component | `TradePlanDetailPage` |
+| Source file | `client/src/pages/trade-plan-detail.tsx` |
+| Offending hooks | `useState("all")`, `useState(false)`, `useBrokerStatus()`, `useQuery(preflight)`, `useQuery(lifecycle)`, `useQuery(activity)` — 6 hooks total |
+| Why hook count changed | Render 1 (loading): 12 hooks run → early return at line 223. Render 2 (plan loaded): 18 hooks run → no early return. React detected hook count mismatch. |
+
+### Root Cause
+During Sprint 2.7.6 (Lifecycle Intelligence), 2 `useState` hooks and `useBrokerStatus()` were added below the `if (isLoading) return` and `if (error || !plan) return` guards. During Sprint 2.8.0/2.8.1, 3 `useQuery` hooks (preflight, lifecycle, activity) were also placed below the guards. React's rules of hooks require every hook to execute on every render in the same order. An early return before a hook causes the hook count to vary.
+
+### Fix
+Moved all 6 offending hook declarations (plus `handleRefreshLifecycle`, which depends on them) to **before** the `if (isLoading)` guard at line 207 of `trade-plan-detail.tsx`. No logic changes — the queries already had `enabled: !!id && !!plan` which correctly prevents requests during loading. Derived variable assignments (`lifecycle`, `lifecycleState`, `isReviewRequired`, `isInvalidated`, `isDataStale`) are not hooks and remain after the guards.
+
+#### Final hook order (all 18 hooks before any early return)
+1. `useLocation()` — navigation
+2. `useToast()` — toasts
+3. `useQueryClient()` — query invalidation
+4. `useState("")` — notes
+5. `useState({...})` — checklist
+6. `useState(false)` — notesInitialized
+7. `useQuery(plan)` — main plan fetch
+8. `useEffect(...)` — initialize local state from plan
+9. `useQuery(changes)` — changes comparison
+10. `useMutation(update)` — plan update
+11. `useMutation(archive)` — plan archive
+12. `useMutation(duplicate)` — plan duplicate
+13. ✅ **`useState("all")`** — activityCategory (was after guard)
+14. ✅ **`useState(false)`** — isEvaluating (was after guard)
+15. ✅ **`useBrokerStatus()`** — brokerConnected (was after guard)
+16. ✅ **`useQuery(preflight)`** — enabled: !!id && !!plan && brokerConnected (was after guard)
+17. ✅ **`useQuery(lifecycle)`** — enabled: !!id && !!plan (was after guard)
+18. ✅ **`useQuery(activity)`** — enabled: !!id && !!plan (was after guard)
+
+### Regression Tests
+`server/routes/__tests__/trade-plan-detail-hook-order.test.ts` — §HK1–§HK25 (37 tests):
+- §HK1–§HK3: hooks before early returns, no hook after isLoading, no hook after error guard
+- §HK4: no conditional hook by plan type
+- §HK5–§HK11: all 6 previously misplaced hooks are now before early returns
+- §HK12–§HK17: execution child components have no top-level conditional hooks
+- §HK18: broker mutation count = 0
+- §HK19–§HK22: queries use `enabled` guard, not conditional calls
+- §HK23–§HK25: handleRefreshLifecycle is a function; no if-gated hook patterns
+
+### Results
+- NVDA Trade Plan Detail: ✅ renders without React #310
+- Loading → loaded render: ✅ stable hook count (18 hooks both renders)
+- Equity plan: ✅
+- Null/optional data (goalId=null, portfolioId=null, no preflight): ✅
+- Execution Preflight visible: ✅ (after plan loads)
+- Execution gates unchanged: ✅
+- Broker mutations: 0
+- TEST_LIVE settings: unchanged
+
+**Test results**: 25 suites / 1,678 tests passing. Build clean. Production bundle: `/trade-plans` → `ROUTE_STATUS=200`, `PROCESS_ALIVE=true`.
+
+---
+
 ## Sprint 2.8.6A-defect-6B — POST /session Process-Crash (Railway UAT)
 **Date:** 2026-08-12  
 **Status:** COMPLETE  

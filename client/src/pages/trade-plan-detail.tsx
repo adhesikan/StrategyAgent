@@ -1,15 +1,18 @@
 /**
  * client/src/pages/trade-plan-detail.tsx — Trade Plan Detail (Sprint 2.7.5 + 2.7.6 + 2.8.6A)
  *
- * Sections: Lifecycle Summary (2.7.6) · Plan Header · Research Thesis · What Changed ·
- * Goal/Portfolio Context · Planning Structure · Equity/Options Snapshot · Risk Summary ·
- * Invalidation · Monitoring Plan · Research Review Checklist · User Notes · Data Freshness ·
- * Activity Timeline (2.7.6) · Plan Timeline · Related Research · Compliance Disclaimer ·
- * Execution Workflow (2.8.x): Preflight → Order Preparation → Equity Preview → Final Review
+ * Sections: Lifecycle Summary (2.7.6) · Plan Header · Execution Preparation · Research Thesis ·
+ * What Changed · Goal/Portfolio Context · Planning Structure · Equity/Options Snapshot ·
+ * Risk Summary · Invalidation · Monitoring Plan · Research Review Checklist · User Notes ·
+ * Data Freshness · Activity Timeline (2.7.6) · Plan Timeline · Related Research ·
+ * Compliance Disclaimer · Execution Workflow (2.8.x):
+ *   Preflight → Order Preparation → Equity Preview → Final Review
  *
  * EXECUTION COMPLIANCE:
  * - AI cannot initiate execution. No automatic submission.
- * - User must click "Prepare for Execution" to enter the workflow.
+ * - "Execution Preparation" section is ALWAYS visible for eligible EQUITY non-ARCHIVED plans.
+ *   When broker is disconnected it renders a BLOCKED state (§10 UX invariant — never silent absence).
+ * - User must click "Check Execution Preconditions" to enter the workflow.
  * - Preflight must PASS before Order Preparation.
  * - Equity Preview is preview-only — nothing submitted to broker.
  * - Final Order Review acknowledgements are mandatory before Sprint 2.8.6 submission.
@@ -49,7 +52,7 @@ import type {
 } from "../../../shared/trade-plan-lifecycle-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -588,11 +591,59 @@ export default function TradePlanDetailPage() {
                     </Button>
                   )}
 
-                  {/* Prepare for Execution CTA (Sprint 2.8.6A) —
-                      Visible for eligible broker-connected Equity Trade Plans.
-                      TEST_LIVE allowlisting is a submission gate, NOT shown here.
-                      AI cannot click this. User must explicitly initiate. */}
-                  {brokerConnected && plan.planType === "EQUITY" && plan.status !== "ARCHIVED" && (
+                  {/* Execution Preparation CTA removed from here — moved to dedicated
+                      §Execution Preparation section below (§10 UX invariant: never silent absence). */}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* § Execution Preparation — §10 UX invariant: always visible for eligible Equity plans.
+             When broker is disconnected: renders BLOCKED state with reason (never silent absence).
+             When broker is connected: renders "Check Execution Preconditions" CTA.
+             TEST_LIVE allowlisting is a SUBMISSION gate only — it must not suppress this section.
+             AI cannot initiate this workflow. User must explicitly click the CTA. */}
+        {plan.planType === "EQUITY" && plan.status !== "ARCHIVED" && (
+          <section aria-labelledby="execution-preparation-heading" data-testid="execution-preparation-section">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle id="execution-preparation-heading" className="text-base flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  Execution Preparation
+                </CardTitle>
+                <CardDescription>
+                  Verify account conditions, prepare an order draft, and complete the final review.
+                  No broker order is submitted from this page.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!brokerConnected ? (
+                  /* §10 BLOCKED state — never silently hide required workflow */
+                  <div
+                    className="flex items-start gap-3 p-3 rounded-md border border-yellow-500/30 bg-yellow-500/5"
+                    role="status"
+                    aria-label="Execution preparation blocked"
+                    data-testid="execution-preparation-blocked"
+                  >
+                    <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold">BLOCKED</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Connect a broker account to run execution preflight. Preflight checks account
+                        permissions, buying power, and order constraints before any order is prepared.
+                        No order is submitted until you complete the full review workflow.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  /* Broker connected — show CTA */
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Run execution preflight to verify account permissions, buying power, and risk
+                      constraints for this plan. No order will be submitted until you complete the
+                      full review workflow below.
+                    </p>
                     <Button
                       size="sm"
                       variant={showExecution ? "secondary" : "default"}
@@ -605,18 +656,18 @@ export default function TradePlanDetailPage() {
                           }, 100);
                         }
                       }}
-                      aria-label={showExecution ? "Hide execution workflow" : "Prepare for Execution"}
                       data-testid="prepare-for-execution-cta"
+                      aria-label={showExecution ? "Hide execution workflow" : "Check Execution Preconditions"}
                     >
                       <Play className="h-3.5 w-3.5 mr-1.5" />
-                      {showExecution ? "Hide Execution" : "Prepare for Execution"}
+                      {showExecution ? "Hide Execution Workflow" : "Check Execution Preconditions"}
                     </Button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+        )}
 
         {/* § Research Thesis — Saved at Creation */}
         <section aria-labelledby="research-thesis-heading">

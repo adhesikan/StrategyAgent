@@ -1,0 +1,396 @@
+SPRINT 2.8.6A — DEFECT-8
+Execution entry point still absent after deployed fix
+
+PRODUCTION UAT RESULT
+
+The previous integration fix was deployed to Railway.
+
+Current production state:
+
+- Existing NVDA Equity Trade Plan opens successfully.
+- Trade Plan Detail renders.
+- Plan is Research Complete / Current.
+- Broker is connected.
+- TEST_LIVE certification config is valid.
+- However there is STILL no visible:
+  - Prepare for Execution
+  - Check Execution Preconditions
+  - Execution Preflight
+  - Order Preparation
+  action anywhere on the Trade Plan Detail page.
+
+Therefore the previous fix did not actually expose the execution workflow in production.
+
+DO NOT add another guessed button blindly.
+
+First determine why the deployed UI still does not contain the entry point.
+
+============================================================
+1. VERIFY DEPLOYED SOURCE CONTAINS THE CHANGE
+============================================================
+
+Identify:
+
+- current git SHA
+- SHA deployed to Railway
+- commit containing the execution-entry fix
+
+Confirm the deployed SHA actually contains the intended code.
+
+If Railway is stale:
+
+do not make meaningless code changes.
+
+Report deployment mismatch.
+
+============================================================
+2. FIND THE EXACT TRADE PLAN DETAIL COMPONENT
+============================================================
+
+Determine which component is actually rendered for:
+
+/trade-plans/:id
+
+Report:
+
+route in App.tsx
+component filename
+component export
+whether any alternate legacy Trade Plan page exists
+
+Do not assume the edited file is the mounted file.
+
+============================================================
+3. LOCATE THE ENTRY-POINT CODE
+============================================================
+
+Search repository for:
+
+"Prepare for Execution"
+"Check Execution Preconditions"
+"Execution Preflight"
+"ExecutionPreflightPanel"
+
+Report every match.
+
+For each match state whether it is:
+
+- mounted
+- unreachable
+- behind a condition
+- unused
+- dead code
+
+============================================================
+4. TRACE RENDER CONDITIONS
+============================================================
+
+For the actual NVDA Trade Plan detail component, trace the condition required
+to render the execution entry point.
+
+Examples to inspect:
+
+plan.status
+plan.type
+brokerConnected
+researchComplete
+lifecycle status
+preflight status
+execution enabled
+user tier
+feature flag
+TEST_LIVE flag
+
+Report the full boolean expression.
+
+Then evaluate it for the actual NVDA production plan.
+
+Do not guess.
+
+============================================================
+5. CHECK STATUS ENUM MISMATCH
+============================================================
+
+The UI currently shows:
+
+Research Complete
+
+Verify whether code expects something else such as:
+
+RESEARCH_COMPLETE
+research_complete
+ACTIVE
+READY
+DRAFT
+
+A string/enum mismatch may silently suppress the component.
+
+Use canonical enums only.
+
+============================================================
+6. CHECK PLAN TYPE MISMATCH
+============================================================
+
+NVDA is an Equity plan.
+
+Verify actual stored/canonical plan type versus render condition.
+
+Potential mismatch examples:
+
+"Equity"
+"equity"
+"STOCK"
+"EQUITY"
+
+Do not add aliases blindly.
+
+Use canonical type definitions.
+
+============================================================
+7. CHECK BROKER-CONNECTED CONDITION
+============================================================
+
+If the entry point requires brokerConnected:
+
+verify the Trade Plan page actually receives that state.
+
+Do not confuse global header "Live: Tradier" with component query state.
+
+Trace the exact API/query used.
+
+============================================================
+8. CHECK FEATURE FLAGS
+============================================================
+
+Search for any flags controlling execution UI, including:
+
+BROKER_EXECUTION_ENABLED
+executionEnabled
+feature tier
+active trader feature
+TEST_LIVE flags
+
+Important:
+
+TEST_LIVE / execution submission flags should not necessarily suppress
+preflight/preparation UI.
+
+Preflight is non-executing.
+
+If a production-submission flag is incorrectly hiding preflight UI,
+separate those concerns.
+
+Do not enable broker submission merely to expose preflight.
+
+============================================================
+9. CHECK LIFECYCLE CONDITION
+============================================================
+
+NVDA previously showed:
+
+Research Review Required
+
+and then plan status was changed to:
+
+Research Complete
+
+Verify whether lifecycle state still suppresses execution UI.
+
+If lifecycle review truly blocks execution by design:
+
+render a visible explanation:
+
+"Execution preparation unavailable until research review is resolved"
+
+Do not silently hide the entry point.
+
+============================================================
+10. UI MUST NEVER SILENTLY HIDE REQUIRED WORKFLOW
+============================================================
+
+If execution preparation is unavailable, render an explicit blocked state.
+
+Examples:
+
+Execution Preparation
+BLOCKED
+Reason: <safe canonical reason>
+
+No silent absence.
+
+This is a permanent UX invariant.
+
+============================================================
+11. MOUNT EXISTING PREFLIGHT COMPONENT
+============================================================
+
+If the existing Sprint 2.8.0 component is implemented but not mounted:
+
+wire it into the actual Trade Plan Detail page.
+
+Do not rebuild it.
+
+Expected section:
+
+Execution Preparation
+
+[Check Execution Preconditions]
+
+or existing canonical CTA.
+
+Clicking it must call the existing preflight API only.
+
+No order submission.
+
+============================================================
+12. DO NOT REQUIRE TEST_LIVE TO SHOW PREFLIGHT
+============================================================
+
+Normal eligible broker-connected users should be able to run execution
+preflight independently of TEST_LIVE certification configuration.
+
+TEST_LIVE allowlists belong at controlled submission gates.
+
+They must not be required merely to display preflight.
+
+============================================================
+13. ADD VISIBILITY DIAGNOSTIC TEST
+============================================================
+
+Create an NVDA-like Equity Trade Plan fixture:
+
+status = Research Complete
+current = true
+brokerConnected = true
+no preflight yet
+
+Expected:
+
+Execution Preparation section visible
+Preflight CTA visible
+
+Also test blockers:
+
+broker disconnected
+plan archived
+unsupported plan type
+lifecycle blocked if applicable
+
+In blocked cases:
+
+section remains visible
+reason is displayed
+
+============================================================
+14. DOM REGRESSION TEST
+============================================================
+
+Render /trade-plans/:id and assert actual DOM contains:
+
+Execution Preparation
+
+and:
+
+Check Execution Preconditions
+
+for eligible Equity plan.
+
+This prevents future "component exists but isn't mounted" regressions.
+
+============================================================
+15. PRODUCTION ROUTE TEST
+============================================================
+
+Use the actual App.tsx route and rendered page component in test.
+
+Do not test an isolated component only.
+
+============================================================
+16. END-TO-END UI TEST
+============================================================
+
+Authenticated flow:
+
+Trade Plans
+→ Open NVDA Equity plan
+→ Execution Preparation visible
+→ click Check Execution Preconditions
+→ preflight API invoked
+
+Assert:
+
+zero broker submission calls.
+
+============================================================
+17. STALE DEPLOYMENT CHECK
+============================================================
+
+If source is correct but production lacks the element:
+
+verify Railway build logs and deployed commit.
+
+Report exact reason.
+
+Do not edit code solely to force another deploy.
+
+============================================================
+18. QUALITY GATES
+============================================================
+
+Run:
+
+trade-plan UI tests
+execution preflight tests
+integration
+smoke
+regression
+security
+TEST_LIVE certification
+release
+build
+TypeScript
+
+Report exact counts.
+
+============================================================
+19. DOCUMENTATION
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+docs/operations/33-trade-plan-workspace.md
+docs/operations/45-test-live-execution-certification.md
+
+Document this as Defect-8:
+Execution entry point absent after initial integration fix.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Railway deployed SHA
+2. Source SHA
+3. Whether deployed SHA included prior fix
+4. Actual Trade Plan route
+5. Actual rendered component
+6. Where execution-entry code existed
+7. Why it was not visible
+8. Exact render condition before
+9. Actual NVDA values for that condition
+10. Status/type/feature-flag mismatch found
+11. Files changed
+12. Final visibility rule
+13. Blocked-state UX
+14. DOM regression result
+15. Preflight CTA result
+16. Broker mutation count
+17. Full test count
+18. Build result
+19. TypeScript result
+20. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not place any broker order.

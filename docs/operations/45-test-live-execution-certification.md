@@ -412,46 +412,51 @@ F. Log out → directly request `/api/trade-planning/WMT/context` → **MUST ret
 
 ---
 
-## 8D. Defect-8 — Restore End-to-End Manual Execution Entry Point
+## 8D. Defect-8 rev2 — Execution Preparation Section Always Visible (§10 UX Invariant)
 
 | Field | Value |
 |-------|-------|
-| Symptom | NVDA Equity Trade Plan with broker connected, Research Complete, all TEST_LIVE gates passing — **no visible button or entry point** to start execution from the Trade Plan Detail page. |
-| Root cause 1 | `ExecutionPreflightPanel` and `OrderPreparationPanel` were silently rendered at the bottom of the page with no CTA and no scroll anchor — invisible to users. |
-| Root cause 2 | `EquityOrderPreviewPanel` and `FinalOrderReviewPanel` were entirely absent from `trade-plan-detail.tsx` — only in `trade-planning.tsx` gated on `?draftId=` URL param. Equity pipeline terminated at `OrderPreparationPanel` with no forward path. |
-| Fix | Added "Prepare for Execution" CTA button (visible for eligible broker-connected EQUITY plans, not ARCHIVED). `showExecution` state toggle reveals a workflow section with all 4 steps: Preflight → Order Prep → Equity Preview → Final Review. `activeDraft` query watches `["order-draft", id]` (shared key) to pass draftId to downstream panels. |
+| Symptom (rev2) | After rev1 fix was deployed, NVDA Equity Trade Plan **still** showed no entry point. Header showed "Live: Tradier", broker confirmed connected, plan Research Complete — but execution section was invisible with zero explanation. |
+| Root cause (rev2) | Rev1 CTA was gated on `brokerConnected` at the section level. `useBrokerStatus().isConnected` and the status banner use different API endpoints (`/api/broker/status` vs `/api/data-source/status`); they can diverge on null `isConnected` values or context races. When `brokerConnected = false` for any reason, the entire section vanished silently — violating §10 "UI MUST NEVER SILENTLY HIDE REQUIRED WORKFLOW." |
+| Fix (rev2) | Permanent "Execution Preparation" section always renders for EQUITY non-ARCHIVED plans. `brokerConnected` only controls BLOCKED state vs CTA inside the section. BLOCKED state (§10) renders: "Connect a broker account to run execution preflight…" with `data-testid="execution-preparation-blocked"`. CTA renamed to "Check Execution Preconditions". |
 | Files | `client/src/pages/trade-plan-detail.tsx` |
-| Regression tests | `server/routes/__tests__/execution-entry-point.test.ts` — §EP1–§EP25 (38 tests) |
-| Release gate | 26 suites / 1,716 tests passing |
+| Regression tests | `server/routes/__tests__/execution-entry-point.test.ts` — §EP1–§EP4 updated; §VD1–§VD10 added (52 tests total) |
+| Release gate | 26 suites / 1,730 tests passing |
 | Status | **READY_FOR_RAILWAY_REDEPLOY** |
 
-**Railway UAT after redeploy (Defect-8)**:
+**Railway UAT after redeploy (Defect-8 rev2)**:
 
 A. Login → navigate to `/trade-plans` → open NVDA equity plan
 
-B. In the plan header action bar: **"Prepare for Execution" button MUST be visible** (was: no button; user had no entry point)
+B. **"Execution Preparation" section MUST be visible** between the plan header and Research Thesis — regardless of broker connection state
 
-C. Click "Prepare for Execution" → page scrolls to execution workflow section → **Step 1: Execution Preflight panel renders**
+C. With Tradier connected: **"Check Execution Preconditions" button MUST be visible** (was: no button in rev1 prod deploy; was: silent absence with rev1 code on broker-disconnected race)
 
-D. Run preflight → if PASS → **Step 2: Order Preparation panel renders**
+D. Click "Check Execution Preconditions" → page scrolls to execution workflow section → **Step 1: Execution Preflight panel renders**
 
-E. Configure order (quantity, LIMIT order type, limit price) → click "Create Draft" → draft created
+E. Run preflight → if PASS → **Step 2: Order Preparation panel renders**
 
-F. **Step 3: Equity Order Preview panel renders** — verify "Preview Only — Nothing has been submitted to your broker" banner visible
+F. Configure order (quantity, LIMIT order type, limit price) → click "Create Draft" → draft created
 
-G. **Step 4: Final Order Review panel renders** — verify acknowledgements available
+G. **Step 3: Equity Order Preview panel renders** — verify "Preview Only" banner visible
 
-H. Complete all acknowledgements → click Confirm → toast: "Order Review Confirmed. Proceed to Executions section…"
+H. **Step 4: Final Order Review panel renders** — verify acknowledgements available
 
-I. No broker order has been submitted at any point ✓
+I. Complete all acknowledgements → click Confirm → toast: "Order Review Confirmed. Proceed to Executions section…"
 
-J. Navigate to `/executions` → Sprint 2.8.6 broker submission path available (separate step)
+J. No broker order has been submitted at any point ✓
 
-K. Toggle button again ("Hide Execution") → execution workflow collapses ✓
+K. Navigate to `/executions` → Sprint 2.8.6 broker submission path available (separate step)
 
-L. **CTA must NOT appear** on an OPTIONS plan or an ARCHIVED plan ✓
+L. Click button again ("Hide Execution Workflow") → execution workflow collapses ✓
 
-M. Disconnect broker → **CTA must disappear** ✓
+M. **Section visible on an OPTIONS plan**: section NOT rendered (EQUITY only) ✓
+
+N. **ARCHIVED plan**: section NOT rendered ✓
+
+O. **Broker disconnected**: section IS rendered with yellow BLOCKED card — "Connect a broker account to run execution preflight" — no silent absence ✓
+
+P. **TEST_LIVE allowlist**: section and preflight visible regardless of TEST_LIVE symbol allowlist (submission gate only) ✓
 
 ---
 

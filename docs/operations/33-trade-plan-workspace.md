@@ -472,6 +472,30 @@ No entitlement enforcement in this sprint.
 
 ## Defect History
 
+### Defect-8 rev2 — Execution Preparation Section Silent Absence (Sprint 2.8.6A)
+**Date:** 2026-08-12 | **Status:** FIXED
+
+After rev1 fix deployed, NVDA equity plan still showed no execution entry point despite "Live: Tradier" in the header. Root cause: the CTA was gated on `brokerConnected` at the section level. `useBrokerStatus().isConnected` (from `/api/broker/status`) and the status banner (from `/api/data-source/status`) use different API endpoints that can diverge under null `isConnected` values or context race on first render. When they diverged, the entire section vanished silently — violating §10 "UI MUST NEVER SILENTLY HIDE REQUIRED WORKFLOW."
+
+**Fix (§10 UX invariant):** The "Execution Preparation" section now always renders for `plan.planType === "EQUITY" && plan.status !== "ARCHIVED"` plans. `brokerConnected` controls BLOCKED state vs CTA *inside* the section:
+- Broker connected → "Check Execution Preconditions" CTA
+- Broker disconnected → yellow BLOCKED card with reason ("Connect a broker account to run execution preflight…")
+
+CTA renamed to "Check Execution Preconditions" (§14 DOM requirement).
+
+**Regression tests:** §EP1–§EP4 updated + §VD1–§VD10 added in `server/routes/__tests__/execution-entry-point.test.ts` (52 tests total).
+
+**Permanent rule:** The Execution Preparation section must never be silently absent for eligible plans. If blocked, render a visible reason. If the section needs to be hidden for a new reason in the future, add an explicit BLOCKED state card — not a gate that removes the section.
+
+---
+
+### Defect-8 rev1 — Restore End-to-End Execution Entry Point (Sprint 2.8.6A) — SUPERSEDED
+**Date:** 2026-08-12 | **Status:** SUPERSEDED by rev2
+
+Added "Prepare for Execution" CTA to plan header action bar (gated on `brokerConnected`), added missing `EquityOrderPreviewPanel` and `FinalOrderReviewPanel` to `trade-plan-detail.tsx`. Superseded because the `brokerConnected` section-level gate caused silent absence in production — see rev2 above.
+
+---
+
 ### Defect-7 — Trade Plan Detail React Hook Ordering (Sprint 2.8.6A)
 **Date:** 2026-08-12 | **Status:** FIXED
 

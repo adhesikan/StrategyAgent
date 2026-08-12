@@ -1,25 +1,33 @@
 ---
 name: Execution entry point — trade-plan-detail.tsx
-description: How the "Prepare for Execution" CTA and downstream execution panels are wired into the Trade Plan Detail page for EQUITY plans.
+description: §10 UX invariant for the Execution Preparation section; broker-status divergence root cause; CTA visibility rules.
 ---
 
-## The rule
+## Rule (§10 UX invariant — permanent)
+The "Execution Preparation" section in `trade-plan-detail.tsx` must **always** be visible for `plan.planType === "EQUITY" && plan.status !== "ARCHIVED"` plans. It must never be silently absent.
 
-`trade-plan-detail.tsx` is the canonical execution entry point for saved Equity Trade Plans. The full 4-step pipeline (Preflight → Order Prep → Equity Preview → Final Review) must all be present in this file. Any new execution step added to `trade-planning.tsx` must also be added here if it belongs in the equity pipeline.
+- **Broker connected** → "Check Execution Preconditions" button (data-testid="prepare-for-execution-cta")
+- **Broker disconnected** → yellow BLOCKED card (data-testid="execution-preparation-blocked") with reason: "Connect a broker account to run execution preflight…"
+- **Section gate must NOT include brokerConnected** — only planType + status control whether the section renders.
 
-## Why
+**Why:** `useBrokerStatus().isConnected` (from `/api/broker/status`) and the status banner (from `/api/data-source/status`) use different API endpoints. They diverge when `isConnected` is null in the DB or on first-render context race. Gating the section on `brokerConnected` caused silent absence in production even when the header showed "Live: Tradier". This violated §10 and broke the entire execution pipeline discovery.
 
-During Defect-8 (Sprint 2.8.6A), `EquityOrderPreviewPanel` and `FinalOrderReviewPanel` were only mounted in `trade-planning.tsx` gated on a `?draftId=` URL search param. The equity pipeline silently terminated at `OrderPreparationPanel` in the detail page with no forward path.
+## Execution workflow section (inside)
+`showExecution && brokerConnected && id` gate wraps the 4-step workflow:
+1. ExecutionPreflightPanel (Sprint 2.8.0)
+2. OrderPreparationPanel — only after preflight PASS (Sprint 2.8.1)
+3. EquityOrderPreviewPanel — only when draft exists + preflight PASS (Sprint 2.8.2)
+4. FinalOrderReviewPanel — same gate (Sprint 2.8.5)
+
+`activeDraft` query shares `["order-draft", id]` cache key with OrderPreparationPanel.
 
 ## How to apply
+- Any future section added to this page that has a broker-dependency must render a BLOCKED state — never silently hide.
+- Never add `brokerConnected` to a section-level JSX gate — only to the inner CTA vs BLOCKED ternary.
+- New hooks must be added BEFORE the `if (isLoading)` early return (React error #310 invariant).
+- TEST_LIVE allowlist is a submission gate only — must never suppress the Execution Preparation section or preflight UI.
 
-- CTA gate: `brokerConnected && plan.planType === "EQUITY" && plan.status !== "ARCHIVED"` → toggle `showExecution`
-- `activeDraft` query key `["order-draft", id]` is shared with `OrderPreparationPanel` — cache propagates automatically
-- Downstream panels gate: `activeDraftId && preflightData?.overallStatus === "PASS" && !preflightData.isExpired`
-- `FinalOrderReviewPanel.onConfirmed` shows a toast — Sprint 2.8.6 execution creation via `POST /api/executions/from-confirmation/:cid` is a separate user step
-- TEST_LIVE allowlisting is a submission gate only — it must NOT block the CTA or any research display step
-- `showExecution` is a `useState(false)` toggle; AI/agents cannot set it (verified by §EP19a regression test)
-
-## Regression test
-
-`server/routes/__tests__/execution-entry-point.test.ts` — §EP1–§EP25 (38 tests). In `test:release`. Run whenever `trade-plan-detail.tsx` or any execution panel is changed.
+## Tests
+`server/routes/__tests__/execution-entry-point.test.ts` — 52 tests (§EP1–§EP25 + §VD1–§VD10).
+- §VD2 specifically asserts `brokerConnected` is absent from the 280-char window before the section heading.
+- §EP2 uses a 2200-char lookback window from the CTA data-testid (BLOCKED state is ~2100 chars before).

@@ -16,6 +16,34 @@ import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 
+// ── Global process survival handlers ────────────────────────────────────────
+// Express 4 async handlers that throw without try/catch produce unhandled
+// rejections. Node.js 15+ terminates on unhandledRejection by default.
+// These handlers log the event and keep the process alive so that
+// /api/broker/ping and other healthy routes remain reachable.
+// They do NOT suppress the error — every rejection is still logged in full.
+process.on("unhandledRejection", (reason: unknown) => {
+  console.error(JSON.stringify({
+    event:  "unhandledRejection",
+    reason: String(reason instanceof Error ? reason.stack : reason).slice(0, 500),
+    ts:     new Date().toISOString(),
+  }));
+  // Do NOT call process.exit — the process must survive for Railway health checks.
+});
+
+process.on("uncaughtException", (err: Error, origin: string) => {
+  console.error(JSON.stringify({
+    event:  "uncaughtException",
+    origin,
+    message: err?.message?.slice(0, 300),
+    stack:   err?.stack?.slice(0, 600),
+    ts:      new Date().toISOString(),
+  }));
+  // Uncaught exceptions are more severe; log and keep alive for Railway.
+  // The specific route that failed will have already sent a 5xx if it had
+  // its own try/catch; if not, the client will see a connection reset.
+});
+
 // Run inline migrations on startup (more reliable than separate script)
 async function runStartupMigrations() {
   try {

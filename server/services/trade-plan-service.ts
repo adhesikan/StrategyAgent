@@ -994,6 +994,62 @@ export async function getTradePlanHealthMetrics(): Promise<TradePlanHealthMetric
 
 export async function ensureTradePlanTables(): Promise<void> {
   try {
+    // ── trade_planning_sessions ──────────────────────────────────────────────
+    // Sprint 2.7.0 introduced this table via migrations/028_trade_planning_sessions.sql.
+    // That file is never auto-executed on Railway — this block is the canonical
+    // idempotent creator.  All columns from migration 028 + 029 are included so
+    // a fresh Railway deployment never hits a missing-table error.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS trade_planning_sessions (
+        id                         VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id                    TEXT NOT NULL,
+        symbol                     VARCHAR(20) NOT NULL,
+        opportunity_id             TEXT,
+        research_goal_id           TEXT,
+        portfolio_id               TEXT,
+        constraints                JSONB NOT NULL DEFAULT '{"equityAllowed":true,"optionsAllowed":false}',
+        selected_expression_family TEXT,
+        broad_expression_type      TEXT DEFAULT NULL,
+        expression_selected_by     TEXT DEFAULT NULL,
+        created_at                 TIMESTAMPTZ DEFAULT NOW(),
+        updated_at                 TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tps_user_id     ON trade_planning_sessions (user_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tps_user_symbol ON trade_planning_sessions (user_id, symbol)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tps_updated     ON trade_planning_sessions (updated_at DESC)`);
+
+    // CHECK constraint — additive, idempotent
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE table_name = 'trade_planning_sessions'
+            AND constraint_name = 'chk_expression_family'
+        ) THEN
+          ALTER TABLE trade_planning_sessions
+            ADD CONSTRAINT chk_expression_family
+            CHECK (
+              selected_expression_family IS NULL
+              OR selected_expression_family IN (
+                'equity','equity_scaled','income','defined_risk_directional',
+                'covered_call','cash_secured_put','vertical_spread',
+                'long_option','neutral_options','advanced_options','monitor_only'
+              )
+            );
+        END IF;
+      END $$;
+    `);
+
+    // Additive column migration for existing Railway tables (migration 029 + later)
+    await db.execute(sql`
+      ALTER TABLE trade_planning_sessions
+        ADD COLUMN IF NOT EXISTS broad_expression_type  TEXT DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS expression_selected_by TEXT DEFAULT NULL
+    `);
+
+    // ── trade_plans ──────────────────────────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS trade_plans (
         id                      VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

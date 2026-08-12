@@ -2474,7 +2474,15 @@ export default function TradePlanningPage() {
         }).catch(() => {}); // non-blocking — local state already set
       }
     },
-    onError: () => toast({ title: "Failed to save session", variant: "destructive" }),
+    onError: (err: any) => {
+      // §22: session persistence failure — do NOT enter planning, do NOT mark expression selected
+      pendingFamilyRef.current = null;   // discard pending explore intent
+      setSelectedFamily(null);           // undo any optimistic selection
+      const msg = err?.message?.includes("SESSION_PERSISTENCE_FAILED")
+        ? "Unable to save your planning session. Please try again."
+        : "Unable to save your planning session. Please try again.";
+      toast({ title: msg, variant: "destructive" });
+    },
   });
 
   // Update session mutation

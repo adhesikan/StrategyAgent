@@ -412,6 +412,43 @@ F. Log out → directly request `/api/trade-planning/WMT/context` → **MUST ret
 
 ---
 
+## 8B. Defect-6B — POST /session Process Crash (Railway UAT)
+
+| Field | Value |
+|-------|-------|
+| Symptom | `POST /api/trade-planning/session` with WMT payload → HTTP 502, Railway Node process terminates in ~60ms. All subsequent requests 502 until Railway auto-restart. |
+| Root cause 1 | `trade_planning_sessions` table never created on Railway — only in `migrations/028_trade_planning_sessions.sql` (never auto-executed). `ensureTradePlanTables()` only created `trade_plans` + `trade_plan_versions`. |
+| Root cause 2 | POST handler had no try/catch around `createPlanningSession`. Express 4 + Node 15+ terminates on unhandled async rejection. |
+| Root cause 3 | `server/index.ts` had no `process.on("unhandledRejection")` — any floating rejection anywhere killed Railway. |
+| Fix 1 | `ensureTradePlanTables()` now includes full idempotent `CREATE TABLE IF NOT EXISTS trade_planning_sessions` with all migration 028+029 columns + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for additive columns. |
+| Fix 2 | POST handler wrapped in try/catch → controlled `500 { message, code: "SESSION_PERSISTENCE_FAILED" }` instead of process exit. |
+| Fix 3 | `server/index.ts` — `process.on("unhandledRejection")` + `process.on("uncaughtException")` handlers (log + stay alive, never process.exit). |
+| Fix 4 | Client `createSessionMutation.onError` — shows correct message, resets `selectedFamily` to null, clears `pendingFamilyRef.current`. |
+| Regression tests | `server/routes/__tests__/session-persistence.test.ts` — §DB1–§DB25 (62 tests) |
+| Release gate | 24 suites / 1,641 tests passing |
+| Bundle test | `NODE_ENV=production node dist/index.cjs` + POST WMT payload → `RESPONSE_STATUS=401`, `PROCESS_STILL_ALIVE=true` |
+| Status | **READY_FOR_RAILWAY_REDEPLOY** |
+
+**Railway UAT after redeploy (Defect-6B)**:
+
+A. Login → POST `/api/trade-planning/session` with `{ symbol:"WMT", constraints:{equityAllowed:true,optionsAllowed:false}, goalId:null, portfolioId:null }` → **MUST return 201** (was 502 crash)
+
+B. Response body must include `session.id` (UUID), `disclaimer`, `constraintsNote`
+
+C. Immediately after: GET `/api/broker/ping` → **MUST return 200** (confirms process stayed alive)
+
+D. Repeat POST 5 times → each must return 201 with different `session.id` (no dedup collapse, no crash accumulation)
+
+E. POST with missing `symbol` → 400 Bad Request ✓
+
+F. GET `/api/trade-planning/WMT/context` immediately after POST → 200 with `session` field populated ✓
+
+G. Check Railway logs: MUST NOT contain `relation "trade_planning_sessions" does not exist`
+
+H. Check Railway logs: `trade_plan_tables_ready` event MUST appear before any session POST ✓
+
+---
+
 ## 9. Post-Certification Actions
 
 1. **Disarm**: Remove/set `EXECUTION_TEST_LIVE_ARMED=false` in Replit Secrets

@@ -212,13 +212,30 @@ export function registerTradePlanningRoutes(
     }
 
     const constraints = validateConstraints(rawConstraints);
-    const session = await createPlanningSession(userId, {
-      symbol: upperSymbol,
-      opportunityId: opp.id,
-      goalId:        goalId ?? null,
-      portfolioId:   portfolioId ?? null,
-      constraints,
-    });
+
+    let session: Awaited<ReturnType<typeof createPlanningSession>>;
+    try {
+      session = await createPlanningSession(userId, {
+        symbol:        upperSymbol,
+        opportunityId: opp.id,
+        goalId:        goalId ?? null,
+        portfolioId:   portfolioId ?? null,
+        constraints,
+      });
+    } catch (err: any) {
+      // Controlled 500 — process must survive a DB failure here
+      console.error(JSON.stringify({
+        event:    "trade_planning_session_create_failed",
+        symbol:   upperSymbol,
+        error:    String(err?.message ?? err).slice(0, 300),
+        pgCode:   err?.code,
+        ts:       new Date().toISOString(),
+      }));
+      return res.status(500).json({
+        message: "Unable to save your planning session. Please try again.",
+        code:    "SESSION_PERSISTENCE_FAILED",
+      });
+    }
 
     res.status(201).json({
       session,

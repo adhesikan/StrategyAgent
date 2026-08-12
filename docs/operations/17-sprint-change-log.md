@@ -1,5 +1,63 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-6B — POST /session Process-Crash (Railway UAT)
+**Date:** 2026-08-12  
+**Status:** COMPLETE  
+**Tests:** 24 suites / 1,641 tests
+
+### Production Symptom (Railway UAT)
+`POST /api/trade-planning/session` with exact WMT payload `{ symbol:"WMT", constraints:{equityAllowed:true,optionsAllowed:false}, goalId:null, portfolioId:null }` returned **HTTP 502** and immediately crashed the Railway Node.js process. Subsequent healthy requests (`GET /api/broker/ping`) also 502'd until Railway auto-restarted. Crash occurred ~60–70ms after the request hit the handler. Production bundle log showed `/app/dist/index.cjs:71` (minified — insufficient for diagnosis).
+
+### Root Causes (three layers)
+
+1. **Missing table on Railway** — `trade_planning_sessions` was only ever created by `migrations/028_trade_planning_sessions.sql`, a file that is **never executed automatically**. `ensureTradePlanTables()` (which runs on every startup and logs `trade_plan_tables_ready`) only created `trade_plans` and `trade_plan_versions`. Any fresh Railway deployment has no `trade_planning_sessions` table; the INSERT throws `relation "trade_planning_sessions" does not exist`.
+
+2. **No try/catch in the POST handler** — The `createPlanningSession` call in the `POST /api/trade-planning/session` handler (line 194–228 of `server/routes/trade-planning.ts`) had no try/catch. In Express 4 + Node.js 15+, an unhandled async rejection terminates the process. There was no global `unhandledRejection` handler to keep the process alive.
+
+3. **No global process survival handler** — `server/index.ts` had no `process.on("unhandledRejection", ...)` handler, so any floating async rejection anywhere in the codebase would kill the Railway process.
+
+### Why GET endpoints worked before this crash
+`GET /api/trade-planning/:symbol/context` calls `getLatestSessionForSymbol(userId, symbol).catch(() => null)` — the `.catch(() => null)` silently absorbs the missing-table error and returns null, so all GET requests appeared healthy.
+
+### Fixes
+
+#### `server/services/trade-plan-service.ts` — `ensureTradePlanTables()`
+Added full idempotent `CREATE TABLE IF NOT EXISTS trade_planning_sessions` with all columns from migrations 028 + 029, three indexes, idempotent CHECK constraint (via DO $$ block), and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for columns that may be missing on an existing Railway DB.
+
+#### `server/routes/trade-planning.ts` — POST handler
+Wrapped `createPlanningSession` in try/catch. Catch block:
+- Logs structured JSON: `{ event: "trade_planning_session_create_failed", symbol, error, pgCode, ts }`
+- Returns `return res.status(500).json({ message: "Unable to save your planning session. Please try again.", code: "SESSION_PERSISTENCE_FAILED" })`
+- Does NOT call `process.exit` or rethrow
+
+#### `server/index.ts` — Global handlers
+Added `process.on("unhandledRejection", ...)` and `process.on("uncaughtException", ...)` handlers that log structured JSON events and do NOT call `process.exit`. Safety net for any other floating rejections.
+
+#### `client/src/pages/trade-planning.tsx` — `createSessionMutation.onError`
+Updated `onError` to:
+- Show `"Unable to save your planning session. Please try again."` with destructive toast
+- Reset `selectedFamily` to `null` (no phantom expression selection on failure)
+- Clear `pendingFamilyRef.current` (no zombie pending state)
+
+### Regression Tests
+`server/routes/__tests__/session-persistence.test.ts` — §DB1–§DB25 (62 tests):
+- §DB1–§DB3: table creation, null goalId/portfolioId acceptance
+- §DB4–§DB5: JSONB serialization, controlled 500 response
+- §DB6–§DB7: client failure message, no phantom selection
+- §DB8–§DB10: process survival handlers, schema columns
+- §DB11–§DB16: migration 029 columns, TEXT opportunityId, security contract
+- §DB17–§DB25: process.exit not called, client state resets, process safety
+
+### Production Bundle Verification
+`npm run build` → `NODE_ENV=production node dist/index.cjs` → POST exact WMT payload:
+- `RESPONSE_STATUS=401` (expected — no session cookie in test)
+- `PROCESS_STILL_ALIVE=true`
+- Server process did NOT exit
+
+**Test results**: 24 suites / 1,641 tests passing. Build clean.
+
+---
+
 ## Sprint 2.8.6A-defect-5 — Trade Planning Expression Selection & Execution Handoff (UAT)
 **Date:** 2026-08-12  
 **Status:** COMPLETE  

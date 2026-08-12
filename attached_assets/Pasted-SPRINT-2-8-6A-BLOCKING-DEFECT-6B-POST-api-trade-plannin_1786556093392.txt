@@ -1,0 +1,657 @@
+SPRINT 2.8.6A — BLOCKING DEFECT-6B
+POST /api/trade-planning/session Crashes Railway Process
+
+PRODUCTION EVIDENCE
+
+The exact production failure has now been captured in Chrome DevTools.
+
+User flow:
+
+WMT Opportunity Workspace
+→ Open Trade Planning
+→ Equity Research = APPLICABLE
+→ click "Explore Equity"
+
+Exact request:
+
+POST /api/trade-planning/session
+
+Payload:
+
+{
+  "symbol": "WMT",
+  "constraints": {
+    "equityAllowed": true,
+    "optionsAllowed": false
+  },
+  "goalId": null,
+  "portfolioId": null
+}
+
+Production response:
+
+HTTP 502 Bad Gateway
+
+Railway response body:
+
+{
+  "status": "error",
+  "code": 502,
+  "message": "Application failed to respond",
+  "request_id": "..."
+}
+
+The request fails in approximately 60–70 ms.
+
+Immediately after this POST, normally healthy requests such as:
+
+GET /api/broker/ping
+
+also return 502 repeatedly, then recover after the Railway application
+process restarts.
+
+Previous Railway logs showed the process terminating in:
+
+/app/dist/index.cjs:71
+
+followed by application/database startup again.
+
+THIS IS NOW ISOLATED TO:
+
+POST /api/trade-planning/session
+
+Do not investigate Opportunity Engine again unless evidence directly points
+there.
+
+Do not change WMT eligibility.
+
+Do not change TEST_LIVE settings.
+
+Do not submit a broker order.
+
+======================================================================
+1. TRACE THIS EXACT ROUTE
+======================================================================
+
+Inspect the handler for:
+
+POST /api/trade-planning/session
+
+in:
+
+server/routes/trade-planning.ts
+
+Trace exactly:
+
+route
+→ auth/user resolution
+→ body validation
+→ service method
+→ database operation
+→ returned response
+
+Report every function in the call chain.
+
+======================================================================
+2. REPRODUCE WITH EXACT PRODUCTION PAYLOAD
+======================================================================
+
+Use this exact payload:
+
+{
+  "symbol": "WMT",
+  "constraints": {
+    "equityAllowed": true,
+    "optionsAllowed": false
+  },
+  "goalId": null,
+  "portfolioId": null
+}
+
+Use an authenticated test user.
+
+Run against:
+
+A. source server/dev runtime
+
+B. production bundle:
+   npm run build
+   NODE_ENV=production node dist/index.cjs
+
+Reproduce the exact request.
+
+Do not substitute a simplified fixture.
+
+======================================================================
+3. FIND THE ORIGINAL EXCEPTION
+======================================================================
+
+Capture the actual uncaught exception before the Node process terminates.
+
+Report:
+
+exception class
+exception message
+Postgres error code if any
+original TypeScript filename
+original TypeScript line
+function name
+database statement involved
+
+The current production log only exposes:
+
+/app/dist/index.cjs:71
+
+That is insufficient.
+
+Use source maps / development runtime / targeted instrumentation to identify
+the source TypeScript location.
+
+======================================================================
+4. AUDIT trade_planning_sessions PRODUCTION CONTRACT
+======================================================================
+
+Inspect:
+
+trade_planning_sessions
+
+Compare all three sources:
+
+A. TypeScript/Drizzle schema
+B. migration 028 / startup table creation SQL
+C. actual SQL expected by the POST handler
+
+Build a table showing every field used by POST /session:
+
+column
+Drizzle type
+migration type
+nullable?
+default?
+inserted value
+
+Likely fields to inspect include actual equivalents of:
+
+id
+userId
+symbol
+constraints
+goalId
+portfolioId
+selectedFamily / expression
+createdAt
+updatedAt
+
+Do not assume these exact names.
+
+======================================================================
+5. CHECK RAILWAY SCHEMA DRIFT
+======================================================================
+
+Determine whether the production Railway PostgreSQL table is older than
+the application schema.
+
+Generate a safe diagnostic SQL query or migration verification that checks:
+
+information_schema.columns
+
+for trade_planning_sessions.
+
+Compare actual production columns against the code contract.
+
+If a missing/renamed column is found:
+
+create an ADDITIVE, IDEMPOTENT migration.
+
+DO NOT:
+
+drop table
+truncate
+recreate destructively
+delete existing sessions
+
+======================================================================
+6. PAY SPECIAL ATTENTION TO NULL VALUES
+======================================================================
+
+Production payload contains:
+
+goalId: null
+portfolioId: null
+
+Verify the database and service both permit these to be null.
+
+Check whether:
+
+DB columns are NOT NULL
+UUID parsing rejects null
+Drizzle incorrectly wraps null
+service converts null to invalid value
+foreign-key handling rejects null
+
+Add explicit regression tests using BOTH null values exactly as production
+does.
+
+Do not simply remove them from the client payload unless the canonical API
+contract says they must be omitted.
+
+======================================================================
+7. CHECK constraints SERIALIZATION
+======================================================================
+
+Production payload contains:
+
+constraints: {
+  equityAllowed: true,
+  optionsAllowed: false
+}
+
+Determine how constraints is stored.
+
+JSONB?
+TEXT?
+individual columns?
+
+Verify the service is not attempting to insert a JavaScript object into an
+incompatible column.
+
+Test exact serialization/deserialization round trip.
+
+======================================================================
+8. CHECK MIGRATION 028 AGE / SCHEMA EVOLUTION
+======================================================================
+
+Sprint 2.7.0 originally introduced:
+
+trade_planning_sessions
+
+Subsequent sprints added:
+
+trade preference selection
+equity planning
+options matching
+contract research
+risk analysis
+execution handoffs
+
+Audit whether application code evolved the session shape without evolving
+the production table.
+
+This is a high-probability area to inspect, but do NOT assume it is the root
+cause until proven.
+
+======================================================================
+9. CHECK THE DB OBJECT IMPORT
+======================================================================
+
+Sprint 2.8.6 previously discovered:
+
+pool was private in server/db.ts
+
+and had to be exported because raw-SQL execution services would otherwise
+fail at runtime.
+
+Audit the POST /session persistence path for similar runtime-only DB import
+issues.
+
+Check:
+
+db
+pool
+client
+transaction
+schema imports
+
+Ensure development mocks are not hiding production incompatibility.
+
+======================================================================
+10. CRITICAL: WHY DOES THIS CRASH THE PROCESS?
+======================================================================
+
+Even if the DB insert fails, Express should return a controlled 5xx.
+
+Find why the exception escapes the request boundary and terminates Node.
+
+Look specifically for:
+
+async route without await/catch
+floating Promise
+void saveSession(...)
+Promise callback throw
+process.nextTick throw
+setImmediate throw
+unhandledRejection
+uncaughtException
+process.exit
+fatal global error handler
+
+Report the exact mechanism.
+
+======================================================================
+11. FIX PROCESS SURVIVAL FIRST
+======================================================================
+
+Required invariant:
+
+Any failure in:
+
+POST /api/trade-planning/session
+
+must produce a controlled HTTP response.
+
+Example:
+
+500
+{
+  "error": "Unable to save trade planning session"
+}
+
+or existing API error envelope.
+
+The process must remain healthy.
+
+Immediately after a forced failure:
+
+GET /api/broker/ping
+
+must still return normally.
+
+No Railway restart.
+
+======================================================================
+12. FIX THE ROOT PERSISTENCE ERROR
+======================================================================
+
+Then fix the actual persistence defect.
+
+Successful production-equivalent behavior:
+
+POST /api/trade-planning/session
+
+with the exact WMT payload
+
+→ 200 or 201
+→ session persisted
+→ session belongs to authenticated user
+→ symbol WMT
+→ constraints round-trip correctly
+→ null goalId accepted
+→ null portfolioId accepted
+→ process remains alive
+
+======================================================================
+13. VERIFY RESPONSE SHAPE
+======================================================================
+
+Inspect what the client expects after POST /session.
+
+Ensure successful server response includes all fields needed by:
+
+Explore Equity
+expression selection
+EquityPlanningPanel
+
+No frontend guessing.
+
+======================================================================
+14. EXPRESSION SELECTION CHAIN
+======================================================================
+
+After session creation succeeds, verify the next step:
+
+Explore Equity
+
+persists the USER expression selection through the existing 2.8.1A
+mechanism.
+
+Do not merge session creation and expression selection into an unsafe
+single operation unless that is already the canonical architecture.
+
+selectedBy must remain:
+
+USER
+
+======================================================================
+15. IDEMPOTENCY / DUPLICATE CLICK
+======================================================================
+
+Test exact production flow with:
+
+double click Explore Equity
+browser refresh
+two identical POST /session calls
+
+Expected:
+
+no duplicate harmful session state
+no DB constraint crash
+no process termination
+
+Use existing session reuse/idempotency semantics.
+
+======================================================================
+16. MULTI-INSTANCE RAILWAY TEST
+======================================================================
+
+Session state must be database-backed.
+
+Request 1 on Instance A:
+
+POST /api/trade-planning/session
+
+Request 2 on Instance B:
+
+GET session / continue Trade Planning
+
+must see the same persisted state.
+
+No dependence on process-local memory.
+
+======================================================================
+17. FORCED DB ERROR TEST
+======================================================================
+
+Inject database failure.
+
+Expected:
+
+POST /session returns controlled 5xx
+
+then:
+
+GET /api/broker/ping → success
+
+GET /api/trade-planning/WMT/context → success
+
+Process remains alive.
+
+This becomes a permanent regression gate.
+
+======================================================================
+18. SCHEMA CONTRACT TEST
+======================================================================
+
+Add a permanent test comparing the session persistence fields used by the
+service against the table/migration contract.
+
+This should catch:
+
+missing column
+renamed column
+wrong nullability
+wrong data type
+
+before deployment.
+
+======================================================================
+19. PROD-BUNDLE TEST
+======================================================================
+
+This must not be considered complete based only on tsx/dev tests.
+
+Run the actual production build:
+
+npm run build
+
+Then boot:
+
+NODE_ENV=production node dist/index.cjs
+
+Exercise:
+
+POST /api/trade-planning/session
+
+with the exact captured payload.
+
+Expected:
+
+no crash.
+
+======================================================================
+20. NO BROKER IMPACT
+======================================================================
+
+Assert:
+
+placeOrder = 0
+submitOrder = 0
+replaceOrder = 0
+cancelOrder = 0
+
+This defect is entirely upstream of execution.
+
+======================================================================
+21. SECURITY
+======================================================================
+
+Preserve:
+
+authenticated user
+server-derived userId
+session ownership
+cross-user isolation
+
+Reject client injection of:
+
+userId
+selectedBy = AI
+forceApplicable
+accountId
+forceExecute
+
+======================================================================
+22. CLIENT FAILURE UI
+======================================================================
+
+If session persistence genuinely fails:
+
+show safe message:
+
+"Unable to save your planning session. Please try again."
+
+Do not move into Equity Planning.
+
+Do not mark Equity selected.
+
+Retry may retry session persistence only.
+
+======================================================================
+23. QUALITY GATES
+======================================================================
+
+Run:
+
+trade-planning tests
+trade-preferences tests
+equity-planning tests
+DB tests
+migration tests
+integration
+security
+smoke
+regression
+candidate-consistency
+execution-preflight
+order-preparation
+equity-preview
+execution-readiness
+order-confirmation
+execution
+TEST_LIVE certification
+test:release
+test:release:full
+npm run build
+
+Production-bundle runtime test mandatory.
+
+Report exact counts.
+
+======================================================================
+24. OPERATIONS / RAILWAY UAT
+======================================================================
+
+Update Doc 45 with this exact UAT:
+
+1. Open WMT Trade Planning.
+2. Click Explore Equity once.
+3. POST /api/trade-planning/session must return 200/201.
+4. No Railway 502.
+5. /api/broker/ping remains healthy.
+6. Equity selection persists as USER.
+7. Equity Planning panel renders.
+8. Refresh page.
+9. Session remains available.
+10. No duplicate session.
+
+======================================================================
+25. DOCUMENTATION
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+Trade Planning ops doc
+Trade Preferences ops doc
+docs/operations/45-test-live-execution-certification.md
+
+Document actual defect cause.
+
+======================================================================
+COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Exact route implementation
+2. Exact service call
+3. Exact database operation
+4. Original exception
+5. Original source file/line
+6. Postgres error code if applicable
+7. Why Node exited
+8. Schema mismatch YES/NO
+9. Exact schema mismatch if present
+10. Null goalId handling
+11. Null portfolioId handling
+12. constraints serialization
+13. Migration required YES/NO
+14. Files changed
+15. Process-survival fix
+16. Successful WMT POST result
+17. Successful response shape
+18. selectedBy USER result
+19. Duplicate-click result
+20. Multi-instance result
+21. Forced DB failure result
+22. Production-bundle result
+23. Broker mutation count
+24. Security test result
+25. DB/migration test result
+26. Full test count
+27. Build result
+28. TypeScript result
+29. Documentation updated
+30. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not place any broker order.

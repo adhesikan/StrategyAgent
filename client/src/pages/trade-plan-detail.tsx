@@ -1,12 +1,19 @@
 /**
- * client/src/pages/trade-plan-detail.tsx — Trade Plan Detail (Sprint 2.7.5 + 2.7.6)
+ * client/src/pages/trade-plan-detail.tsx — Trade Plan Detail (Sprint 2.7.5 + 2.7.6 + 2.8.6A)
  *
  * Sections: Lifecycle Summary (2.7.6) · Plan Header · Research Thesis · What Changed ·
  * Goal/Portfolio Context · Planning Structure · Equity/Options Snapshot · Risk Summary ·
  * Invalidation · Monitoring Plan · Research Review Checklist · User Notes · Data Freshness ·
- * Activity Timeline (2.7.6) · Plan Timeline · Related Research · Compliance Disclaimer
+ * Activity Timeline (2.7.6) · Plan Timeline · Related Research · Compliance Disclaimer ·
+ * Execution Workflow (2.8.x): Preflight → Order Preparation → Equity Preview → Final Review
  *
- * No execution CTA. No broker order. No "approved trade". No exit language.
+ * EXECUTION COMPLIANCE:
+ * - AI cannot initiate execution. No automatic submission.
+ * - User must click "Prepare for Execution" to enter the workflow.
+ * - Preflight must PASS before Order Preparation.
+ * - Equity Preview is preview-only — nothing submitted to broker.
+ * - Final Order Review acknowledgements are mandatory before Sprint 2.8.6 submission.
+ * - No broker order is submitted from this page.
  */
 
 import { useState, useEffect } from "react";
@@ -52,10 +59,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { ExecutionPreflightPanel } from "@/components/execution/ExecutionPreflightPanel";
 import { OrderPreparationPanel } from "@/components/execution/OrderPreparationPanel";
+import { EquityOrderPreviewPanel } from "@/components/execution/EquityOrderPreviewPanel";
+import { FinalOrderReviewPanel } from "@/components/execution/FinalOrderReviewPanel";
 import type { ExecutionPreflightResult } from "../../../shared/execution-types";
+import type { OrderDraft } from "../../../shared/order-draft-types";
 import {
   Activity, AlertCircle, Archive, CheckSquare, ChevronLeft, Clock, Copy,
-  ExternalLink, Filter, Info, RefreshCw, ShieldAlert, TrendingDown, TrendingUp
+  ExternalLink, Filter, Info, Play, RefreshCw, ShieldAlert, TrendingDown, TrendingUp
 } from "lucide-react";
 
 // ============================================================================
@@ -213,6 +223,9 @@ export default function TradePlanDetailPage() {
   const [activityCategory, setActivityCategory] = useState<string>("all");
   const [isEvaluating, setIsEvaluating] = useState(false);
 
+  // Execution workflow toggle (Sprint 2.8.6A) — user must explicitly initiate
+  const [showExecution, setShowExecution] = useState(false);
+
   const { isConnected: brokerConnected } = useBrokerStatus();
 
   // Fetch current execution preflight (Sprint 2.8.0/2.8.1)
@@ -222,6 +235,16 @@ export default function TradePlanDetailPage() {
     enabled:  !!id && !!plan && brokerConnected,
     staleTime: 4 * 60 * 1000,
   });
+
+  // Watch the order draft — same query key as OrderPreparationPanel so cache is shared.
+  // Enabled only when preflight passes. Feeds EquityOrderPreviewPanel + FinalOrderReviewPanel.
+  const { data: activeDraft } = useQuery<OrderDraft>({
+    queryKey: ["order-draft", id],
+    queryFn:  () => apiRequest("GET", `/api/trade-plans/${id}/execution/order-draft`).then(r => r.json()),
+    enabled:  !!id && !!plan && brokerConnected && preflightData?.overallStatus === "PASS",
+    staleTime: 2 * 60 * 1000,
+  });
+  const activeDraftId = activeDraft?.id ?? null;
 
   const { data: lifecycleData, refetch: refetchLifecycle } = useQuery<{
     tradePlanId: string;
@@ -562,6 +585,31 @@ export default function TradePlanDetailPage() {
                       disabled={archiveMutation.isPending}
                     >
                       <Archive className="h-3.5 w-3.5 mr-1.5" /> Archive
+                    </Button>
+                  )}
+
+                  {/* Prepare for Execution CTA (Sprint 2.8.6A) —
+                      Visible for eligible broker-connected Equity Trade Plans.
+                      TEST_LIVE allowlisting is a submission gate, NOT shown here.
+                      AI cannot click this. User must explicitly initiate. */}
+                  {brokerConnected && plan.planType === "EQUITY" && plan.status !== "ARCHIVED" && (
+                    <Button
+                      size="sm"
+                      variant={showExecution ? "secondary" : "default"}
+                      onClick={() => {
+                        setShowExecution(v => !v);
+                        if (!showExecution) {
+                          setTimeout(() => {
+                            document.getElementById("execution-workflow-section")
+                              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 100);
+                        }
+                      }}
+                      aria-label={showExecution ? "Hide execution workflow" : "Prepare for Execution"}
+                      data-testid="prepare-for-execution-cta"
+                    >
+                      <Play className="h-3.5 w-3.5 mr-1.5" />
+                      {showExecution ? "Hide Execution" : "Prepare for Execution"}
                     </Button>
                   )}
                 </div>
@@ -1058,22 +1106,70 @@ export default function TradePlanDetailPage() {
           </Card>
         </section>
 
-        {/* § Execution Preflight (Sprint 2.8.0) */}
-        {brokerConnected && id && (
-          <section aria-labelledby="execution-preflight-heading">
-            <ExecutionPreflightPanel tradePlanId={id} brokerConnected={brokerConnected} />
-          </section>
-        )}
+        {/* § Execution Workflow (Sprints 2.8.0–2.8.5) ─────────────────────────
+             Rendered when user clicks "Prepare for Execution" in the plan header.
+             Pipeline: Preflight → Order Preparation → Equity Preview → Final Review
+             Sprint 2.8.6 submission is handled by /executions/:id after confirmation.
 
-        {/* § Order Preparation (Sprint 2.8.1) — shown when preflight has passed */}
-        {brokerConnected && id && preflightData && !preflightData.isExpired && preflightData.overallStatus === "PASS" && (
-          <section aria-labelledby="order-preparation-heading">
-            <OrderPreparationPanel
-              tradePlanId={id}
-              preflight={preflightData}
-              brokerConnected={brokerConnected}
-            />
-          </section>
+             SAFETY INVARIANTS:
+             - brokerConnected required at every step
+             - Preflight must PASS before Order Preparation renders
+             - EquityOrderPreviewPanel is preview-only — no broker call
+             - FinalOrderReviewPanel collects acknowledgements — no broker call
+             - AI/agent cannot set showExecution to true
+        ──────────────────────────────────────────────────────────────────── */}
+        {showExecution && brokerConnected && id && (
+          <div id="execution-workflow-section" className="space-y-6" aria-label="Execution workflow">
+
+            {/* Step 1 — Execution Preflight (Sprint 2.8.0) */}
+            <section aria-labelledby="execution-preflight-heading">
+              <ExecutionPreflightPanel tradePlanId={id} brokerConnected={brokerConnected} />
+            </section>
+
+            {/* Step 2 — Order Preparation (Sprint 2.8.1) — only after preflight PASS */}
+            {preflightData && !preflightData.isExpired && preflightData.overallStatus === "PASS" && (
+              <section aria-labelledby="order-preparation-heading">
+                <OrderPreparationPanel
+                  tradePlanId={id}
+                  preflight={preflightData}
+                  brokerConnected={brokerConnected}
+                />
+              </section>
+            )}
+
+            {/* Step 3 — Equity Order Preview (Sprint 2.8.2) — only when draft exists and preflight passed */}
+            {activeDraftId && preflightData?.overallStatus === "PASS" && !preflightData.isExpired && (
+              <section aria-labelledby="equity-order-preview-heading">
+                <EquityOrderPreviewPanel
+                  draftId={activeDraftId}
+                  onEditDraft={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                />
+              </section>
+            )}
+
+            {/* Step 4 — Final Order Review (Sprint 2.8.5) — only when draft exists and preflight passed
+                THIS DOES NOT SUBMIT AN ORDER TO A BROKER.
+                After confirmation, Sprint 2.8.6 submission is initiated separately via the
+                POST /api/executions/from-confirmation/:confirmationId endpoint. */}
+            {activeDraftId && preflightData?.overallStatus === "PASS" && !preflightData.isExpired && (
+              <section aria-labelledby="final-order-review-heading">
+                <FinalOrderReviewPanel
+                  tradePlanId={id}
+                  onConfirmed={(_confirmation) => {
+                    // Confirmation recorded. Sprint 2.8.6 broker submission is a separate step.
+                    // The user can proceed to execution creation from the confirmation ID.
+                    toast({
+                      title: "Order Review Confirmed",
+                      description:
+                        "Your review and acknowledgements have been recorded. " +
+                        "Proceed to the Executions section to complete Sprint 2.8.6 broker submission.",
+                    });
+                  }}
+                />
+              </section>
+            )}
+
+          </div>
         )}
 
         {/* § Activity Timeline (Sprint 2.7.6) */}

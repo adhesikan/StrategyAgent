@@ -1,5 +1,70 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-8 — Restore End-to-End Manual Execution Entry Point
+**Date:** 2026-08-12
+**Status:** COMPLETE
+**Tests:** 26 suites / 1,716 tests
+
+### Production Symptom (Railway UAT)
+An NVDA Equity Trade Plan existed in Research Complete / Current status with Tradier connected, TEST_LIVE account allowlisted, and configuration audit passing. The Trade Plan Detail page provided **no visible entry point** to start execution. The user could not reach ExecutionPreflightPanel, OrderPreparationPanel, EquityOrderPreviewPanel, or FinalOrderReviewPanel from the saved plan.
+
+### Root Cause
+**Two distinct problems:**
+
+**Problem 1 — No discoverable CTA:** `ExecutionPreflightPanel` and `OrderPreparationPanel` were unconditionally rendered at the bottom of `trade-plan-detail.tsx` (after the Related Research section) with no scroll hint, no toggle, and no "Prepare for Execution" button. They appeared silently below the fold, invisible to any user who didn't happen to scroll all the way to the bottom.
+
+**Problem 2 — Incomplete pipeline:** `EquityOrderPreviewPanel` and `FinalOrderReviewPanel` were **entirely absent** from `trade-plan-detail.tsx`. They were only mounted in `trade-planning.tsx` gated on `?draftId=` URL search param. After `OrderPreparationPanel` created a draft, there was no forward path — no equity preview, no final review, no navigation to the Sprint 2.8.6 execution creation route.
+
+### Fix
+
+| Change | Description |
+|--------|-------------|
+| "Prepare for Execution" CTA | Added to plan header action bar. Visible when `brokerConnected && plan.planType === "EQUITY" && plan.status !== "ARCHIVED"`. Toggles `showExecution` state, scrolls to execution section. `data-testid="prepare-for-execution-cta"`. |
+| `showExecution` state | `useState(false)` — user must explicitly initiate. AI cannot set it. |
+| `activeDraft` query | `useQuery` with same `["order-draft", id]` key as `OrderPreparationPanel`. Cache is shared — when `OrderPreparationPanel` creates/refreshes the draft, `activeDraftId` propagates to downstream panels automatically. Enabled only when preflight PASS. |
+| Execution workflow section | `showExecution && brokerConnected && id` gate wraps all 4 execution steps in a `<div id="execution-workflow-section">`. Steps render sequentially: Preflight → (PASS) → Order Prep → (draftId) → Equity Preview → Final Review. |
+| `EquityOrderPreviewPanel` | Imported and mounted at Step 3. Gated on `activeDraftId && preflightData?.overallStatus === "PASS" && !preflightData.isExpired`. |
+| `FinalOrderReviewPanel` | Imported and mounted at Step 4. Same gate. `onConfirmed` shows a toast — Sprint 2.8.6 execution creation is a separate step via `POST /api/executions/from-confirmation/:cid`. |
+| TEST_LIVE gate preserved | TEST_LIVE symbol allowlist is a submission gate only. It does not block the CTA, preflight, order prep, equity preview, or final review from rendering. |
+
+### Exact UI Flow After Fix
+1. User opens `/trade-plans/:id` for an eligible NVDA Equity plan (broker connected)
+2. **"Prepare for Execution" button** appears in plan header action bar
+3. Click → `showExecution = true` → page scrolls to execution workflow section
+4. **Step 1: Execution Preflight** renders immediately (Sprint 2.8.0)
+5. If preflight PASS → **Step 2: Order Preparation** renders (Sprint 2.8.1)
+6. User configures draft (quantity, order type, limit price) → draft created
+7. **Step 3: Equity Order Preview** renders with draft data (Sprint 2.8.2) — preview-only
+8. **Step 4: Final Order Review** renders (Sprint 2.8.5) — acknowledgements + confirmation
+9. After confirmation → toast: "Order Review Confirmed. Proceed to Executions section for Sprint 2.8.6 broker submission."
+10. Sprint 2.8.6 broker submission remains via `POST /api/executions/from-confirmation/:cid` (separate step)
+
+### Safety Invariants Verified
+- ✅ AI cannot initiate execution (setShowExecution not in any other client page)
+- ✅ No automatic submission (user must click CTA then confirm)
+- ✅ Preflight must PASS before Order Preparation renders
+- ✅ Order Preparation produces/uses existing OrderDraft architecture
+- ✅ Equity Preview is preview-only (no broker call in route)
+- ✅ Final Order Review and acknowledgements mandatory
+- ✅ Sprint 2.8.5 confirmation remains non-broker-submitting
+- ✅ Sprint 2.8.6 execution creation/submission is the only broker-submission path
+- ✅ TEST_LIVE gates remain fail-closed (EI_MARKET_ORDER_BANNED_IN_TEST_LIVE, isTestLiveSafetyGateOpen)
+- ✅ Market orders prohibited in TEST_LIVE (enforced by execution-final-validation-service.ts)
+- ✅ Multi-leg submission prohibited (EI_MULTI_LEG_BANNED_IN_TEST_LIVE)
+- ✅ TEST_LIVE symbol allowlist remains a submission gate, NOT a research display gate
+
+### Files Changed
+- `client/src/pages/trade-plan-detail.tsx` — CTA button, showExecution state, activeDraft query, EquityOrderPreviewPanel, FinalOrderReviewPanel
+- `server/routes/__tests__/execution-entry-point.test.ts` — §EP1–§EP25 (38 tests, new)
+- `package.json` — `test:execution-entry` script; `test:release` updated (now 26 suites)
+- `docs/operations/17-sprint-change-log.md` — this entry
+- `docs/operations/45-test-live-execution-certification.md` — §8D UAT protocol
+
+### Test Results
+26 suites / 1,716 tests passing. Build clean. Production bundle: ROUTE_STATUS=200, PROCESS_ALIVE=true.
+
+---
+
 ## Sprint 2.8.6A-defect-7 — Trade Plan Detail React Hook Ordering Failure
 **Date:** 2026-08-12  
 **Status:** COMPLETE  

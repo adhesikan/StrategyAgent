@@ -1,0 +1,103 @@
+Sprint 2.8.6A-defect — Restore the end-to-end manual execution entry point
+
+We are performing TEST_LIVE certification of the Sprint 2.8 execution pipeline on Railway.
+
+The backend execution pipeline from Sprints 2.8.0–2.8.6 exists, but the production UI currently provides no discoverable way to start execution from a saved Equity Trade Plan.
+
+Current verified state:
+
+User created an NVDA Equity Trade Plan successfully.
+Trade Plan is Research Complete.
+Plan is Current.
+NVDA is currently research-qualified.
+Broker is connected through Tradier.
+TEST_LIVE configuration audit passes.
+TEST_LIVE account is allowlisted.
+TEST_LIVE symbol allowlist is configured separately for certification.
+Sprint 2.8.6 execution backend exists.
+Sprint 2.8.6A certification UI exists.
+Trade Plan Detail contains research/lifecycle functionality but no visible execution/preflight entry point.
+
+Do not create a parallel execution workflow.
+
+First audit the existing Sprint 2.8 implementation and identify the intended UI entry point and routing chain for:
+
+Trade Plan → Execution Preflight → Order Preparation → Equity Order Preview → Final Order Review → Execution
+
+Inspect at minimum:
+
+Trade Plan detail page
+ExecutionPreflightPanel
+OrderPreparationPanel
+equity order preview UI
+final order review UI
+execution creation/submission UI
+relevant routes from Sprints 2.8.0–2.8.6
+existing eligibility/status rules
+
+Determine whether these components are implemented but not mounted, mounted on an unreachable route, or dependent on a missing state transition.
+
+Then repair the smallest missing integration.
+
+For an eligible broker-connected Equity Trade Plan, the Trade Plan detail page must provide a clear manual action such as:
+
+Prepare for Execution
+
+This action must enter the existing execution-preflight workflow. It must NOT submit an order.
+
+Preserve all existing safety boundaries:
+
+AI cannot initiate execution.
+No automatic submission.
+User must explicitly initiate the workflow.
+Preflight must PASS before Order Preparation.
+Order Preparation must produce/use the existing OrderDraft architecture.
+Equity Preview remains preview-only.
+Final Order Review and acknowledgements remain mandatory.
+Sprint 2.8.5 confirmation remains non-broker-submitting.
+Sprint 2.8.6 execution creation/submission remains the only broker-submission path.
+TEST_LIVE gates remain fail-closed.
+Market orders remain prohibited for TEST_LIVE.
+Multi-leg submission remains prohibited.
+Production execution remains blocked.
+Do not weaken research qualification, lifecycle, broker, account, symbol, quantity, notional, acknowledgement, or revalidation gates merely to make the UI reachable.
+
+Important: Do not require a TEST_LIVE allowlisted symbol merely to display normal execution-preparation UI. TEST_LIVE allowlisting should remain a submission/certification safety gate, not a research qualification mechanism.
+
+Add tests proving:
+
+Eligible Equity Trade Plan + broker connected → manual execution entry point visible.
+Clicking it enters the existing preflight workflow.
+It does not submit anything to the broker.
+Preflight failure prevents progression.
+Preflight PASS allows existing Order Preparation.
+Order Preparation flows into existing Equity Preview.
+Equity Preview flows into existing Final Order Review.
+Final confirmation remains non-submitting.
+Execution creation/submission continues through Sprint 2.8.6 only.
+AI/agent cannot invoke the execution entry point.
+Existing TEST_LIVE safety gates remain unchanged.
+
+Also add one end-to-end integration test covering the complete manual Equity path through creation of an execution record without making a real broker network call.
+
+Run the full release suite and TypeScript/build checks.
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+docs/operations/45-test-live-execution-certification.md
+
+At completion report:
+
+root cause
+intended execution entry point before the fix
+why it was unreachable
+files changed
+exact resulting UI flow
+safety invariants verified
+tests added
+full test count
+build/TypeScript status
+READY_FOR_RAILWAY_REDEPLOY only if all gates pass
+
+Do not perform a live broker submission during development or automated testing.

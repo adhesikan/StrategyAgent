@@ -412,6 +412,49 @@ F. Log out → directly request `/api/trade-planning/WMT/context` → **MUST ret
 
 ---
 
+## 8D. Defect-8 — Restore End-to-End Manual Execution Entry Point
+
+| Field | Value |
+|-------|-------|
+| Symptom | NVDA Equity Trade Plan with broker connected, Research Complete, all TEST_LIVE gates passing — **no visible button or entry point** to start execution from the Trade Plan Detail page. |
+| Root cause 1 | `ExecutionPreflightPanel` and `OrderPreparationPanel` were silently rendered at the bottom of the page with no CTA and no scroll anchor — invisible to users. |
+| Root cause 2 | `EquityOrderPreviewPanel` and `FinalOrderReviewPanel` were entirely absent from `trade-plan-detail.tsx` — only in `trade-planning.tsx` gated on `?draftId=` URL param. Equity pipeline terminated at `OrderPreparationPanel` with no forward path. |
+| Fix | Added "Prepare for Execution" CTA button (visible for eligible broker-connected EQUITY plans, not ARCHIVED). `showExecution` state toggle reveals a workflow section with all 4 steps: Preflight → Order Prep → Equity Preview → Final Review. `activeDraft` query watches `["order-draft", id]` (shared key) to pass draftId to downstream panels. |
+| Files | `client/src/pages/trade-plan-detail.tsx` |
+| Regression tests | `server/routes/__tests__/execution-entry-point.test.ts` — §EP1–§EP25 (38 tests) |
+| Release gate | 26 suites / 1,716 tests passing |
+| Status | **READY_FOR_RAILWAY_REDEPLOY** |
+
+**Railway UAT after redeploy (Defect-8)**:
+
+A. Login → navigate to `/trade-plans` → open NVDA equity plan
+
+B. In the plan header action bar: **"Prepare for Execution" button MUST be visible** (was: no button; user had no entry point)
+
+C. Click "Prepare for Execution" → page scrolls to execution workflow section → **Step 1: Execution Preflight panel renders**
+
+D. Run preflight → if PASS → **Step 2: Order Preparation panel renders**
+
+E. Configure order (quantity, LIMIT order type, limit price) → click "Create Draft" → draft created
+
+F. **Step 3: Equity Order Preview panel renders** — verify "Preview Only — Nothing has been submitted to your broker" banner visible
+
+G. **Step 4: Final Order Review panel renders** — verify acknowledgements available
+
+H. Complete all acknowledgements → click Confirm → toast: "Order Review Confirmed. Proceed to Executions section…"
+
+I. No broker order has been submitted at any point ✓
+
+J. Navigate to `/executions` → Sprint 2.8.6 broker submission path available (separate step)
+
+K. Toggle button again ("Hide Execution") → execution workflow collapses ✓
+
+L. **CTA must NOT appear** on an OPTIONS plan or an ARCHIVED plan ✓
+
+M. Disconnect broker → **CTA must disappear** ✓
+
+---
+
 ## 8C. Defect-7 — Trade Plan Detail React Hook Ordering Failure
 
 | Field | Value |

@@ -1,0 +1,685 @@
+Sprint 2.8.6A — BLOCKING TEST_LIVE UAT DEFECT
+
+TRADE PLANNING CANDIDATE CONSISTENCY
+
+PRODUCTION SYMPTOM
+
+During TEST_LIVE certification on Railway:
+
+1. Research → All Ranked Opportunities shows:
+
+   WMT
+   #1 Top Growth Opportunity
+   score 66
+
+2. Clicking WMT successfully opens Opportunity Workspace v2.
+
+3. Opportunity Workspace shows:
+
+   Explore Research Structures
+   → Open Trade Planning
+
+4. Clicking Open Trade Planning correctly navigates to:
+
+   /trade-planning/WMT
+
+5. Trade Planning then incorrectly displays:
+
+   "WMT is not a current research candidate"
+
+   "Trade Planning requires a qualified research candidate
+   from the Opportunity Engine."
+
+This is a BLOCKING end-to-end consistency defect.
+
+The user must NOT be allowed to reach a qualified Opportunity Workspace,
+receive a Trade Planning CTA, and then be rejected by Trade Planning
+because another subsystem disagrees about candidate qualification.
+
+DO NOT weaken research qualification rules.
+
+DO NOT allow arbitrary symbols into Trade Planning.
+
+DO NOT bypass Opportunity Engine qualification.
+
+DO NOT change TEST_LIVE execution safety gates.
+
+DO NOT create special logic for WMT.
+
+DO NOT make Trade Planning accept a ticker merely because it is
+TEST_LIVE allowlisted.
+
+Fix the canonical research-candidate consistency problem.
+
+======================================================================
+1. REPRODUCE AND TRACE WMT
+======================================================================
+
+Trace WMT through the complete production-equivalent data path:
+
+All Ranked Opportunities
+→ Opportunity Workspace
+→ Trade Planning context API
+→ Trade Planning page
+
+Identify the exact server endpoints and services used by each.
+
+Report for WMT:
+
+snapshot ID
+symbol
+classification
+score
+qualified/current status
+timestamp/freshness
+
+where available.
+
+Do not guess.
+
+======================================================================
+2. IDENTIFY THE CANONICAL OPPORTUNITY SOURCE
+======================================================================
+
+Determine which service/data model is supposed to be authoritative for
+the CURRENT opportunity snapshot.
+
+Inspect relevant implementations including, as applicable:
+
+CanonicalOpportunity
+
+Opportunity Engine
+
+opportunity snapshot service
+
+opportunity workspace service
+
+trade-planning context service
+
+filterOpportunities()
+
+ranking endpoints
+
+current snapshot tables/cache
+
+Determine the canonical definition of:
+
+CURRENT RESEARCH CANDIDATE
+
+and:
+
+QUALIFIED RESEARCH CANDIDATE
+
+Document the distinction if both legitimately exist.
+
+======================================================================
+3. COMPARE ALL RANKED OPPORTUNITIES
+======================================================================
+
+Determine exactly why:
+
+/opportunities/today
+
+shows WMT as Top Growth with score 66.
+
+Identify:
+
+endpoint
+service
+snapshot
+filter
+qualification threshold
+
+used to produce that page.
+
+======================================================================
+4. COMPARE OPPORTUNITY WORKSPACE
+======================================================================
+
+Determine why:
+
+/opportunities/WMT
+
+successfully constructs Opportunity Workspace v2.
+
+Identify whether Workspace requires:
+
+current candidate
+ranked candidate
+qualified candidate
+historical candidate
+
+and which snapshot it uses.
+
+======================================================================
+5. COMPARE TRADE PLANNING
+======================================================================
+
+Inspect:
+
+GET /api/trade-planning/:symbol/context
+
+or actual Trade Planning context endpoint/service.
+
+Find the exact condition causing:
+
+"WMT is not a current research candidate"
+
+Report:
+
+which query/service it uses
+which snapshot it reads
+which cache it reads
+which qualification rule it applies
+whether it uses a stale snapshot
+whether it uses a different classification threshold
+whether it expects a field no longer populated
+whether it relies on legacy opportunity data
+
+======================================================================
+6. CHECK SNAPSHOT CONSISTENCY
+======================================================================
+
+This application has multiple research surfaces.
+
+Audit whether they are reading different:
+
+snapshot IDs
+snapshot tables
+caches
+ranking generations
+classification implementations
+
+A candidate displayed in the CURRENT ranked-opportunity page must not
+silently be evaluated against an older/different snapshot in Trade Planning.
+
+If snapshot mismatch is the root cause:
+
+make Trade Planning use the canonical current snapshot source.
+
+Do not simply loosen its qualification test.
+
+======================================================================
+7. CHECK QUALIFICATION SEMANTICS
+======================================================================
+
+Determine whether "Top Growth Opportunity" means the candidate is actually
+qualified for Trade Planning.
+
+If YES:
+
+Trade Planning must accept WMT.
+
+If NO:
+
+then All Ranked Opportunities / Opportunity Workspace must NOT expose
+"Open Trade Planning" for WMT.
+
+There must be one explicit product contract.
+
+Preferred invariant:
+
+If a CURRENT opportunity is presented as qualified/ranked and Opportunity
+Workspace exposes an active Trade Planning handoff, Trade Planning must
+accept the same CanonicalOpportunity from the same current snapshot.
+
+Do not create contradictory UX.
+
+======================================================================
+8. CHECK SCORE THRESHOLDS
+======================================================================
+
+WMT currently displays score 66.
+
+Audit whether Trade Planning has an old hard-coded qualification threshold
+such as:
+
+>= 70
+
+while the current Opportunity Engine classification/ranking rules permit
+WMT at 66.
+
+If so:
+
+DO NOT arbitrarily change 70 to 60/65/etc.
+
+Instead use the canonical opportunity classification/status field.
+
+Trade Planning should not independently reinvent Opportunity Engine
+qualification thresholds.
+
+======================================================================
+9. CHECK CLASSIFICATION CONTRACT
+======================================================================
+
+Inspect canonical fields such as:
+
+classification
+stage
+qualified
+status
+rankType
+opportunityType
+
+or actual equivalents.
+
+Trade Planning should consume canonical qualification state rather than
+recalculate qualification from raw score unless architecture explicitly
+requires recalculation.
+
+======================================================================
+10. CHECK CACHE STALENESS
+======================================================================
+
+Audit caches involved in:
+
+Opportunity Engine
+Workspace v2
+Trade Planning
+
+Check:
+
+TTL
+cache key
+snapshot ID inclusion
+symbol normalization
+
+A cache from a prior scan must not cause:
+
+Research = WMT current
+
+while:
+
+Trade Planning = WMT not current.
+
+If cache keys do not include snapshot identity where required, fix them.
+
+======================================================================
+11. SYMBOL NORMALIZATION
+======================================================================
+
+Verify WMT is consistently normalized:
+
+WMT
+
+not:
+
+wmt
+"WMT "
+other representation
+
+Do not assume this is the issue, but test it.
+
+======================================================================
+12. ESTABLISH PERMANENT CROSS-SURFACE INVARIANT
+======================================================================
+
+Add a permanent invariant test:
+
+Given current snapshot S contains CanonicalOpportunity X
+and X is displayed by All Ranked Opportunities as a qualified/ranked
+candidate,
+
+then:
+
+Opportunity Workspace(X, S)
+
+and:
+
+Trade Planning Context(X, S)
+
+must agree on candidate eligibility.
+
+Specifically:
+
+All Ranked Opportunities
+    qualified/current
+        ↓
+Opportunity Workspace
+    Trade Planning CTA enabled
+        ↓
+Trade Planning Context
+    candidate accepted
+
+No subsystem may independently reinterpret eligibility.
+
+======================================================================
+13. NEGATIVE INVARIANT
+======================================================================
+
+Also test the opposite:
+
+A genuinely unqualified/unranked symbol must NOT gain Trade Planning access
+because of this fix.
+
+Example test fixture:
+
+symbol absent from current snapshot
+
+Expected:
+
+Trade Planning remains unavailable.
+
+Do not weaken this boundary.
+
+======================================================================
+14. SNAPSHOT RACE TEST
+======================================================================
+
+Add regression coverage for scan rollover:
+
+Snapshot S1 contains ABC.
+
+Snapshot S2 replaces S1 and does not contain ABC.
+
+All surfaces must converge on S2.
+
+Do not allow:
+
+ranking page = S2
+workspace = S1
+trade planning = S1
+
+or other inconsistent combinations beyond explicitly documented
+transition behavior.
+
+======================================================================
+15. OPPORTUNITY WORKSPACE CTA CONTRACT
+======================================================================
+
+Audit TradePlanningHandoff in:
+
+client/src/pages/opportunity-workspace.tsx
+
+The CTA should be active only when canonical server context says Trade
+Planning is available.
+
+Prefer server-authoritative eligibility.
+
+Do not duplicate qualification rules in React.
+
+======================================================================
+16. TRADE PLANNING ERROR STATE
+======================================================================
+
+Keep the existing safe rejection state for genuinely unavailable symbols.
+
+But improve diagnostics internally so operations can distinguish:
+
+NOT_IN_CURRENT_SNAPSHOT
+
+NOT_QUALIFIED
+
+STALE_SNAPSHOT
+
+RESEARCH_DATA_UNAVAILABLE
+
+without exposing unnecessary internal details to users.
+
+======================================================================
+17. TEST_LIVE MUST REMAIN INDEPENDENT
+======================================================================
+
+Critical:
+
+EXECUTION_TEST_SYMBOL_ALLOWLIST
+
+must NOT influence research qualification.
+
+Being allowlisted for TEST_LIVE means:
+
+"this symbol may be used for controlled broker submission IF it reaches
+execution through the normal product workflow."
+
+It does NOT mean:
+
+"make this symbol a qualified research candidate."
+
+Add invariant test.
+
+======================================================================
+18. DO NOT CHANGE WMT ALLOWLIST YET
+======================================================================
+
+Do not modify Railway configuration.
+
+Do not change:
+
+EXECUTION_TEST_SYMBOL_ALLOWLIST
+
+as part of this code fix.
+
+The purpose of this defect investigation is to certify the real
+end-to-end workflow.
+
+======================================================================
+19. SEARCH FOR DUPLICATED QUALIFICATION LOGIC
+======================================================================
+
+Repository-wide search for:
+
+score thresholds
+qualified
+current candidate
+research candidate
+setupDetected
+classification
+Top Growth
+Watch
+opportunity eligibility
+
+Identify duplicate implementations.
+
+Report them.
+
+Consolidate only where safe and directly relevant.
+
+Do not perform a broad unrelated refactor.
+
+======================================================================
+20. CROSS-SURFACE TEST FIXTURE
+======================================================================
+
+Create a canonical test fixture representing something equivalent to:
+
+symbol: WMT
+classification: TOP_GROWTH
+score: 66
+current snapshot: true
+
+Use canonical actual enums/types.
+
+Assert:
+
+appears in ranked opportunities
+
+Workspace accepts it
+
+Trade Planning accepts it
+
+Trade Planning CTA is active
+
+Do not hard-code production WMT behavior into business logic.
+
+WMT may be used only as a regression fixture/example.
+
+======================================================================
+21. REGRESSION TEST EXISTING SYMBOLS
+======================================================================
+
+Test representative:
+
+Top Growth
+Watch
+unqualified
+absent symbol
+
+Ensure expected Trade Planning eligibility remains correct.
+
+======================================================================
+22. EXECUTION SECURITY REGRESSION
+======================================================================
+
+This fix must NOT alter:
+
+BROKER_EXECUTION_ENABLED
+
+BROKER_EXECUTION_MODE
+
+TEST_LIVE arming
+
+account allowlist
+
+symbol allowlist
+
+notional cap
+
+quantity cap
+
+market-hours enforcement
+
+preflight
+
+order preparation
+
+preview
+
+confirmation
+
+final revalidation
+
+broker submission
+
+No execution logic should need modification.
+
+======================================================================
+23. QUALITY GATES
+======================================================================
+
+Run:
+
+candidate consistency tests
+
+Opportunity Workspace tests
+
+Trade Planning tests
+
+execution preflight tests
+
+order preparation tests
+
+equity preview tests
+
+final review/confirmation tests
+
+TEST_LIVE certification tests
+
+smoke
+
+regression
+
+integration
+
+security
+
+compliance
+
+invariants
+
+idempotency
+
+npm run test:release
+
+npm run build
+
+TypeScript check
+
+Report exact counts.
+
+Zero new TypeScript errors.
+
+======================================================================
+24. PRODUCTION UAT REGRESSION
+======================================================================
+
+Add this permanent UAT:
+
+1. Open Research Hub.
+2. Open All Ranked Opportunities.
+3. Choose a current qualified candidate.
+4. Open Opportunity Workspace.
+5. Confirm Open Trade Planning CTA.
+6. Click CTA.
+7. Confirm /trade-planning/:symbol loads.
+8. Confirm same candidate is accepted.
+9. Confirm expression-selection workflow renders.
+10. Confirm no legacy /automation route is involved.
+
+This UAT must be completed before resuming TEST_LIVE certification.
+
+======================================================================
+25. DOCUMENTATION
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/45-test-live-execution-certification.md
+
+and the appropriate Opportunity Workspace / Trade Planning ops docs.
+
+Document:
+
+symptom
+root cause
+canonical candidate source
+cross-surface invariant
+fix
+tests
+UAT
+
+======================================================================
+26. DO NOT DEPLOY AUTOMATICALLY
+======================================================================
+
+Return the completed fix for review.
+
+Do not deploy.
+
+Do not submit any broker order.
+
+======================================================================
+COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Root cause
+2. Canonical current-opportunity source
+3. All Ranked Opportunities source before fix
+4. Opportunity Workspace source before fix
+5. Trade Planning source before fix
+6. Exact inconsistency
+7. Whether score 66 contributed
+8. Whether stale snapshot/cache contributed
+9. Whether duplicate qualification logic existed
+10. Files changed
+11. Canonical eligibility rule after fix
+12. Cross-surface invariant added
+13. Negative eligibility invariant
+14. Snapshot rollover test
+15. TEST_LIVE independence test
+16. WMT regression result
+17. Top Growth regression result
+18. Watch regression result
+19. Unqualified symbol result
+20. Opportunity Workspace tests
+21. Trade Planning tests
+22. Execution regression tests
+23. Security tests
+24. Full release test count
+25. Build result
+26. TypeScript result
+27. Documentation updated
+28. READY_FOR_RAILWAY_REDEPLOY / NOT_READY

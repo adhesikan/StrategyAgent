@@ -8,6 +8,13 @@ Stock opportunities are NOT served by `GET /api/dashboard`. They live at `GET /a
 
 **Why:** The MCP `rank_market_trade_candidates` call can take several seconds. Blocking the dashboard route on it caused the whole page to stall whenever MCP was slow or recovering from a session drop. Decoupling lets the dashboard render instantly while the client fetches opportunities independently.
 
+## Multi-Instance Ranking Consistency (critical)
+`getLatestRanking()` is pure in-memory (no automatic reload). `initOpportunityEngine()` MUST call `computeRankingForSnapshot` + `setLatestRanking` after loading the DB snapshot — otherwise Railway instances that didn't win the advisory lock start with `getLatestRanking() === null`, causing `getCanonicalOpportunity()` to return null for all symbols.
+
+**Why:** On Railway with multiple instances, only the lock-winning instance calls `setLatestRanking`. All other instances returned null from `getLatestRanking()` until their next scheduled scan, causing Trade Planning to reject symbols that were legitimately in the current ranked snapshot.
+
+**How to apply:** Any future change to `initOpportunityEngine()` must preserve the `computeRankingForSnapshot` + `setLatestRanking` call. The `candidate-consistency.test.ts` structural test asserts this.
+
 **How to apply:**
 - `server/services/opportunity-engine.ts` — singleton module: `scheduleOpportunityEngine()` (called from `server/index.ts` after `registerRoutes`), `runOpportunityEngine()`, `getLatestSnapshot()`.
 - `server/routes/opportunity-latest.ts` — `GET /api/opportunities/latest` (authenticated). Returns `{ snapshot: OpportunitySnapshot | null }`.

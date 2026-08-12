@@ -6,6 +6,36 @@
 
 ---
 
+## Production Defect Record — Trade Planning Candidate Consistency Mismatch
+
+**Defect ID:** 2.8.6A-defect-2  
+**Severity:** High (BLOCKING — end-to-end certification flow broken)  
+**Status:** FIXED
+
+### Symptom
+During TEST_LIVE UAT: WMT shown as #1 Top Growth (score 66) → Opportunity Workspace showed "Open Trade Planning" CTA → `/trade-planning/WMT` returned "WMT is not a current research candidate."
+
+### Root Cause
+`initOpportunityEngine()` loaded the DB snapshot into `latestSnapshot` but did NOT compute the in-memory ranking or call `setLatestRanking()`. Only the Railway instance that won the PostgreSQL advisory lock during `runOpportunityEngine()` got `setLatestRanking()` called. Other instances served `getLatestRanking() === null`, causing `getCanonicalOpportunity()` to return null for all symbols including WMT.
+
+### Canonical Opportunity Source
+The persisted `opportunity_scan_snapshots` DB table is the authoritative source. `getLatestRanking()` is the in-memory view, now always computed from the DB snapshot during `initOpportunityEngine()` on every instance.
+
+### Fix
+1. `initOpportunityEngine()` calls `computeRankingForSnapshot` + `setLatestRanking` after loading the DB snapshot — all instances converge on startup.
+2. `WorkspaceV2Response.tradePlanningEligible` added — server-authoritative boolean.
+3. Client CTA gated on `tradePlanningEligible`, not re-derived client-side.
+4. Trade Planning 404 response includes `code: "NOT_IN_CURRENT_SNAPSHOT"`.
+
+### Cross-Surface Invariant
+Symbol in any ranking bucket → `tradePlanningEligible: true` → Trade Planning accepts it.  
+Symbol absent from ranking → `tradePlanningEligible: false` → CTA hidden.
+
+### Test Coverage
+34 new pure tests in `server/routes/__tests__/candidate-consistency.test.ts` (20 suites total).
+
+---
+
 ## Production Defect Record — TEST_LIVE Admin Authorization Mismatch
 
 **Defect ID:** 2.8.6A-defect-1  

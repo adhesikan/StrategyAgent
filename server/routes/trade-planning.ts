@@ -942,8 +942,12 @@ export function registerTradePlanningRoutes(
       if (err?.message?.includes("No qualified research candidate")) {
         return res.status(404).json({
           message: err.message,
+          code: "NOT_IN_CURRENT_SNAPSHOT",
           symbol,
           hint: "Only qualified research candidates can be used as the basis for trade planning.",
+          detail: "The symbol is not present in the current opportunity ranking snapshot. " +
+            "The ranking updates on each scan cycle. Navigate to the Opportunity Workspace " +
+            "to confirm the symbol is in the current snapshot before opening Trade Planning.",
         });
       }
       console.error("[trade-planning] context build error:", err?.message);

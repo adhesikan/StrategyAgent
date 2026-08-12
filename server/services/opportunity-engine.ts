@@ -227,6 +227,36 @@ export async function initOpportunityEngine(): Promise<void> {
         scannerVersion: stored.scannerVersion,
         completedAt: stored.completedAt,
       });
+
+      // CRITICAL: Compute and set the in-memory ranking immediately from the
+      // persisted snapshot. Without this, getLatestRanking() returns null on any
+      // Railway instance that did not win the advisory lock during the startup scan,
+      // causing getCanonicalOpportunity() to return null and Trade Planning to
+      // reject symbols that are legitimately in the current ranked opportunity set.
+      //
+      // All instances now share the same persisted DB snapshot and will compute
+      // an identical ranking from it. When a new scan completes, setLatestRanking()
+      // is called again with fresh data, overwriting this restored ranking.
+      try {
+        const ranking = await computeRankingForSnapshot(stored, null);
+        setLatestRanking(ranking);
+        structuredLog("info", {
+          event: "opportunity_ranking_restored_from_snapshot",
+          snapshotId: stored.id,
+          topGrowth: ranking.topGrowth.length,
+          topIncome: ranking.topIncome.length,
+          watchlist: ranking.watchlist.length,
+          approaching: ranking.approaching?.length ?? 0,
+          regime: ranking.regime,
+        });
+      } catch (rankErr: any) {
+        structuredLog("warn", {
+          event: "opportunity_ranking_restore_failed",
+          snapshotId: stored.id,
+          error: String(rankErr?.message ?? rankErr).slice(0, 200),
+          detail: "Non-fatal. Ranking will be built when the first scan completes.",
+        });
+      }
     } else {
       structuredLog("info", {
         event: "opportunity_snapshot_not_found",

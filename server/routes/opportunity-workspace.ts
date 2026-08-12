@@ -133,6 +133,25 @@ export interface WorkspaceV2Response {
   symbol: string;
   companyName: string | null;
   opportunity: CanonicalOpportunity | null;
+  /**
+   * Server-authoritative Trade Planning eligibility flag.
+   *
+   * true  → symbol is present in the current canonical opportunity snapshot;
+   *         Trade Planning will accept this symbol.
+   * false → symbol is NOT in the current snapshot; the Trade Planning CTA
+   *         must be hidden or disabled on the client.
+   *
+   * Clients MUST gate the "Open Trade Planning" CTA on this field rather than
+   * independently re-evaluating eligibility from `opportunity`. This prevents
+   * the cross-surface inconsistency where a symbol disappears from the snapshot
+   * between the workspace load and the Trade Planning navigation.
+   *
+   * Sprint 2.8.6A-defect-2 fix: previously, the CTA was shown whenever
+   * `opportunity` was non-null, but `opportunity` came from one Railway
+   * instance while Trade Planning ran on another — different in-memory ranking
+   * states caused mismatched eligibility. This field is now the canonical gate.
+   */
+  tradePlanningEligible: boolean;
   history: unknown[];
   institutional: unknown | null;
   changeExplanation: unknown | null;
@@ -518,6 +537,7 @@ export function registerOpportunityWorkspaceRoute(
           symbol: raw,
           companyName: opportunity?.companyName ?? COMPANY_NAMES[raw] ?? null,
           opportunity,
+          tradePlanningEligible: opportunity !== null,
           history,
           institutional,
           changeExplanation,

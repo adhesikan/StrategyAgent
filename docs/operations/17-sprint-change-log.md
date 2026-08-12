@@ -1,5 +1,33 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-2 — Trade Planning Candidate Consistency (hotfix)
+**Date:** 2026-08-12  
+**Status:** COMPLETE  
+**Tests:** 20 suites / 1,430 tests
+
+### Production Symptom
+WMT shown as #1 Top Growth (score 66) in All Ranked Opportunities and Opportunity Workspace → clicked "Open Trade Planning" → `/trade-planning/WMT` returned "WMT is not a current research candidate."
+
+### Root Cause
+`initOpportunityEngine()` loaded the latest valid snapshot from DB into `latestSnapshot` but **did not compute the ranking or call `setLatestRanking()`**. The ranking is only set inside `runOpportunityEngine()`, which requires acquiring a PostgreSQL advisory lock. On Railway, only one instance wins the lock. Other instances started with `getLatestRanking() === null`. Any call to `getCanonicalOpportunity()` on those instances returned null, and Trade Planning (correctly) rejected the symbol.
+
+The Opportunity Workspace uses `Promise.allSettled` — if `getCanonicalOpportunity` returns null it still returns HTTP 200 with `opportunity: null` and shows limitations. But previously the CTA was gated on `opportunity !== null` client-side (not a separate `tradePlanningEligible` field), so if the workspace hit the instance WITH the ranking and the Trade Planning request hit the instance WITHOUT it, the CTA was shown but Trade Planning rejected.
+
+### Fix
+1. **`server/services/opportunity-engine.ts`**: `initOpportunityEngine()` now calls `computeRankingForSnapshot(stored, null)` and `setLatestRanking(ranking)` immediately after loading the DB snapshot. All instances converge to the same ranking on startup without waiting for a new scan or advisory lock.
+2. **`server/routes/opportunity-workspace.ts`**: Added `tradePlanningEligible: boolean` to `WorkspaceV2Response` — server-computed as `opportunity !== null`.
+3. **`client/src/pages/opportunity-workspace.tsx`**: CTA gated on `tradePlanningEligible` (from server) rather than re-deriving from `opportunity` client-side. Explicit contract: client never independently reinterprets eligibility.
+4. **`server/routes/trade-planning.ts`**: Error response now includes structured `code: "NOT_IN_CURRENT_SNAPSHOT"` for operational diagnostics.
+5. **34 new tests** in `candidate-consistency.test.ts`: §12 cross-surface invariant, §13 negative invariant, §14 snapshot rollover, §17 TEST_LIVE independence, §20 WMT fixture, §21 representative symbol regression, startup contract tests.
+
+### Cross-Surface Invariant (permanent)
+Given current snapshot S contains symbol X in any bucket (topGrowth/topIncome/watchlist/approaching):  
+`getCanonicalOpportunity(X)` → non-null → `tradePlanningEligible: true` → Trade Planning accepts X.
+
+Symbol absent from S → `getCanonicalOpportunity` → null → `tradePlanningEligible: false` → CTA hidden → Trade Planning unreachable for that symbol.
+
+---
+
 ## Sprint 2.8.6A-defect-1 — TEST_LIVE Admin Authorization Mismatch (hotfix)
 **Date:** 2026-08-11  
 **Status:** COMPLETE  

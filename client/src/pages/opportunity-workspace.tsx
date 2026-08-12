@@ -257,6 +257,13 @@ interface WorkspaceV2Response {
   symbol: string;
   companyName: string | null;
   opportunity: CanonicalOpportunity | null;
+  /**
+   * Server-authoritative flag: true when this symbol is in the current
+   * canonical opportunity snapshot and Trade Planning will accept it.
+   * Gate the "Open Trade Planning" CTA on this field — do not re-derive
+   * eligibility from `opportunity` directly.
+   */
+  tradePlanningEligible: boolean;
   history: HistoryEntry[];
   institutional: InstitutionalSignal | null;
   changeExplanation: ChangeExplanation | null;
@@ -1699,6 +1706,8 @@ export default function OpportunityWorkspacePage() {
   const ranking = todayQuery.data?.ranking ?? null;
   const ws = workspaceQuery.data;
   const opportunity = ws?.opportunity ?? null;
+  // Server-authoritative eligibility: never re-derive from `opportunity` client-side.
+  const tradePlanningEligible = ws?.tradePlanningEligible ?? false;
   const candidate = ranking ? findScoredCandidate(symbol, ranking) : null;
   const score = candidate?.opportunityScore ?? null;
 
@@ -1969,8 +1978,8 @@ export default function OpportunityWorkspacePage() {
         <ReportsSection reports={reports} navigate={navigate} />
         <AIResearchSection symbol={symbol} navigate={navigate} />
 
-        {/* Future Trade Planning Handoff */}
-        {opportunity && <TradePlanningHandoff opportunity={opportunity} />}
+        {/* Trade Planning Handoff — gated on server-authoritative eligibility */}
+        {tradePlanningEligible && opportunity && <TradePlanningHandoff opportunity={opportunity} />}
 
         {/* Limitations */}
         {limitations.length > 0 && (

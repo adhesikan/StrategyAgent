@@ -2489,19 +2489,61 @@ export default function TradePlanningPage() {
           </div>
         )}
 
-        {/* Error — distinguish infrastructure (503) from absent candidate (404) */}
+        {/* Error — distinguish 401 / 403 / 503 / 404 / 5xx */}
         {contextQuery.isError && (() => {
           const errMsg = (contextQuery.error as Error | undefined)?.message ?? "";
-          const isInfraError = errMsg.startsWith("503");
-          if (isInfraError) {
+          const status = parseInt(errMsg.slice(0, 3), 10);
+
+          // 401 — session expired or not authenticated
+          if (status === 401) {
             return (
               <Card className="border-border/50">
                 <CardContent className="p-8 text-center space-y-4">
                   <AlertCircle className="h-8 w-8 text-yellow-400 mx-auto" aria-hidden="true" />
                   <div>
-                    <p className="font-semibold">Opportunity data is temporarily unavailable</p>
+                    <p className="font-semibold">Session verification failed</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      The opportunity ranking could not be loaded at this time. Please try again in a moment.
+                      Your session could not be verified. Please sign in again.
+                    </p>
+                  </div>
+                  <Link href="/auth">
+                    <Button size="sm" variant="outline">Sign In</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          // 403 — authenticated but access denied
+          if (status === 403) {
+            return (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center space-y-4">
+                  <AlertCircle className="h-8 w-8 text-red-400 mx-auto" aria-hidden="true" />
+                  <div>
+                    <p className="font-semibold">Access denied</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      You do not have permission to access Trade Planning for this symbol.
+                    </p>
+                  </div>
+                  <Link href="/dashboard">
+                    <Button size="sm" variant="outline">Dashboard</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          // 503 — opportunity engine unavailable (transient, retriable)
+          if (status === 503) {
+            return (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center space-y-4">
+                  <AlertCircle className="h-8 w-8 text-yellow-400 mx-auto" aria-hidden="true" />
+                  <div>
+                    <p className="font-semibold">Current opportunity data is temporarily unavailable</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Please try again in a moment.
                     </p>
                   </div>
                   <div className="flex justify-center gap-2">
@@ -2516,7 +2558,28 @@ export default function TradePlanningPage() {
               </Card>
             );
           }
-          // 404 — symbol genuinely not in the current ranked snapshot
+
+          // 5xx (non-503) — generic server error
+          if (status >= 500) {
+            return (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center space-y-4">
+                  <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto" aria-hidden="true" />
+                  <div>
+                    <p className="font-semibold">A temporary error occurred</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Please try again. If the problem persists, contact support.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => contextQuery.refetch()}>
+                    Try Again
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          // 404 / default — symbol genuinely not in the current ranked snapshot
           return (
             <Card className="border-border/50">
               <CardContent className="p-8 text-center space-y-4">

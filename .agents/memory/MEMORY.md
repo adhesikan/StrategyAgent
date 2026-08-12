@@ -86,3 +86,4 @@
 - [Execution Readiness & Guardrails (Sprint 2.8.4)](sprint-284-execution-readiness.md) — deterministic 9-category engine; missing positions≠zero; missing buying power≠$0; brokerSubmissionEnabled:false literal type constant.
 - [Review, Consent & Final Order Confirmation (Sprint 2.8.5)](sprint-285-order-confirmation.md) — confirmation cannot survive changed preview/readiness; SHA-256 snapshot hash; 120s TTL; idempotent confirm; makeSnapshot() must use current time not fixed past date.
 - [Sprint 2.8.6 — Broker Submission](sprint-286-broker-submission.md) — 15-state machine; persist-before-send; SUBMISSION_UNKNOWN never auto-retries; TEST_LIVE needs all 10 gates; isNaN guard for arming expiry; 18 suites / 1312 tests.
+- [Trade Planning Authentication Contract](trade-planning-auth-contract.md) — canonical userId = req.session.userId! (not req.user); Defect-4 root cause, getPlanningSession arg order, client 401 display rule.

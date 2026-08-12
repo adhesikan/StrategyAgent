@@ -1,0 +1,636 @@
+SPRINT 2.8.6A — BLOCKING DEFECT-4
+Trade Planning Context Returns 401 for Authenticated User
+
+PRODUCTION EVIDENCE
+
+The remaining TEST_LIVE certification blocker has now been isolated.
+
+Browser Network inspection on Railway production shows:
+
+GET /api/trade-planning/WMT/context
+HTTP 401 Unauthorized
+
+Request URL:
+https://www.vcptrader.com/api/trade-planning/WMT/context
+
+The browser request contains the normal application session cookie.
+
+At essentially the same time, the same browser/session successfully calls other authenticated endpoints including:
+
+GET /api/auth/user → 200
+GET /api/user/settings → 200/304
+GET /api/opportunities/today → 200/304
+GET /api/opportunities/workspace/WMT → 200
+
+Production Opportunity Workspace also returns:
+
+symbol: WMT
+opportunity: non-null
+tradePlanningEligible: true
+
+Therefore:
+
+THIS IS NOT CURRENTLY AN OPPORTUNITY QUALIFICATION DEFECT.
+
+Do not make additional changes to Opportunity Engine qualification, ranking thresholds,
+snapshot hydration, TEST_LIVE symbol allowlists, or execution gates unless investigation
+proves they are independently defective.
+
+The immediate defect is:
+
+/api/trade-planning/WMT/context returns 401 for an otherwise authenticated session.
+
+There is also a client error-handling defect:
+
+the Trade Planning page converts this 401 into:
+
+"WMT is not a current research candidate"
+
+which is factually incorrect.
+
+============================================================
+1. TRACE THE EXACT 401 SOURCE
+============================================================
+
+Inspect:
+
+server/routes/trade-planning.ts
+
+and every middleware applied to:
+
+GET /api/trade-planning/:symbol/context
+
+Determine exactly which statement/middleware generates the 401.
+
+Search for:
+
+401
+Unauthorized
+isAuthenticated
+requireAuth
+requireUser
+req.user
+req.session
+session.userId
+req.session.userId
+(req as any).session?.userId
+userId extraction
+authentication middleware
+subscription middleware
+plan/tier middleware
+router-level middleware
+
+Report the exact line and condition causing the 401.
+
+Do not patch anything until the root cause is identified.
+
+============================================================
+2. COMPARE AUTH IMPLEMENTATION WITH WORKING ROUTES
+============================================================
+
+Compare authentication/user-ID resolution for:
+
+WORKING:
+GET /api/opportunities/workspace/:symbol
+GET /api/opportunities/today
+GET /api/auth/user
+
+FAILING:
+GET /api/trade-planning/:symbol/context
+
+Determine whether Trade Planning uses a different auth convention.
+
+Important historical context:
+
+Sprint 2.8.1 previously fixed a TypeScript/auth issue by changing:
+
+req.user
+
+to:
+
+(req as any).session?.userId
+
+because that was believed to match the rest of the codebase.
+
+DO NOT assume that convention is actually correct.
+
+Verify the real runtime session structure.
+
+Determine where authenticated user identity actually lives.
+
+Possible examples:
+
+req.user.id
+req.user.claims.sub
+req.session.userId
+req.session.passport.user
+another canonical helper
+
+Use the application's established canonical authentication helper rather than
+introducing another route-specific extraction method.
+
+============================================================
+3. INSPECT AUTH MIDDLEWARE
+============================================================
+
+Find the canonical middleware used by production authenticated routes.
+
+Determine:
+
+- how authentication is established
+- how user ID is attached to Request
+- whether Passport is involved
+- whether session.userId is actually populated
+- whether req.user is populated
+- whether different auth systems coexist
+- whether Trade Planning bypasses the canonical helper
+
+Document the exact production Request identity contract.
+
+============================================================
+4. AUDIT ALL TRADE-PLANNING ROUTES
+============================================================
+
+Do not fix only /:symbol/context.
+
+Audit every route in:
+
+server/routes/trade-planning.ts
+
+including all Sprint 2.7.x / 2.8.x Trade Planning routes.
+
+Find every location extracting user identity.
+
+Create a table:
+
+Route
+Current auth middleware
+Current userId source
+Correct?
+Change required?
+
+The same latent defect may exist on endpoints we have not reached yet.
+
+============================================================
+5. AUDIT EXECUTION PIPELINE AUTH PATTERNS
+============================================================
+
+Because TEST_LIVE will shortly exercise:
+
+Trade Planning
+Execution Preflight
+Order Preparation
+Equity Preview
+Final Readiness
+Order Confirmation
+Execution
+
+audit the user-ID extraction patterns in these route modules too.
+
+DO NOT make broad unrelated refactors.
+
+But identify inconsistent authentication conventions now.
+
+We must not fix Trade Planning only to hit another false 401 at Step 8.
+
+============================================================
+6. CREATE ONE CANONICAL USER-ID RESOLVER
+============================================================
+
+If the codebase does not already have one, introduce a small canonical helper such as:
+
+getAuthenticatedUserId(req)
+
+or use the existing equivalent.
+
+It must derive identity only from trusted server-side authenticated session/request state.
+
+Never accept userId from:
+
+query parameters
+request body
+headers controlled by client
+symbol
+trade plan
+execution draft
+
+Fail closed when authentication is genuinely absent.
+
+Do not weaken authentication.
+
+============================================================
+7. PRESERVE OWNERSHIP ENFORCEMENT
+============================================================
+
+This fix MUST NOT weaken:
+
+cross-user isolation
+trade plan ownership
+session ownership
+execution ownership
+broker account ownership
+admin boundaries
+
+Authentication repair is not permission bypass.
+
+All existing ownership checks remain server-authoritative.
+
+============================================================
+8. FIX /api/trade-planning/:symbol/context
+============================================================
+
+After canonical auth resolution:
+
+Authenticated session + WMT current candidate:
+
+200
+
+Unauthenticated request:
+
+401
+
+Authenticated session + symbol genuinely absent:
+
+404
+code: NOT_IN_CURRENT_SNAPSHOT
+
+Opportunity infrastructure unavailable:
+
+503
+code: OPPORTUNITY_DATA_UNAVAILABLE
+
+These cases must never be conflated.
+
+============================================================
+9. FIX CLIENT ERROR HANDLING
+============================================================
+
+Inspect:
+
+client/src/pages/trade-planning.tsx
+
+The page currently appears to translate failure of the context request into:
+
+"[SYMBOL] is not a current research candidate"
+
+regardless of HTTP status.
+
+Fix this.
+
+Required behavior:
+
+200:
+render Trade Planning
+
+401:
+show authentication/session message such as:
+
+"Your session could not be verified. Please sign in again."
+
+Do NOT say the symbol is unqualified.
+
+403:
+show access-denied message appropriate to existing UX conventions.
+
+404 + NOT_IN_CURRENT_SNAPSHOT:
+show:
+
+"[SYMBOL] is not a current research candidate."
+
+503 + OPPORTUNITY_DATA_UNAVAILABLE:
+show:
+
+"Current opportunity data is temporarily unavailable. Please try again."
+
+Other 5xx:
+show generic temporary service error.
+
+Do not leak internal details.
+
+============================================================
+10. TEST THE EXACT PRODUCTION FAILURE
+============================================================
+
+Create a regression test reproducing:
+
+Authenticated user
+WMT in current ranking
+Workspace says tradePlanningEligible=true
+GET /api/trade-planning/WMT/context
+
+Expected:
+
+200
+
+NOT 401.
+
+This exact regression must permanently remain in the suite.
+
+============================================================
+11. AUTHENTICATED SESSION TEST
+============================================================
+
+Create an integration test using the SAME authentication/session mechanism as
+the production application.
+
+Do not simply mock req.userId at the route boundary.
+
+Test:
+
+login/authenticated session
+→ session cookie
+→ /api/opportunities/workspace/WMT
+→ /api/trade-planning/WMT/context
+
+Both must resolve the same authenticated user.
+
+============================================================
+12. UNAUTHENTICATED TEST
+============================================================
+
+Without valid session:
+
+GET /api/trade-planning/WMT/context
+
+Expected:
+
+401
+
+Candidate presence must not bypass authentication.
+
+============================================================
+13. CROSS-USER TEST
+============================================================
+
+User A creates Trade Planning/session resources.
+
+User B cannot access User A resources.
+
+Expected existing ownership behavior remains unchanged.
+
+============================================================
+14. AUTH CONSISTENCY INVARIANT
+============================================================
+
+Add permanent tests ensuring authenticated identity is resolved consistently across:
+
+Opportunity Workspace
+Trade Planning
+Trade Plans
+Execution Preflight
+Order Preparation
+Equity Preview
+Options Preview
+Execution Readiness
+Order Confirmation
+Execution
+
+The exact middleware may differ where justified, but authenticated user identity
+must resolve consistently.
+
+============================================================
+15. SEARCH FOR THE 2.8.1 AUTH FOOTGUN
+============================================================
+
+Sprint 2.8.1 recorded this as a key implementation detail:
+
+"req.user pattern corrected to (req as any).session?.userId"
+
+Re-evaluate that decision against the ACTUAL production authentication architecture.
+
+It may have introduced or exposed this defect.
+
+Search git/code history where possible.
+
+Report whether this is the root cause.
+
+If yes, update the documentation/memory note so future sprints do not repeat it.
+
+============================================================
+16. DO NOT CHANGE WMT ELIGIBILITY
+============================================================
+
+Current production evidence already establishes:
+
+WMT exists in current snapshot.
+
+Current category:
+approaching
+
+Current score:
+48
+
+Opportunity Workspace:
+tradePlanningEligible=true
+
+Therefore do NOT:
+
+special-case WMT
+change score threshold
+promote WMT
+change approaching semantics
+change ranking categories
+change symbol allowlist
+change TEST_LIVE qualification
+change opportunity scoring
+
+The bug is auth unless evidence proves otherwise.
+
+============================================================
+17. TEST_LIVE REMAINS BLOCKED
+============================================================
+
+Do not submit any broker order.
+
+Do not automatically enable anything.
+
+Do not modify Railway environment variables.
+
+Do not change:
+
+BROKER_EXECUTION_ENABLED
+BROKER_EXECUTION_MODE
+EXECUTION_TEST_LIVE_ARMED
+EXECUTION_TEST_ACCOUNT_ALLOWLIST
+EXECUTION_TEST_SYMBOL_ALLOWLIST
+execution caps
+
+This sprint is an authentication defect repair.
+
+============================================================
+18. SECURITY REVIEW
+============================================================
+
+Specifically test that the fix does NOT introduce:
+
+client-supplied user IDs
+authentication bypass
+IDOR
+cross-user Trade Plan access
+cross-user execution access
+admin privilege escalation
+broker account substitution
+session fixation assumptions
+
+Run existing security suite.
+
+============================================================
+19. PRODUCTION DIAGNOSTICS
+============================================================
+
+For authentication failures, add safe structured diagnostics only if useful.
+
+Allowed examples:
+
+route
+authResolved true/false
+sessionPresent true/false
+requestId
+
+DO NOT log:
+
+session cookies
+tokens
+OAuth credentials
+full broker account IDs
+passwords
+authorization headers
+
+============================================================
+20. QUALITY GATES
+============================================================
+
+Run all relevant suites including:
+
+test:smoke
+test:regression
+test:integration
+test:security
+test:candidate-consistency
+test:trade-planning
+test:execution-preflight
+test:order-preparation
+test:equity-preview
+test:options-preview
+test:execution-readiness
+test:order-confirmation
+test:execution
+TEST_LIVE certification tests
+test:release
+test:release:full if available
+npm run build
+
+Run TypeScript checks according to current project baseline.
+
+Report exact counts.
+
+============================================================
+21. RAILWAY UAT AFTER REDEPLOY
+============================================================
+
+Do not deploy automatically.
+
+After I deploy to Railway, UAT will be:
+
+A.
+Login normally.
+
+B.
+Open:
+/api/auth/user
+
+Expected 200.
+
+C.
+Open WMT Opportunity Workspace.
+
+Expected:
+opportunity non-null
+tradePlanningEligible=true
+
+D.
+Click:
+Open Trade Planning
+
+E.
+Browser Network:
+
+GET /api/trade-planning/WMT/context
+
+MUST return:
+
+200
+
+F.
+Trade Planning UI must render.
+
+G.
+Refresh /trade-planning/WMT at least 5 times.
+
+Every context request must return 200.
+
+H.
+Log out.
+
+Directly request:
+/api/trade-planning/WMT/context
+
+Expected 401.
+
+============================================================
+22. DOCUMENTATION
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+docs/operations/45-test-live-execution-certification.md
+Trade Planning operations documentation
+authentication conventions documentation if one exists
+
+Document the canonical request-user identity pattern prominently.
+
+Remove/correct any misleading documentation saying to universally use:
+
+(req as any).session?.userId
+
+if that is not the real authentication contract.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact source line producing production 401
+2. Exact root cause
+3. Runtime authenticated Request structure
+4. Canonical user-ID source
+5. Why Opportunity Workspace succeeded
+6. Why Trade Planning failed
+7. Whether Sprint 2.8.1 auth change contributed
+8. All affected Trade Planning routes
+9. Other execution routes with same latent pattern
+10. Canonical auth helper used/created
+11. Ownership protections preserved
+12. Client 401 handling fix
+13. Client 403 handling
+14. Client 404 handling
+15. Client 503 handling
+16. WMT exact regression result
+17. Authenticated integration test
+18. Unauthenticated test
+19. Cross-user isolation test
+20. Execution auth consistency tests
+21. Security test results
+22. Candidate consistency results
+23. Full release test count
+24. Build result
+25. TypeScript result
+26. Files changed
+27. Documentation updated
+28. Exact Railway UAT steps
+29. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not place any broker order.

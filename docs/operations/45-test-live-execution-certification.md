@@ -327,6 +327,40 @@ Key items that require a live run to complete (items 17–44):
 
 ---
 
+## Defect-4 Record — Authentication 401 on /api/trade-planning/:symbol/context
+
+| Field | Value |
+|---|---|
+| Defect | GET /api/trade-planning/WMT/context → 401 for authenticated user |
+| Discovered | Railway UAT — browser Network tab |
+| Confirmed concurrently working | GET /api/auth/user → 200, GET /api/opportunities/workspace/WMT → 200 |
+| Root cause | 19 route handlers in trade-planning.ts used `(req as any).user?.id` (always undefined — no Passport in this app) instead of `req.session.userId!` |
+| Secondary bug | getPlanningSession args were swapped (sessionId, userId) in 9 call sites |
+| Auth contract | `req.session.userId!` — populated by express-session, declared in SessionData interface, guaranteed non-null after isAuthenticated middleware |
+| isAuthenticated middleware | Checks `req.session.userId` in `server/replit_integrations/auth/sessionAuth.ts:52` — calls next() only when set |
+| Gap | isAuthenticated passed (session.userId present) but the handler immediately returned 401 because req.user was never set |
+| Fix files | server/routes/trade-planning.ts, client/src/pages/trade-planning.tsx |
+| Client fix | 401 now shows "Your session could not be verified. Please sign in again." instead of "not a current research candidate" |
+| Regression test | server/routes/__tests__/trade-planning-auth.test.ts — §AUTH1–§AUTH20 (44 tests) |
+| Release gate | 22 suites / 1,524 tests passing |
+| Status | READY_FOR_RAILWAY_REDEPLOY |
+
+**Railway UAT after redeploy (Defect-4)**:
+
+A. Login normally → `/api/auth/user` → 200 ✓
+
+B. Open WMT Opportunity Workspace → `tradePlanningEligible: true` ✓
+
+C. Click "Open Trade Planning" → `/api/trade-planning/WMT/context` → **MUST return 200** (was 401)
+
+D. Trade Planning UI renders fully ✓
+
+E. Refresh `/trade-planning/WMT` at least 5 times → every context request returns 200 ✓
+
+F. Log out → directly request `/api/trade-planning/WMT/context` → **MUST return 401** ✓
+
+---
+
 ## 9. Post-Certification Actions
 
 1. **Disarm**: Remove/set `EXECUTION_TEST_LIVE_ARMED=false` in Replit Secrets

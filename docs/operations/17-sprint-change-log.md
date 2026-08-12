@@ -407,6 +407,33 @@ Live broker chain; `normalizeOptionChainContract` reads `greeks.mid_iv`; `clearC
 
 ---
 
+## Sprint 2.8.6A — Defect-4 Authentication Fix
+**Status:** COMPLETE — READY_FOR_RAILWAY_REDEPLOY
+
+**Defect**: GET /api/trade-planning/WMT/context returned 401 for an otherwise authenticated session.
+
+**Root cause**: ALL 19 route handlers in `server/routes/trade-planning.ts` extracted the user identity with `(req as any).user?.id`. This codebase uses pure session-based auth — there is no Passport `req.user`. The expression always returned `undefined`, so every handler's auth guard fired 401 even though `isAuthenticated` middleware had already passed (it checks `req.session.userId` and called `next()`).
+
+**Canonical auth pattern**: `req.session.userId!` — used by 40+ other routes, declared in `sessionAuth.ts` module declaration, guaranteed non-null after `isAuthenticated` calls `next()`.
+
+**Additional bug fixed**: 9 calls to `getPlanningSession(sessionId, userId)` had args swapped vs the service signature `(userId, sessionId)`. Fixed to `getPlanningSession(userId, sessionId)`.
+
+**Why Opportunity Workspace succeeded but Trade Planning failed**: `/api/opportunities/workspace/:symbol` uses a local `getUserId(req)` helper that reads `req.user?.id ?? req.user?.userId`. For the same reason it would also have been broken — the workspace route succeeds only because it falls back to `""` for userId, never performs an ownership check, and proceeds without 401. Trade Planning handlers fail fast with an explicit `if (!userId) return res.status(401)`.
+
+**Client fix**: Error display now has distinct branches for 401 (session-verification message + Sign In link), 403 (access denied), 503 (retriable infra error), generic 5xx, and 404/default (not a current research candidate). Previously all non-503 errors showed "not a current research candidate" regardless of HTTP status.
+
+**Files changed**:
+- `server/routes/trade-planning.ts` — 19× `(req as any).user?.id` → `req.session.userId!`; 9× arg-order fix `getPlanningSession(userId, sessionId)`
+- `client/src/pages/trade-planning.tsx` — 4 new error branches (401, 403, 5xx, improved 503)
+- `server/routes/__tests__/trade-planning-auth.test.ts` — NEW: 44 auth regression tests (§AUTH1–§AUTH20)
+- `package.json` — added `test:trade-planning-auth`; updated `test:release` (22 suites)
+- `docs/operations/17-sprint-change-log.md` — this entry
+- `docs/operations/45-test-live-execution-certification.md` — Defect-4 record
+
+**Test results**: 22 suites / 1,524 tests passing. Build clean.
+
+---
+
 ## Sprint 2.7.2 — Options Strategy Matching
 **Status:** COMPLETE
 

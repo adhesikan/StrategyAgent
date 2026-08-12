@@ -121,7 +121,7 @@ export function registerTradePlanningRoutes(
   // Static: GET /api/trade-planning/session/:id
   // =========================================================================
   app.get("/api/trade-planning/session/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const session = await getPlanningSession(userId, req.params.id).catch(() => null);
@@ -135,7 +135,7 @@ export function registerTradePlanningRoutes(
   // Client may submit only: constraints, goalId, portfolioId, selectedExpressionFamily
   // =========================================================================
   app.patch("/api/trade-planning/session/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const { constraints: rawConstraints, goalId, portfolioId, selectedExpressionFamily } = req.body ?? {};
@@ -166,7 +166,7 @@ export function registerTradePlanningRoutes(
   // Re-evaluate expression families with current session constraints.
   // =========================================================================
   app.get("/api/trade-planning/session/:id/expressions", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const session = await getPlanningSession(userId, req.params.id).catch(() => null);
@@ -192,7 +192,7 @@ export function registerTradePlanningRoutes(
   // Create a new planning session. Client submits only: symbol + user constraints.
   // =========================================================================
   app.post("/api/trade-planning/session", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const { symbol, constraints: rawConstraints, goalId, portfolioId } = req.body ?? {};
@@ -232,7 +232,7 @@ export function registerTradePlanningRoutes(
   // Retrieve latest equity scenario for a session (or generate on-demand)
   // =========================================================================
   app.get("/api/trade-planning/session/:id/equity", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const session = await getPlanningSession(userId, req.params.id).catch(() => null);
@@ -263,7 +263,7 @@ export function registerTradePlanningRoutes(
   // Recalculate with updated constraints or scenario range
   // =========================================================================
   app.patch("/api/trade-planning/session/:id/equity", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const session = await getPlanningSession(userId, req.params.id).catch(() => null);
@@ -298,7 +298,7 @@ export function registerTradePlanningRoutes(
   // Return just the scenario grid (fast recalc)
   // =========================================================================
   app.get("/api/trade-planning/session/:id/equity/scenarios", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const session = await getPlanningSession(userId, req.params.id).catch(() => null);
@@ -335,7 +335,7 @@ export function registerTradePlanningRoutes(
   // Build equity scenario for a symbol (without a saved session)
   // =========================================================================
   app.post("/api/trade-planning/:symbol/equity", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const symbol = req.params.symbol?.toUpperCase();
@@ -383,12 +383,12 @@ export function registerTradePlanningRoutes(
   // Static session options: GET /api/trade-planning/session/:id/options/matches
   // =========================================================================
   app.get("/api/trade-planning/session/:id/options/matches", isAuthenticated, async (req: Request, res: Response) => {
-    const userId    = (req as any).user?.id;
+    const userId    = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId = req.params.id;
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       const context = await buildTradePlanningContext(userId, session.symbol, {
@@ -416,13 +416,13 @@ export function registerTradePlanningRoutes(
   // Static session options detail: GET /api/trade-planning/session/:id/options/matches/:strategyFamily
   // =========================================================================
   app.get("/api/trade-planning/session/:id/options/matches/:strategyFamily", isAuthenticated, async (req: Request, res: Response) => {
-    const userId    = (req as any).user?.id;
+    const userId    = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId     = req.params.id;
     const strategyFamily = req.params.strategyFamily;
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       const context = await buildTradePlanningContext(userId, session.symbol, {
@@ -460,7 +460,7 @@ export function registerTradePlanningRoutes(
   //   ownsSymbol, underlyingPrice (from stored reference), constraintsFp
   // =========================================================================
   app.post("/api/trade-planning/session/:id/options/contracts", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId = req.params.id;
 
@@ -468,7 +468,7 @@ export function registerTradePlanningRoutes(
     if (!strategyFamily) return res.status(400).json({ message: "strategyFamily is required" });
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       const context = await buildTradePlanningContext(userId, session.symbol, {
@@ -542,12 +542,12 @@ export function registerTradePlanningRoutes(
   // Metadata about which families are eligible for live contract research
   // =========================================================================
   app.get("/api/trade-planning/session/:id/options/contracts", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId = req.params.id;
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       const context = await buildTradePlanningContext(userId, session.symbol, {
@@ -590,13 +590,13 @@ export function registerTradePlanningRoutes(
   // Individual candidate detail — persisted lookup planned for Sprint 2.7.4+
   // =========================================================================
   app.get("/api/trade-planning/session/:id/options/contracts/:candidateId", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId   = req.params.id;
     const candidateId = req.params.candidateId;
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       // Individual candidate lookup requires persisted research result (2.7.4+)
@@ -621,7 +621,7 @@ export function registerTradePlanningRoutes(
   // Client MUST NOT submit: legs, quotes, Greeks, underlying price, research thesis
   // =========================================================================
   app.post("/api/trade-planning/session/:id/risk-analysis", isAuthenticated, async (req: Request, res: Response) => {
-    const userId    = (req as any).user?.id;
+    const userId    = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId = req.params.id;
 
@@ -639,7 +639,7 @@ export function registerTradePlanningRoutes(
       : undefined;
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       // Get the contract research result stored in session cache
@@ -723,12 +723,12 @@ export function registerTradePlanningRoutes(
   // Get latest cached risk analysis for this session
   // =========================================================================
   app.get("/api/trade-planning/session/:id/risk-analysis", isAuthenticated, async (req: Request, res: Response) => {
-    const userId    = (req as any).user?.id;
+    const userId    = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId = req.params.id;
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       const { contractResearchCandidateId } = req.query;
@@ -756,13 +756,13 @@ export function registerTradePlanningRoutes(
   // Get a specific risk analysis result (must belong to this session/user)
   // =========================================================================
   app.get("/api/trade-planning/session/:id/risk-analysis/:analysisId", isAuthenticated, async (req: Request, res: Response) => {
-    const userId     = (req as any).user?.id;
+    const userId     = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId  = req.params.id;
     const analysisId = req.params.analysisId;
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       // 2.7.4 uses in-memory cache only — no persistent lookup yet
@@ -784,7 +784,7 @@ export function registerTradePlanningRoutes(
   // Same auth rules as the original POST — server reconstructs all data
   // =========================================================================
   app.post("/api/trade-planning/session/:id/risk-analysis/recalculate", isAuthenticated, async (req: Request, res: Response) => {
-    const userId    = (req as any).user?.id;
+    const userId    = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const sessionId = req.params.id;
 
@@ -794,7 +794,7 @@ export function registerTradePlanningRoutes(
     }
 
     try {
-      const session = await getPlanningSession(sessionId, userId);
+      const session = await getPlanningSession(userId, sessionId);
       if (!session) return res.status(404).json({ message: "Planning session not found" });
 
       const contractResearch = getSessionContractResearch(sessionId);
@@ -848,7 +848,7 @@ export function registerTradePlanningRoutes(
   // Build options strategy match without a saved session
   // =========================================================================
   app.post("/api/trade-planning/:symbol/options/match", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const symbol = req.params.symbol?.toUpperCase();
@@ -905,7 +905,7 @@ export function registerTradePlanningRoutes(
   // goalId/portfolioId/constraints — NEVER scores or qualification data.
   // =========================================================================
   app.get("/api/trade-planning/:symbol/context", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const symbol = req.params.symbol?.toUpperCase();

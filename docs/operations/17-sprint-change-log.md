@@ -1,5 +1,54 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-QUOTE_STALE — Quote Timestamp Truthfulness (NVDA UAT)
+**Date:** 2026-08-12
+**Status:** COMPLETE
+**Tests:** 9 suites / 1,001 tests (Sprint 2.8 scope); +39 new quote-freshness tests
+
+### Production Symptom (Railway UAT — TEST_LIVE)
+After Defect-8 rev2 allowed execution preflight to be reached, the NVDA preflight showed:
+
+```
+[QUOTE_STALE] Underlying quote is stale. Refresh market data before proceeding.
+Quote is 0s old.
+```
+
+UAT occurred after 16:00 ET. The stale classification was correct (after-hours). The **"0s old"** note was wrong — it implied the quote was freshly fetched, not that the timestamp was missing.
+
+### Root Causes
+
+| # | Cause | Detail |
+|---|-------|--------|
+| 1 | `getBrokerQuote` missing from broker index | `(broker as any).getBrokerQuote?.()` returned `undefined` → `quote = null` |
+| 2 | Fetch-time substituted for missing market timestamp | `asOf: quote?.asOf \|\| new Date().toISOString()` → `freshnessSec ≈ 0` even when quote was null |
+| 3 | `isFresh = false` due to null bid/ask | With `quote = null`, `hasBid = false` → `isFresh = false` → QUOTE_STALE blocker |
+| 4 | Note displayed `freshnessSec = 0` | `"Quote is 0s old."` — truthfully the timestamp was missing, not that it was 0 seconds old |
+| 5 | Invalid date string → NaN not Infinity | `new Date("bad").getTime() = NaN`; `asOfMs != null` was `true` for `NaN` |
+
+### Fix
+
+| File | Change |
+|------|--------|
+| `server/broker/providers/tradier.ts` | Added `asOf?: string` to `StockQuote`; extracts `trade_date` (ms) or `tradetime` (s) from raw Tradier response |
+| `server/broker/providers/tradestation.ts` | Added `asOf?: string` extraction from `TradeTime`/`LastTradedTime`/`LastTradeTime` |
+| `server/broker/index.ts` | Added `getBrokerQuote(userId, symbol)` — calls `tradierGetBatchQuotes` / `tsGetBatchQuotes` per provider |
+| `server/services/broker-execution-adapter.ts` | Fixed fallback: `asOf: quote?.asOf ?? null` (never `\|\| new Date().toISOString()`); NaN guard on date parse; `asOf` return field is `string \| null` |
+| `shared/execution-types.ts` | `BrokerQuoteValidation.asOf` changed to `string \| null`; `freshnessSec` documented as `Infinity` when no timestamp |
+| `server/services/execution-preflight-service.ts` | Added `formatPreflightQuoteAge()` helper; `buildQuoteDimension` note uses helper: `Infinity` → "Quote timestamp unavailable.", ≥3600s → "Last market quote is Xh Ym old.", <3600s → "Quote is Xs old." |
+| `server/services/__tests__/quote-freshness.test.ts` | 39 new deterministic tests covering §6 A–H from UAT brief plus §I–§P |
+
+### Safety Invariants Preserved
+- Stale threshold unchanged (60 s)
+- `null` timestamp → `freshnessSec = Infinity` → `isStale = true` → QUOTE_STALE blocker (fail closed)
+- `getBrokerQuote` asOf is the market trade timestamp from provider — never substituted with fetch time
+- After-hours UAT: correct behavior — last regular-session quote is ~2h old → stale → QUOTE_STALE with "Last market quote is 2h Xm old."
+- No order submitted at any step
+
+### After-Hours Behavior
+Correct: `tradetime` / `trade_date` from Tradier reflects the actual last trade time (≈16:00 ET). After hours this is hours old → correctly stale. UI now displays "Last market quote is 2h 21m old." instead of the misleading "0s old."
+
+---
+
 ## Sprint 2.8.6A-defect-8 rev2 — Execution Preparation Section Always Visible (§10 UX Invariant)
 **Date:** 2026-08-12
 **Status:** COMPLETE

@@ -1,0 +1,300 @@
+SPRINT 2.8.6A — TEST_LIVE UAT DEFECT
+QUOTE_STALE / "Quote is 0s old" investigation
+
+Production TEST_LIVE UAT has reached Execution Preflight successfully.
+
+Current NVDA preflight:
+
+PASS:
+- Trade Plan
+- Plan Freshness
+- Broker Connection (Tradier)
+- Broker Account
+- Buying Power Availability
+- Position Requirements
+- Structure Validation
+
+WARN/UNAVAILABLE:
+- Research Lifecycle
+- Broker Permissions
+- Risk Analysis
+
+ONLY HARD BLOCKER:
+[QUOTE_STALE] Underlying quote is stale. Refresh market data before proceeding.
+
+UI detail:
+"Quote is 0s old."
+
+The preflight was re-run manually and produced the identical result.
+
+IMPORTANT CONTEXT:
+The test is currently being performed after the regular US market session.
+Do NOT weaken or bypass quote-freshness requirements simply to make TEST_LIVE pass.
+
+OBJECTIVE
+
+Determine exactly why Quote Validation returns:
+
+FAIL
+QUOTE_STALE
+"Quote is 0s old."
+
+and establish whether this is:
+
+A. correct after-hours behavior with an incorrect age display,
+B. incorrect timestamp mapping,
+C. missing timestamp,
+D. fetch-time being confused with market quote time,
+E. stale cached quote,
+F. provider adapter issue,
+G. another defect.
+
+==================================================
+1. TRACE THE COMPLETE QUOTE PATH
+==================================================
+
+Trace NVDA quote data from:
+
+ExecutionPreflightPanel
+→ preflight API
+→ preflight service
+→ quote dependency/provider
+→ internal VCP Trader market-data service
+→ Tradier/provider response if applicable.
+
+Report the exact quote source used by Execution Preflight.
+
+Do not assume the green "Live: Tradier" UI means the quote itself comes from Tradier.
+
+==================================================
+2. INSPECT TIMESTAMP SEMANTICS
+==================================================
+
+Identify all relevant fields:
+
+- bid
+- ask
+- last
+- quote timestamp
+- trade timestamp
+- provider timestamp
+- fetchedAt
+- receivedAt
+- cachedAt
+- current server time
+- calculated age
+
+For each timestamp report:
+
+source
+unit (seconds/ms/ISO)
+timezone
+nullable?
+fallback behavior
+
+==================================================
+3. FIND THE EXACT STALE PREDICATE
+==================================================
+
+Show the exact computation responsible for QUOTE_STALE.
+
+For example conceptually:
+
+ageMs = now - quoteTimestamp
+
+and the exact threshold comparison.
+
+Report:
+
+quote timestamp
+current timestamp
+computed age
+configured threshold
+result
+
+Do NOT change the threshold yet.
+
+==================================================
+4. INVESTIGATE "0s old"
+==================================================
+
+Explain exactly how the UI obtains "0s old."
+
+Determine whether 0 means:
+
+- genuinely zero seconds old
+- timestamp missing
+- NaN converted to zero
+- null default
+- fetch timestamp used
+- rounding issue
+- serialization issue
+- another fallback
+
+A missing/invalid timestamp MUST NOT be represented as a fresh
+"0s old" quote.
+
+Fail closed.
+
+If timestamp is unavailable, use a truthful state such as:
+
+"Quote timestamp unavailable"
+
+while retaining the appropriate blocker.
+
+==================================================
+5. AFTER-HOURS SEMANTICS
+==================================================
+
+This UAT occurred after 16:00 ET.
+
+Determine what quote timestamp the provider supplies after market close.
+
+The system must distinguish:
+
+QUOTE FETCH AGE
+from
+MARKET QUOTE AGE.
+
+Fetching an old market quote right now does NOT make the market quote fresh.
+
+Example:
+
+last market update: 15:59:58 ET
+API fetched: 18:21:00 ET
+
+market quote age ≈ 2h21m
+fetch age ≈ 0s
+
+Preflight must use the appropriate market-data timestamp for execution safety.
+
+==================================================
+6. REGULAR SESSION TEST
+==================================================
+
+Add deterministic tests for:
+
+A. regular session + genuinely fresh quote → PASS
+B. regular session + stale quote → QUOTE_STALE
+C. after-hours + last regular-session quote → correct fail-closed result
+D. quote fetched now but underlying market timestamp stale → QUOTE_STALE
+E. missing timestamp → fail closed, never display "0s old"
+F. seconds-vs-milliseconds timestamp conversion
+G. future/invalid timestamp → fail closed
+H. exactly-at-threshold boundary
+
+==================================================
+7. DO NOT ALTER SAFETY POLICY
+==================================================
+
+Do NOT:
+
+- increase stale thresholds merely to pass UAT
+- substitute fetchedAt for market quote timestamp
+- allow stale quotes in TEST_LIVE
+- suppress QUOTE_STALE
+- bypass preflight
+- submit an order
+- make any real broker mutation
+
+==================================================
+8. UI TRUTHFULNESS
+==================================================
+
+The preflight UI must display the actual interpretation.
+
+Examples:
+
+"Quote is 12s old."
+
+or
+
+"Quote timestamp unavailable."
+
+or, if appropriate:
+
+"Last market quote is 2h 21m old."
+
+Do not display "0s old" when the quote has been classified stale unless
+0 seconds is genuinely the computed market quote age and another explicit
+reason caused the stale classification.
+
+==================================================
+9. VERIFY MARKET-DATA SOURCE
+==================================================
+
+Report whether Execution Preflight uses:
+
+- Tradier
+- Twelve Data
+- stored OHLCV
+- internal VCP market endpoint
+- cached quote
+- another source
+
+Do not change provider architecture as part of this defect unless the
+existing implementation is demonstrably incorrect.
+
+==================================================
+10. TEST_LIVE SAFETY
+==================================================
+
+After the fix, TEST_LIVE must still require a genuinely acceptable quote
+according to the existing execution safety policy.
+
+No real order during automated tests.
+
+==================================================
+11. REGRESSION
+==================================================
+
+Run all Sprint 2.8 suites, including:
+
+execution-preflight
+order-preparation
+equity-preview
+options-preview
+readiness
+confirmation
+execution
+TEST_LIVE certification
+release/full release
+
+Run TypeScript and build checks.
+
+==================================================
+12. DOCUMENTATION
+==================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+docs/operations/45-test-live-execution-certification.md
+
+Record this as a TEST_LIVE UAT defect.
+
+==================================================
+COMPLETION REPORT
+==================================================
+
+Return:
+
+1. Root cause
+2. Actual quote provider/source
+3. Raw timestamp semantics
+4. Timestamp used by preflight
+5. Timestamp used by UI
+6. Why UI displayed "0s old"
+7. Exact stale predicate
+8. Actual behavior after market close
+9. Files changed
+10. Safety behavior before/after
+11. Tests added
+12. Full test count
+13. TypeScript result
+14. Build result
+15. Whether regular-session UAT is required
+16. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not place a broker order.

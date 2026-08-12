@@ -210,7 +210,9 @@ export function validateQuoteForPreflight(
 ): BrokerQuoteValidation {
   const now = Date.now();
   const asOfStr = raw.timestamp || raw.asOf || null;
-  const asOfMs = asOfStr ? new Date(asOfStr).getTime() : null;
+  // Guard: new Date("not-a-date").getTime() = NaN; treat NaN as absent.
+  const rawMs = asOfStr ? new Date(asOfStr).getTime() : null;
+  const asOfMs = rawMs !== null && isFinite(rawMs) ? rawMs : null;
 
   const bid = raw.bid ?? null;
   const ask = raw.ask ?? null;
@@ -235,9 +237,12 @@ export function validateQuoteForPreflight(
     isZeroBid,
     isSpreadInvalid,
     isFresh,
+    // Infinity when timestamp is unavailable — callers must handle this case.
+    // Never substitute fetch time here: that would misrepresent "no timestamp" as age 0.
     freshnessSec: Math.round(freshnessSec),
     source: asOfMs != null ? "broker" : "unavailable",
-    asOf: asOfStr ?? new Date().toISOString(),
+    // null when no market timestamp available — not current time.
+    asOf: asOfStr ?? null,
   };
 }
 
@@ -391,10 +396,13 @@ class LiveBrokerExecutionAdapter implements BrokerExecutionAdapter {
           asOf: new Date().toISOString(),
         };
       }
-      // Attempt a live quote via broker; fall back to unavailable on error
-      const quote = await (broker as any).getBrokerQuote?.(userId, symbol).catch?.(() => null) ?? null;
+      // Attempt a live quote via broker; fall back to unavailable on error.
+      // IMPORTANT: pass asOf as null when the provider returns no trade timestamp.
+      // Never substitute fetch time — that would make a stale market quote appear
+      // fresh (age ≈ 0s). Null → freshnessSec = Infinity → isStale = true (fail closed).
+      const quote = await broker.getBrokerQuote(userId, symbol).catch(() => null);
       return validateQuoteForPreflight(
-        { bid: quote?.bid, ask: quote?.ask, last: quote?.last, asOf: quote?.asOf || new Date().toISOString() },
+        { bid: quote?.bid, ask: quote?.ask, last: quote?.last, asOf: quote?.asOf ?? null },
         symbol,
         EXECUTION_FRESHNESS_THRESHOLDS.underlyingQuoteSec
       );

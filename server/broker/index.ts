@@ -687,6 +687,35 @@ export async function placeBrokerOrder(userId: string, order: OrderRequest): Pro
   return result;
 }
 
+/**
+ * Fetch a single equity quote from the connected broker.
+ * Returns the raw StockQuote (including asOf market timestamp when available),
+ * or null if no broker is connected or the fetch fails.
+ *
+ * IMPORTANT: The returned asOf field is the market-data trade timestamp from the
+ * provider — never the fetch time. Callers must not substitute current time when
+ * asOf is absent; they must treat it as "timestamp unavailable" and fail closed.
+ */
+export async function getBrokerQuote(userId: string, symbol: string) {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) return null;
+  try {
+    const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+    let quoteMap: Map<string, import("./providers/tradier").StockQuote>;
+    if (connection.provider === "tradestation") {
+      const { tsGetBatchQuotes } = await import("./providers/tradestation");
+      quoteMap = await tsGetBatchQuotes(token, [symbol]);
+    } else {
+      // Tradier (default) and any other provider that exposes tradierGetBatchQuotes
+      const { tradierGetBatchQuotes } = await import("./providers/tradier");
+      quoteMap = await tradierGetBatchQuotes(token, [symbol]);
+    }
+    return quoteMap.get(symbol) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getOptionQuote(userId: string, optionSymbol: string) {
   const connection = await getConnectionForUser(userId);
   if (!connection || !isSupportedProvider(connection.provider)) {

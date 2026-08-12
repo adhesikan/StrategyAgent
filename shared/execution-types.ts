@@ -344,9 +344,18 @@ export interface BrokerQuoteValidation {
   isSpreadInvalid: boolean;
   /** Whether the quote is recent enough for execution preflight */
   isFresh: boolean;
+  /**
+   * Seconds since the market-data trade timestamp.
+   * Infinity when no trade timestamp was available from the provider.
+   * Never 0 due to fetch-time substitution — "0s old" is always a genuine 0.
+   */
   freshnessSec: number;
   source: "broker" | "reference" | "unavailable";
-  asOf: string; // ISO 8601
+  /**
+   * ISO-8601 market-data trade timestamp from the provider, or null when
+   * the provider did not supply one. Never substituted with fetch time.
+   */
+  asOf: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

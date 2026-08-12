@@ -69,6 +69,15 @@ export async function tsGetBatchQuotes(accessToken: string, symbols: string[]): 
         const last = parseFloat(q.Last ?? "0");
         if (q.Symbol && last > 0) {
           const prevClose = parseFloat(q.PreviousClose ?? "0") || last;
+          // TradeStation supplies trade timestamp as an ISO string in TradeTime or
+          // LastTradedTime. Never substitute fetch time — absence means timestamp unavailable.
+          let asOf: string | undefined;
+          const rawTs = q.TradeTime ?? q.LastTradedTime ?? q.LastTradeTime ?? null;
+          if (rawTs && typeof rawTs === "string" && rawTs.length > 0) {
+            const parsed = new Date(rawTs);
+            if (!isNaN(parsed.getTime())) asOf = parsed.toISOString();
+          }
+
           results.set(q.Symbol, {
             symbol: q.Symbol,
             last,
@@ -82,6 +91,7 @@ export async function tsGetBatchQuotes(accessToken: string, symbols: string[]): 
             low: parseFloat(q.Low ?? "0") || last,
             prevClose,
             avgVolume: parseInt(q.AverageVolume ?? "0", 10),
+            asOf,
           });
         }
       }

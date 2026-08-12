@@ -64,6 +64,13 @@ export interface StockQuote {
   low: number;
   prevClose: number;
   avgVolume: number;
+  /**
+   * ISO-8601 timestamp of the last market trade from the provider.
+   * Derived from Tradier `trade_date` (ms epoch) or `tradetime` (s epoch).
+   * Undefined when the provider does not supply a trade timestamp.
+   * NEVER replaced with fetch time — absence means timestamp unavailable.
+   */
+  asOf?: string;
 }
 
 export interface OptionChainContract {
@@ -101,6 +108,16 @@ export async function tradierGetBatchQuotes(accessToken: string, symbols: string
       for (const q of arr) {
         if (q.symbol && typeof q.last === "number") {
           const prevClose = q.prevclose ?? q.close ?? q.last;
+          // Tradier supplies trade_date as ms-epoch or tradetime as s-epoch.
+          // We prefer trade_date; fall back to tradetime*1000.
+          // Never substitute fetch time — absence means timestamp unavailable.
+          let asOf: string | undefined;
+          if (typeof q.trade_date === "number" && q.trade_date > 0) {
+            asOf = new Date(q.trade_date).toISOString();
+          } else if (typeof q.tradetime === "number" && q.tradetime > 0) {
+            asOf = new Date(q.tradetime * 1000).toISOString();
+          }
+
           results.set(q.symbol, {
             symbol: q.symbol,
             last: q.last,
@@ -114,6 +131,7 @@ export async function tradierGetBatchQuotes(accessToken: string, symbols: string
             low: q.low ?? q.last,
             prevClose,
             avgVolume: q.average_volume ?? 0,
+            asOf,
           });
         }
       }

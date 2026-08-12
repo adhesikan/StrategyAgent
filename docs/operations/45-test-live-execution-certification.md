@@ -542,6 +542,65 @@ H. Check Railway logs: `trade_plan_tables_ready` event MUST appear before any se
 
 ---
 
+---
+
+## Production Defect Record — QUOTE_STALE "Quote is 0s old." (NVDA UAT)
+
+**Defect ID:** 2.8.6A-defect-QUOTE_STALE  
+**Severity:** High (BLOCKING preflight — NVDA TEST_LIVE could not pass quote check)  
+**Status:** FIXED  
+**UAT Date:** 2026-08-12 (after 16:00 ET)
+
+### Symptom
+NVDA execution preflight reached successfully after Defect-8 rev2. Only hard blocker:
+
+```
+[QUOTE_STALE] Underlying quote is stale. Refresh market data before proceeding.
+Quote is 0s old.
+```
+
+Preflight was re-run manually with identical result.
+
+### Root Cause
+`getBrokerQuote` did not exist on `server/broker/index.ts`. The adapter called `(broker as any).getBrokerQuote?.(userId, symbol)` which returned `undefined`, making `quote = null`. The adapter then substituted the current fetch time as `asOf: quote?.asOf || new Date().toISOString()`, producing `freshnessSec ≈ 0`. Since `quote = null`, `hasBid = false` → `isFresh = false` despite the near-zero age. The note read "Quote is 0s old." — a lie. The actual market quote was hours old (UAT after 16:00 ET).
+
+### Fix Summary
+- Added `getBrokerQuote(userId, symbol)` to broker index (calls `tradierGetBatchQuotes`/`tsGetBatchQuotes`)
+- Tradier `trade_date` (ms) / `tradetime` (s) extracted into `StockQuote.asOf`
+- TradeStation `TradeTime`/`LastTradedTime` extracted into `StockQuote.asOf`
+- Adapter fallback changed: `asOf: quote?.asOf ?? null` — never `|| new Date().toISOString()`
+- `null` timestamp → `freshnessSec = Infinity` → `isStale = true` → QUOTE_STALE (fail closed)
+- Added `formatPreflightQuoteAge()`: Infinity → "Quote timestamp unavailable."; ≥1h → "Last market quote is Xh Ym old."; <1h → "Quote is Xs old."
+- 39 new deterministic tests in `server/services/__tests__/quote-freshness.test.ts`
+
+### Correct After-Hours Behavior (post-fix)
+After fix, with a connected Tradier account after 16:00 ET:
+- `trade_date` from Tradier ≈ 16:00 ET timestamp
+- `freshnessSec` ≈ 2h 21m (or actual time since last trade)
+- QUOTE_STALE blocker still fires (correct — market is closed, quote is old)
+- Note displays: "Last market quote is 2h 21m old." (truthful)
+
+### Regular-Session UAT Required
+After Railway redeploy, TEST_LIVE must be re-run **during regular session hours (09:30–16:00 ET)** to confirm that a genuinely fresh Tradier quote passes quote validation with a correct near-zero age display.
+
+### Railway UAT Protocol (QUOTE_STALE fix)
+
+**Pre-conditions:** Railway redeployed, broker connected (Tradier live), NVDA trade plan in RESEARCH_COMPLETE status, TEST_LIVE armed.
+
+**During Regular Session (09:30–16:00 ET):**
+1. Open NVDA trade plan → "Check Execution Preconditions"
+2. Preflight runs → Quote Validation dimension must show **PASS** (not QUOTE_STALE)
+3. Note field must NOT contain "0s old" unless freshnessSec is genuinely 0
+4. Note field must NOT say "Quote timestamp unavailable." during regular session
+5. Continue through Order Prep → Preview → Final Review → Confirm → Submit (dry-run only, no broker order)
+
+**After Hours (for information only — do not block UAT):**
+6. Quote Validation dimension shows FAIL / QUOTE_STALE (correct)
+7. Note reads "Last market quote is Xh Ym old." (not "0s old.")
+8. No broker order submitted
+
+---
+
 ## 10. Related Documents
 
 - [Doc 13](./13-production-release-checklist.md) — Production release checklist

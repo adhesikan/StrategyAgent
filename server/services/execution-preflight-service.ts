@@ -579,6 +579,31 @@ function buildPositionDimension(
   return { status: "PASS", label: "Position Requirements" };
 }
 
+/**
+ * Produce a truthful human-readable quote age string for the preflight UI note.
+ *
+ * Rules:
+ *   Infinity  → "Quote timestamp unavailable."      (provider gave no trade time)
+ *   ≥ 3600s   → "Last market quote is Xh Ym old."  (after-hours / very stale)
+ *   < 3600s   → "Quote is Xs old."                 (within the same session)
+ *
+ * A missing timestamp MUST NEVER display as "0s old" — that implies freshness.
+ * The Infinity case is the canonical fix for QUOTE_STALE with source="unavailable".
+ */
+export function formatPreflightQuoteAge(freshnessSec: number): string {
+  if (!isFinite(freshnessSec) || freshnessSec < 0) {
+    return "Quote timestamp unavailable.";
+  }
+  if (freshnessSec >= 3600) {
+    const hours = Math.floor(freshnessSec / 3600);
+    const mins = Math.floor((freshnessSec % 3600) / 60);
+    return mins > 0
+      ? `Last market quote is ${hours}h ${mins}m old.`
+      : `Last market quote is ${hours}h old.`;
+  }
+  return `Quote is ${Math.round(freshnessSec)}s old.`;
+}
+
 function buildQuoteDimension(
   quoteValidation: import("@shared/execution-types").BrokerQuoteValidation | null,
   optionContracts: Array<{ symbol: string; valid: boolean; expired: boolean }>,
@@ -593,7 +618,10 @@ function buildQuoteDimension(
 
   if (!quoteValidation.isFresh) {
     blockers.push({ code: "QUOTE_STALE", message: "Underlying quote is stale. Refresh market data before proceeding.", dimension: "quote" });
-    return { status: "FAIL", label: "Quote Validation", note: `Quote is ${quoteValidation.freshnessSec}s old.` };
+    // Truthful age display — never say "0s old" when the timestamp is missing.
+    // Infinity means the provider did not supply a trade timestamp (not "fresh now").
+    const note = formatPreflightQuoteAge(quoteValidation.freshnessSec);
+    return { status: "FAIL", label: "Quote Validation", note };
   }
 
   if (quoteValidation.isCrossed || quoteValidation.isZeroBid || quoteValidation.isSpreadInvalid) {

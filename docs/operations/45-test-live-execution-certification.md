@@ -6,6 +6,57 @@
 
 ---
 
+## Production Defect Record — Expression Selection & Execution Handoff (Defect-5)
+
+**Defect ID:** 2.8.6A-defect-5  
+**Severity:** High (BLOCKING — traders could not reach EquityPlanningPanel or create a Trade Plan)  
+**Status:** FIXED
+
+### Symptom
+Trade Planning loaded for WMT with APPLICABLE (Equity Research, Monitor Only). But:
+1. No explicit "Explore" CTA on expression cards — no visible way to initiate the equity planning flow
+2. EquityPlanningPanel never appeared — `handleSelectFamily` never auto-created a session
+3. Stale "Future Planning Steps — Upcoming" placeholder remained on page
+4. "Create Trade Plan" action was absent; only "View Trade Plans" link shown
+5. `POST /api/trade-plans` returned 401 for authenticated users (same auth bug class as Defect-4)
+
+### Root Causes
+- **Missing CTA**: `ExpressionCard` accepted only `onSelect` (toggle via click). No distinct Explore button with accessible label existed.
+- **Session creation gap**: `handleSelectFamily` PATCHed session only if one already existed. No path existed for Explore → create-session → persist-family → render panel.
+- **Auth bug**: `trade-plans.ts` — 13 handlers used `(req as any).user?.id` (always undefined).
+- **Stale copy**: "Future Planning Steps — Upcoming" was a Sprint 2.7 placeholder; execution pipeline complete since Sprint 2.8.x.
+
+### Fix
+- **Server**: All 13 trade-plans route handlers updated to `req.session.userId!`
+- **Client**: `EXPLORE_CTA_LABELS`, `onExplore` prop on `ExpressionCard`, `handleExploreFamily`, `pendingFamilyRef`, `createTradePlanMutation`, Selected Expression indicator, "Create Trade Plan" section, 8-step workflow overview
+- **`selectedBy` invariant preserved**: `handleExploreFamily` never sends `selectedBy`; server enforces `"USER"` via `FORBIDDEN_CLIENT_FIELDS`
+
+### Railway UAT Protocol (Post-Deploy)
+1. Open `/trade-planning/WMT` — expression cards load with APPLICABLE and POTENTIALLY APPLICABLE
+2. Each APPLICABLE / POTENTIALLY APPLICABLE card shows an explicit labeled button ("Explore Equity", "Explore Scaled Equity", "Monitor Candidate")
+3. Click "Explore Equity" on Equity Research card (Applicable)  
+   → Planning session is created automatically if none exists  
+   → `EquityPlanningPanel` renders below with reference price and scenario grid  
+   → "Selected Research Expression: Equity Research" indicator appears with "Change Expression" button
+4. "Create Trade Plan" card appears (for equity/equity_scaled only) — click it  
+   → Navigates to `/trade-plans` with new Trade Plan created  
+   → 201 response (not 401)
+5. UNAVAILABLE expression cards do NOT show an "Explore" button
+6. No auto-selection occurs on page load
+7. "Future Planning Steps — Upcoming" text is absent from the page
+8. "Research to Execution Workflow" 8-step section is present at the bottom
+
+### `selectedBy` UAT Check
+In DevTools Network: inspect the PATCH `/api/trade-planning/session/:id` body sent by "Explore" click.  
+→ Body must contain `selectedExpressionFamily` but must NOT contain `selectedBy`.  
+→ Server-side DB row must show `selected_by = 'USER'`.
+
+### Test Coverage
+`server/routes/__tests__/trade-planning-expression-selection.test.ts` — 55 tests §EXP1–§EXP25 (regression, security)  
+`test:release` updated to 23 suites / 1,579 tests.
+
+---
+
 ## Production Defect Record — Self-Healing Ranking Hydration (Defect-3)
 
 **Defect ID:** 2.8.6A-defect-3  

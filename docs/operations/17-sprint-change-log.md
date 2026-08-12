@@ -1,5 +1,67 @@
 # Sprint Change Log
 
+## Sprint 2.8.6A-defect-5 — Trade Planning Expression Selection & Execution Handoff (UAT)
+**Date:** 2026-08-12  
+**Status:** COMPLETE  
+**Tests:** 23 suites / 1,579 tests
+
+### Production Symptoms (Railway UAT)
+1. No visible "Explore" CTA on expression cards — whole card clickable but no explicit button
+2. `EquityPlanningPanel` never appeared — `handleSelectFamily` only PATCHed session if one already existed; no auto-create path existed for the explore flow
+3. Stale "Future Planning Steps / Order Preparation — Upcoming" placeholder still displayed (Order Preparation is implemented since Sprint 2.8.x)
+4. "Save Research Plan" card showed "View Trade Plans" but no "Create Trade Plan" action
+5. `POST /api/trade-plans` and all 13 sibling routes used `(req as any).user?.id` (always undefined) — same auth bug as Defect-4 in `trade-planning.ts`
+
+### Root Causes
+- **No explicit Explore CTA**: `ExpressionCard` only supported `onSelect` (toggle via card click). No distinct "Explore" button with accessible label.
+- **Session creation gap**: `handleSelectFamily` toggled local state and PATCHed only if `sessionId` existed. When no session existed, `EquityPlanningPanel` never rendered (gated on both `selectedFamily` AND `sessionId`).
+- **Auth bug (trade-plans.ts)**: 13 route handlers used `(req as any).user?.id` instead of `req.session.userId!` — canonical pattern used across 40+ other routes. `POST /api/trade-plans` would always return 401 to authenticated users.
+- **Stale UI copy**: "Future Planning Steps — Upcoming" was a Sprint 2.7 placeholder; Order Preparation (2.8.x) and full execution pipeline are implemented.
+
+### Fix
+
+#### Server — `server/routes/trade-plans.ts`
+- Replaced all 13 instances of `(req as any).user?.id` with `req.session.userId!`
+
+#### Client — `client/src/pages/trade-planning.tsx`
+1. **`EXPLORE_CTA_LABELS` constant** — family → button label map (equity, equity_scaled, monitor_only, options families)
+2. **`ExpressionCard` — `onExplore` prop** — renders explicit "Explore Equity" / "Monitor Candidate" etc. Button below limitations section, `stopPropagation` to prevent card-toggle, only for non-unavailable families
+3. **`pendingFamilyRef` (useRef)** — holds family the user wants to explore when no session exists yet
+4. **`handleExploreFamily` function** — definitively sets `selectedFamily`; if session exists, PATCHes immediately; if no session, stores in `pendingFamilyRef` and calls `createSessionMutation.mutate()`
+5. **`createSessionMutation.onSuccess` updated** — after creating a new session, reads `pendingFamilyRef.current` and fire-and-forgets a PATCH to persist the family (local state already set)
+6. **`createTradePlanMutation`** — calls `POST /api/trade-plans` with `{ planningSessionId: sessionId, planType: "EQUITY" }`, navigates to `/trade-plans` on success
+7. **"Selected Research Expression" indicator** — shown when `selectedFamily` is set; displays label, "Selected by you", and "Change Expression" button
+8. **"Create Trade Plan" section** — shown when `sessionId && (selectedFamily === "equity" || selectedFamily === "equity_scaled")`; includes compliance copy and "View Trade Plans" fallback
+9. **"Research Workflow Overview"** — replaces stale "Future Planning Steps" placeholder; 8-step workflow with steps 1–3 highlighted (current page scope)
+10. **Unavailable family cards** — do NOT receive `onExplore` prop (no actionable CTA)
+
+### `selectedBy` Invariant Preserved
+`handleExploreFamily` does NOT send `selectedBy` in the PATCH body. The server enforces `selectedBy: "USER"` via `FORBIDDEN_CLIENT_FIELDS` in `trade-preferences.ts`. Auto-selection remains impossible.
+
+### Test Coverage
+`server/routes/__tests__/trade-planning-expression-selection.test.ts` — 55 tests, §EXP1–§EXP25  
+`test:release` updated to 23 suites.
+
+---
+
+## Sprint 2.8.6A-defect-4 — Trade Planning Auth (hotfix)
+**Date:** 2026-08-12  
+**Status:** COMPLETE  
+**Tests:** 22 suites / 1,524 tests
+
+### Production Symptom
+`GET /api/trade-planning/WMT/context` returned 401 for authenticated users. Trade Planning page showed "not a current research candidate" for all users including authenticated ones.
+
+### Root Cause
+All 19 route handlers in `trade-planning.ts` used `(req as any).user?.id` (always undefined — no Passport in this app). Additionally 9 `getPlanningSession(sessionId, userId)` calls had args swapped vs signature `(userId, sessionId)`.
+
+### Fix
+- `server/routes/trade-planning.ts`: 19 auth replacements + 9 arg-order fixes
+- `client/src/pages/trade-planning.tsx`: 401/403/5xx error handler branches added
+- `server/routes/__tests__/trade-planning-auth.test.ts`: 44 new auth regression tests
+
+---
+
 ## Sprint 2.8.6A-defect-3 — Self-Healing Lazy Ranking Hydration (hotfix)
 **Date:** 2026-08-12  
 **Status:** COMPLETE  

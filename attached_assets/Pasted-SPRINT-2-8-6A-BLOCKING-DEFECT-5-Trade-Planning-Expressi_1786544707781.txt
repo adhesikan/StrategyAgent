@@ -1,0 +1,661 @@
+SPRINT 2.8.6A — BLOCKING DEFECT-5
+Trade Planning Expression Selection / Execution Workflow Handoff
+
+PRODUCTION UAT FINDING
+
+The previous authentication defect is fixed.
+
+Production now successfully loads:
+
+/trade-planning/WMT
+
+The Trade Planning Research page renders correctly.
+
+For WMT the page currently shows:
+
+APPLICABLE
+- Equity Research
+- Monitor Only
+
+POTENTIALLY APPLICABLE
+- Scaled Equity Research
+
+UNAVAILABLE
+- Income Research
+- Defined-Risk Options Research
+- Covered Call Research
+- Cash-Secured Put Research
+- Vertical Spread Research
+- Long Options Research
+- Neutral Options Research
+
+However:
+
+1. There is no visible action allowing the user to select/explore
+   Equity Research.
+
+2. The EquityPlanningPanel is therefore not reachable through the
+   normal UI.
+
+3. The page still displays:
+
+   "Future Planning Steps"
+   "Order Preparation — Upcoming"
+
+   even though Order Preparation and the execution workflow were
+   implemented in Sprints 2.8.1–2.8.6.
+
+This blocks TEST_LIVE certification at Step 7.
+
+DO NOT work around this by hardcoding WMT or automatically selecting equity.
+
+============================================================
+1. TRACE CURRENT EXPRESSION SELECTION ARCHITECTURE
+============================================================
+
+Inspect:
+
+client/src/pages/trade-planning.tsx
+
+shared/trade-preference-types.ts
+
+server/services/trade-preferences-service.ts
+
+server/routes/trade-preferences.ts
+
+shared equity planning types
+
+equity planning service/routes
+
+Trade Plan creation flow
+
+Execution Preflight flow
+
+Order Preparation flow
+
+Determine:
+
+- how selectedFamily is currently populated
+- whether BroadExpressionSelectionStep is actually rendered
+- whether selectedBy="USER" persistence exists
+- whether expression-selection API is called
+- how EquityPlanningPanel becomes visible
+- whether the UI lost its selection CTA during later sprint changes
+- whether query parameters are currently required
+- whether Trade Plan creation is reachable after equity planning
+
+Return the root cause before changing code.
+
+============================================================
+2. PRESERVE USER SELECTION INVARIANT
+============================================================
+
+An APPLICABLE expression is NOT automatically selected.
+
+The user must explicitly choose it.
+
+For WMT:
+
+Equity Research        Applicable
+Monitor Only           Applicable
+Scaled Equity Research Potentially Applicable
+
+The application may order/display these according to existing deterministic
+rules, but it MUST NOT decide which one the user wants.
+
+selectedBy must remain:
+
+"USER"
+
+AI must never select the expression.
+
+Global trading preferences may influence display ordering only.
+
+They must not silently select an expression.
+
+============================================================
+3. ADD ACTIONS TO AVAILABLE EXPRESSION CARDS
+============================================================
+
+For actionable expression cards, provide a clear user control.
+
+Examples:
+
+Equity Research
+[Explore Equity]
+
+Scaled Equity Research
+[Explore Scaled Equity]
+
+Options-related expressions when available:
+[Explore Options]
+
+Monitor Only:
+[Monitor Candidate]
+
+Use the existing product vocabulary wherever canonical labels already exist.
+
+Do NOT use:
+
+Recommended
+Best
+Optimal
+Suggested Trade
+Trade This
+Buy
+Sell
+Place Trade
+
+============================================================
+4. EQUITY SELECTION BEHAVIOR
+============================================================
+
+When the user clicks:
+
+Explore Equity
+
+perform the existing canonical broad-expression selection operation.
+
+Persist:
+
+symbol
+session
+broadExpressionType
+selectedBy = USER
+
+Use existing 2.8.1A APIs/services.
+
+Do NOT create a second selection system.
+
+After successful selection:
+
+selectedFamily = equity
+
+and render the existing:
+
+EquityPlanningPanel
+
+on the SAME Trade Planning workflow/page unless the current architecture
+explicitly requires a canonical child route.
+
+Do not duplicate the Equity Planning engine.
+
+============================================================
+5. SHOW ACTIVE USER SELECTION
+============================================================
+
+Once selected, make the state obvious.
+
+Example:
+
+Selected Research Expression
+Equity
+
+Selected by you
+
+[Change Expression]
+
+"Change Expression" returns to expression selection without deleting
+research data or modifying unrelated Trade Plans.
+
+Do not imply the platform recommended the selection.
+
+============================================================
+6. CONNECT EQUITY PLANNING TO TRADE PLAN
+============================================================
+
+Audit the end of EquityPlanningPanel.
+
+There must be a legitimate UI path from completed equity planning to the
+existing Trade Plan Workspace.
+
+Use the existing Sprint 2.7.5 Trade Plan APIs.
+
+Do NOT create duplicate Trade Plan persistence.
+
+If a Trade Plan can already be created from this workflow, expose the
+existing action.
+
+Appropriate neutral wording:
+
+"Create Trade Plan"
+
+or
+
+"Save as Trade Plan"
+
+Do not use recommendation language.
+
+============================================================
+7. CONNECT TRADE PLAN TO EXISTING EXECUTION PIPELINE
+============================================================
+
+Once a Trade Plan exists, the existing architecture should provide:
+
+Trade Plan
+    ↓
+Execution Preflight
+    ↓
+Order Preparation
+    ↓
+Equity Order Preview
+    ↓
+Execution Readiness
+    ↓
+Final Order Review
+    ↓
+Order Confirmation
+    ↓
+TEST_LIVE execution
+
+DO NOT rebuild these components.
+
+Audit and repair navigation/handoff only.
+
+============================================================
+8. REMOVE STALE FUTURE ROADMAP
+============================================================
+
+The current Trade Planning page says:
+
+"Future Planning Steps"
+"Order Preparation — Upcoming"
+
+This is incorrect.
+
+Audit all "Upcoming", "Future", and disabled placeholders related to features
+already implemented in 2.8.x.
+
+Update the Trade Planning page to represent current platform capability.
+
+Do not expose broker submission directly from Trade Planning.
+
+A reasonable workflow display would be:
+
+Research
+→ Expression Selection
+→ Planning
+→ Trade Plan
+→ Execution Preflight
+→ Order Preparation
+→ Preview
+→ Final Review
+
+Execution itself remains available only through the controlled execution
+workflow and applicable safety gates.
+
+============================================================
+9. DO NOT BYPASS TRADE PLAN
+============================================================
+
+Trade Planning must NOT jump directly to broker execution.
+
+The Trade Plan remains the durable research/planning artifact separating
+research from execution.
+
+Required architecture:
+
+Research Candidate
+→ Trade Planning
+→ User Expression Selection
+→ Equity Planning
+→ Trade Plan
+→ Execution pipeline
+
+NOT:
+
+Research Candidate
+→ Trade Planning
+→ Broker Order
+
+============================================================
+10. TEST_LIVE SAFETY
+============================================================
+
+This defect fix MUST NOT:
+
+submit an order
+create an order automatically
+enable execution automatically
+modify Railway environment variables
+change execution caps
+change TEST_LIVE allowlists
+change WMT qualification
+change broker routing
+change confirmation requirements
+
+No automatic broker action may occur.
+
+============================================================
+11. WMT PRODUCTION REGRESSION FIXTURE
+============================================================
+
+Add permanent regression coverage for the current UAT case:
+
+WMT
+current candidate
+tradePlanningEligible = true
+Equity Research = APPLICABLE
+
+Expected:
+
+Trade Planning loads
+Equity Research card visible
+Explore Equity action visible
+
+Click Explore Equity:
+
+selection persisted
+selectedBy = USER
+EquityPlanningPanel becomes reachable
+
+No broker calls.
+
+============================================================
+12. NO AUTO-SELECTION TEST
+============================================================
+
+Given:
+
+Equity = APPLICABLE
+Monitor Only = APPLICABLE
+
+Expected:
+
+neither is automatically selected.
+
+The user must explicitly choose.
+
+============================================================
+13. PREFERENCE INVARIANT
+============================================================
+
+If STOCK is a global user preference:
+
+Equity may appear first.
+
+But:
+
+it must not become selected automatically.
+
+Preference affects presentation/order only.
+
+Compatibility remains deterministic.
+
+Selection remains USER.
+
+============================================================
+14. UNAVAILABLE EXPRESSION TEST
+============================================================
+
+For an UNAVAILABLE family:
+
+No actionable Explore CTA should permit progression.
+
+The UI may explain why unavailable.
+
+Client manipulation must not bypass server compatibility rules.
+
+============================================================
+15. SCALED EQUITY REQUIREMENTS
+============================================================
+
+Current WMT page reports Scaled Equity as POTENTIALLY_APPLICABLE because
+constraints are missing.
+
+Preserve this behavior.
+
+If required constraints are absent, the CTA may direct the user to provide
+those constraints.
+
+Do not silently manufacture:
+
+capital available
+maximum capital at risk
+portfolio values
+risk tolerance
+
+============================================================
+16. OPTIONS REMAIN UNAVAILABLE WHEN DISABLED
+============================================================
+
+Current WMT state has options research disabled.
+
+Do not make options available merely to complete this defect.
+
+Preserve current deterministic eligibility.
+
+============================================================
+17. TRADE PLAN CREATION TEST
+============================================================
+
+Test:
+
+WMT
+→ Explore Equity
+→ Equity Planning
+→ Save/Create Trade Plan
+
+Expected:
+
+Trade Plan created using existing Trade Plan service/API
+correct user ownership
+correct WMT symbol
+correct equity expression
+research provenance preserved
+
+No OrderDraft automatically created.
+
+============================================================
+18. EXECUTION PREFLIGHT HANDOFF TEST
+============================================================
+
+From the resulting Trade Plan:
+
+ExecutionPreflightPanel must be reachable through the existing UI.
+
+No manual URL construction should be required.
+
+The user must be able to continue the normal workflow.
+
+============================================================
+19. FULL UI JOURNEY TEST
+============================================================
+
+Add authenticated integration/E2E coverage where feasible:
+
+Opportunity Workspace WMT
+→ Open Trade Planning
+→ Explore Equity
+→ Equity Planning
+→ Create Trade Plan
+→ Open Trade Plan
+→ Check Execution Preconditions
+
+STOP THERE for automated tests unless later steps are entirely non-executing.
+
+Assert:
+
+zero broker submission calls.
+
+============================================================
+20. AUDIT STALE PLACEHOLDERS
+============================================================
+
+Search client code for:
+
+Upcoming
+Future Planning Steps
+future workflow
+disabled
+2.7.4
+2.8.1
+2.8.2
+2.8.3
+2.8.4
+2.8.5
+2.8.6
+
+Identify placeholders whose corresponding feature now exists.
+
+Only update placeholders directly related to the Trade Planning →
+Trade Plan → execution workflow.
+
+Do not perform unrelated UI redesign.
+
+============================================================
+21. COMPLIANCE VOCABULARY
+============================================================
+
+Preserve existing research-first terminology.
+
+Do not introduce:
+
+recommended
+recommendation
+best
+optimal
+suitable
+suitability
+you should
+buy this
+sell this
+
+Expression status remains:
+
+APPLICABLE
+POTENTIALLY_APPLICABLE
+NOT_APPLICABLE / UNAVAILABLE
+as defined by canonical types.
+
+============================================================
+22. SECURITY
+============================================================
+
+Selection endpoint must enforce:
+
+authenticated user
+session ownership
+symbol/session consistency
+server-derived compatibility
+selectedBy = USER
+
+Client must not be able to inject:
+
+selectedBy = AI
+selectedBy = SYSTEM
+forceApplicable
+bypassCompatibility
+forceExecute
+userId
+accountId
+
+Run security tests.
+
+============================================================
+23. QUALITY GATES
+============================================================
+
+Run all permanent suites, including at minimum:
+
+test:smoke
+test:regression
+test:integration
+test:security
+test:candidate-consistency
+test:trade-planning
+trade-preferences tests
+equity-planning tests
+trade-plan tests
+test:execution-preflight
+test:order-preparation
+test:equity-preview
+test:execution-readiness
+test:order-confirmation
+test:execution
+TEST_LIVE certification
+test:release
+test:release:full if available
+npm run build
+
+Report exact counts.
+
+Zero new TypeScript errors.
+
+============================================================
+24. PRODUCTION UAT AFTER RAILWAY REDEPLOY
+============================================================
+
+Do NOT deploy automatically.
+
+After deployment I will:
+
+1. Login.
+2. Open WMT Opportunity Workspace.
+3. Click Open Trade Planning.
+4. Confirm /trade-planning/WMT loads.
+5. Confirm Equity Research shows Applicable.
+6. Confirm Explore Equity is visible.
+7. Click Explore Equity.
+8. Confirm selection is explicitly USER-selected.
+9. Confirm Equity Planning panel appears.
+10. Complete only the minimum planning inputs needed for the TEST_LIVE test.
+11. Create/save Trade Plan.
+12. Open Trade Plan.
+13. Confirm Execution Preflight is available.
+14. Run Execution Preflight.
+15. Continue through the existing non-executing workflow manually.
+
+NO live broker submission is part of automated UAT.
+
+============================================================
+25. DOCUMENTATION
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+Trade Planning operations doc
+Trade Preferences operations doc
+Trade Plan operations doc
+docs/operations/45-test-live-execution-certification.md
+
+Record this as the Trade Planning expression-selection/handoff defect.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Root cause
+2. Why Equity card had no action
+3. Existing selection mechanism found
+4. Existing selection mechanism reused?
+5. UI changes
+6. Equity selection behavior
+7. selectedBy invariant
+8. Preference behavior
+9. EquityPlanningPanel handoff
+10. Trade Plan creation handoff
+11. Execution Preflight handoff
+12. Stale placeholders removed
+13. WMT regression result
+14. No-auto-selection test
+15. Unavailable-expression test
+16. Scaled-equity constraint test
+17. Trade Plan creation test
+18. Execution handoff test
+19. Security results
+20. Compliance results
+21. Broker-call assertion
+22. Full release test count
+23. Build result
+24. TypeScript result
+25. Files changed
+26. Documentation updated
+27. Railway UAT steps
+28. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not submit a broker order.

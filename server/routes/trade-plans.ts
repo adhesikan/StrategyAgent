@@ -67,7 +67,7 @@ export function registerTradePlanRoutes(
 
   // ── GET /api/trade-plans ────────────────────────────────────────────────────
   app.get("/api/trade-plans", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const {
@@ -110,7 +110,7 @@ export function registerTradePlanRoutes(
 
   // ── POST /api/trade-plans ───────────────────────────────────────────────────
   app.post("/api/trade-plans", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const body = req.body as CreateTradePlanRequest;
@@ -157,7 +157,7 @@ export function registerTradePlanRoutes(
 
   // ── GET /api/trade-plans/:id ────────────────────────────────────────────────
   app.get("/api/trade-plans/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     try {
@@ -171,7 +171,7 @@ export function registerTradePlanRoutes(
 
   // ── PATCH /api/trade-plans/:id ──────────────────────────────────────────────
   app.patch("/api/trade-plans/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const body = req.body as UpdateTradePlanRequest;
@@ -203,7 +203,7 @@ export function registerTradePlanRoutes(
 
   // ── POST /api/trade-plans/:id/archive ──────────────────────────────────────
   app.post("/api/trade-plans/:id/archive", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     try {
@@ -218,7 +218,7 @@ export function registerTradePlanRoutes(
 
   // ── POST /api/trade-plans/:id/duplicate ────────────────────────────────────
   app.post("/api/trade-plans/:id/duplicate", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     try {
@@ -233,7 +233,7 @@ export function registerTradePlanRoutes(
 
   // ── GET /api/trade-plans/:id/changes ───────────────────────────────────────
   app.get("/api/trade-plans/:id/changes", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     try {
@@ -256,7 +256,7 @@ export function registerTradePlanRoutes(
 
   // ── GET /api/trade-plans/:id/versions ──────────────────────────────────────
   app.get("/api/trade-plans/:id/versions", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     try {
@@ -269,7 +269,7 @@ export function registerTradePlanRoutes(
 
   // ── POST /api/trade-plans/:id/version ──────────────────────────────────────
   app.post("/api/trade-plans/:id/version", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const body = req.body as CreateTradePlanVersionRequest;
@@ -289,7 +289,7 @@ export function registerTradePlanRoutes(
 
   // ── GET /api/trade-plans/:id/monitoring-context ────────────────────────────
   app.get("/api/trade-plans/:id/monitoring-context", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     try {
@@ -308,7 +308,7 @@ export function registerTradePlanRoutes(
 
   // ── POST /api/trade-plans/:id/lifecycle/evaluate (evaluate first — deeper static) ─
   app.post("/api/trade-plans/:id/lifecycle/evaluate", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const { force }: LifecycleEvaluateRequest = req.body ?? {};
@@ -345,7 +345,7 @@ export function registerTradePlanRoutes(
 
   // ── GET /api/trade-plans/:id/lifecycle ─────────────────────────────────────
   app.get("/api/trade-plans/:id/lifecycle", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     try {
@@ -367,7 +367,7 @@ export function registerTradePlanRoutes(
 
   // ── GET /api/trade-plans/:id/activity ──────────────────────────────────────
   app.get("/api/trade-plans/:id/activity", isAuthenticated, async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.session.userId!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const limit  = Math.min(Number(req.query.limit ?? 50), 200);

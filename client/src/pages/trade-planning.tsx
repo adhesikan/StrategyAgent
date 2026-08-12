@@ -14,7 +14,7 @@
  *   instruction to buy, sell, hold, or enter any security or strategy."
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -79,6 +79,23 @@ import {
 const RESERVED_SEGMENTS = new Set(["health", "session", "history", "templates", "metadata"]);
 
 // ---------------------------------------------------------------------------
+// Explore CTA labels — what the button says on each expression card
+// ---------------------------------------------------------------------------
+const EXPLORE_CTA_LABELS: Record<string, string> = {
+  equity:                   "Explore Equity",
+  equity_scaled:            "Explore Scaled Equity",
+  monitor_only:             "Monitor Candidate",
+  income:                   "Explore Income Options",
+  defined_risk_directional: "Explore Options",
+  covered_call:             "Explore Covered Call",
+  cash_secured_put:         "Explore Cash-Secured Put",
+  vertical_spread:          "Explore Vertical Spread",
+  long_option:              "Explore Long Options",
+  neutral_options:          "Explore Neutral Options",
+  advanced_options:         "Explore Advanced Options",
+};
+
+// ---------------------------------------------------------------------------
 // Status badge
 // ---------------------------------------------------------------------------
 
@@ -118,13 +135,16 @@ function ExpressionCard({
   result,
   selected,
   onSelect,
+  onExplore,
 }: {
-  result:   ExpressionFamilyResult;
-  selected: boolean;
-  onSelect: (f: ExpressionFamily) => void;
+  result:     ExpressionFamilyResult;
+  selected:   boolean;
+  onSelect:   (f: ExpressionFamily) => void;
+  onExplore?: (f: ExpressionFamily) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isUnavailable = result.status === "unavailable";
+  const exploreLabel  = EXPLORE_CTA_LABELS[result.family] ?? "Explore";
 
   return (
     <Card
@@ -202,6 +222,22 @@ function ExpressionCard({
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             {expanded ? "Show less" : `Show ${result.reasons.length - 2} more reasons`}
           </button>
+        )}
+
+        {/* Explicit explore CTA — only for actionable (non-unavailable) families */}
+        {!isUnavailable && onExplore && (
+          <div className="pt-1 border-t border-border/30">
+            <Button
+              size="sm"
+              variant={selected ? "default" : "outline"}
+              className="gap-1.5 text-xs h-7 w-full sm:w-auto"
+              onClick={e => { e.stopPropagation(); onExplore(result.family); }}
+              aria-label={`${exploreLabel} — open planning for ${result.label}`}
+            >
+              <ArrowRight className="h-3 w-3" aria-hidden="true" />
+              {exploreLabel}
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -2412,6 +2448,9 @@ export default function TradePlanningPage() {
     }
   }, [contextQuery.data]);
 
+  // Pending family ref — holds the family the user wanted to explore when no session existed yet
+  const pendingFamilyRef = useRef<ExpressionFamily | null>(null);
+
   // Create session mutation
   const createSessionMutation = useMutation({
     mutationFn: () =>
@@ -2422,9 +2461,18 @@ export default function TradePlanningPage() {
         portfolioId: ctx?.portfolioId ?? null,
       }).then(r => r.json()),
     onSuccess: (data) => {
-      setSessionId(data.session.id);
+      const newId = data.session.id;
+      setSessionId(newId);
       queryClient.invalidateQueries({ queryKey: [`/api/trade-planning/${symbol}/context`] });
       toast({ title: "Planning session saved" });
+      // If Explore triggered session creation, persist the selected family
+      if (pendingFamilyRef.current) {
+        const f = pendingFamilyRef.current;
+        pendingFamilyRef.current = null;
+        apiRequest("PATCH", `/api/trade-planning/session/${newId}`, {
+          selectedExpressionFamily: f,
+        }).catch(() => {}); // non-blocking — local state already set
+      }
     },
     onError: () => toast({ title: "Failed to save session", variant: "destructive" }),
   });
@@ -2439,6 +2487,20 @@ export default function TradePlanningPage() {
     onError: () => toast({ title: "Failed to update session", variant: "destructive" }),
   });
 
+  // Create Trade Plan mutation (Sprint 2.7.5 API — server reconstructs authoritative values)
+  const createTradePlanMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/trade-plans", {
+        planningSessionId: sessionId,
+        planType: "EQUITY",
+      }).then(r => r.json()),
+    onSuccess: () => {
+      toast({ title: "Trade Plan created" });
+      window.location.href = "/trade-plans";
+    },
+    onError: () => toast({ title: "Failed to create Trade Plan", variant: "destructive" }),
+  });
+
   function handleSaveConstraints() {
     if (sessionId) {
       updateSessionMutation.mutate({ constraints });
@@ -2447,10 +2509,24 @@ export default function TradePlanningPage() {
     }
   }
 
+  // handleSelectFamily — toggle selection via card click (existing behavior)
   function handleSelectFamily(f: ExpressionFamily) {
     setSelectedFamily(f === selectedFamily ? null : f);
     if (sessionId) {
       updateSessionMutation.mutate({ selectedExpressionFamily: f === selectedFamily ? null : f });
+    }
+  }
+
+  // handleExploreFamily — explicit Explore CTA: definitively selects and triggers workflow
+  function handleExploreFamily(f: ExpressionFamily) {
+    setSelectedFamily(f);
+    if (sessionId) {
+      updateSessionMutation.mutate({ selectedExpressionFamily: f });
+    } else {
+      // No session yet — store pending family, then create session
+      // createSessionMutation.onSuccess will pick it up and PATCH the new session
+      pendingFamilyRef.current = f;
+      createSessionMutation.mutate();
     }
   }
 
@@ -2762,6 +2838,7 @@ export default function TradePlanningPage() {
                       result={e}
                       selected={selectedFamily === e.family}
                       onSelect={handleSelectFamily}
+                      onExplore={handleExploreFamily}
                     />
                   ))}
                 </div>
@@ -2779,6 +2856,7 @@ export default function TradePlanningPage() {
                       result={e}
                       selected={selectedFamily === e.family}
                       onSelect={handleSelectFamily}
+                      onExplore={handleExploreFamily}
                     />
                   ))}
                 </div>
@@ -2802,20 +2880,41 @@ export default function TradePlanningPage() {
               )}
             </div>
 
-            {/* Research Workspace CTA */}
+            {/* Selected Expression indicator */}
             {selectedFamily && (
               <Card className="border-primary/30 bg-primary/5">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
-                      <p className="text-sm font-medium">Explain This Research Expression</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Open Research Workspace to explore the context of this expression approach.
-                        AI can explain — but cannot construct a trade or select a contract.
+                      <p className="text-xs text-muted-foreground">Selected Research Expression</p>
+                      <p className="text-sm font-semibold mt-0.5">
+                        {expressions.find(e => e.family === selectedFamily)?.label ?? selectedFamily}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                        <Check className="h-3 w-3 text-green-400" aria-hidden="true" />
+                        Selected by you
                       </p>
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs"
+                      onClick={() => {
+                        setSelectedFamily(null);
+                        if (sessionId) updateSessionMutation.mutate({ selectedExpressionFamily: null });
+                      }}
+                      aria-label="Change research expression selection"
+                    >
+                      Change Expression
+                    </Button>
+                  </div>
+                  {/* Research Workspace CTA */}
+                  <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/20 flex-wrap">
+                    <p className="text-xs text-muted-foreground">
+                      AI can explain this expression approach — but cannot construct a trade or select a contract.
+                    </p>
                     <Link href={`/research-workspace?symbol=${symbol}&mode=company&action=explain_concept`}>
-                      <Button size="sm" className="gap-2 shrink-0" aria-label="Open Research Workspace for explanation">
+                      <Button size="sm" variant="ghost" className="gap-1.5 text-xs shrink-0" aria-label="Open Research Workspace for explanation">
                         <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
                         Research Workspace
                         <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -2919,20 +3018,39 @@ export default function TradePlanningPage() {
               <ContractResearchAndRiskSection symbol={symbol} sessionId={sessionId} />
             )}
 
-            {/* Save Research Plan CTA — Sprint 2.7.5 */}
-            {sessionId && (
+            {/* Create Trade Plan — shown when equity expression selected and session exists */}
+            {sessionId && (selectedFamily === "equity" || selectedFamily === "equity_scaled") && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Save Research Plan</CardTitle>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Shield className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    Create Trade Plan
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    A Trade Plan saves the thesis, planning structure, risk analysis, and monitoring conditions you selected — as a persistent research record.
+                    Save this research as a persistent Trade Plan — including thesis, planning structure, and monitoring conditions — as a research record for lifecycle tracking.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    A Trade Plan does not constitute a trade instruction. Execution requires separate broker-connected preflight and review steps.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      onClick={() => window.location.href = "/trade-plans"}
+                      onClick={() => createTradePlanMutation.mutate()}
+                      disabled={createTradePlanMutation.isPending}
+                      className="gap-1.5"
+                      aria-label="Create Trade Plan from this planning session"
+                    >
+                      {createTradePlanMutation.isPending
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        : <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />}
+                      Create Trade Plan
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { window.location.href = "/trade-plans"; }}
                     >
                       View Trade Plans
                     </Button>
@@ -2941,14 +3059,50 @@ export default function TradePlanningPage() {
               </Card>
             )}
 
-            {/* Future Planning Steps */}
-            <Card className="border-border/50 opacity-70">
+            {/* Trade Plan link when session exists but no equity family */}
+            {sessionId && selectedFamily && selectedFamily !== "equity" && selectedFamily !== "equity_scaled" && (
+              <Card className="border-border/50">
+                <CardContent className="p-4 flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    Review your saved Trade Plans or return to this session later.
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => { window.location.href = "/trade-plans"; }}>
+                    Trade Plans
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Research Workflow Overview */}
+            <Card className="border-border/50">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Future Planning Steps</CardTitle>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  Research to Execution Workflow
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-xs text-muted-foreground">
-                <p className="text-foreground font-medium">Coming in future sprints:</p>
-                <p>• <strong className="text-foreground">Order Preparation</strong> — Upcoming</p>
+              <CardContent className="text-xs text-muted-foreground space-y-1.5">
+                <p>This page covers steps 1–3. Steps 4–8 require a connected broker and applicable safety gates.</p>
+                <div className="grid grid-cols-1 gap-1 mt-2">
+                  {[
+                    { n: 1, label: "Research Candidate",  note: "Qualified from Opportunity Engine" },
+                    { n: 2, label: "Expression Selection", note: "Equity, Options, or Monitor Only" },
+                    { n: 3, label: "Trade Plan",          note: "Persistent research record" },
+                    { n: 4, label: "Execution Preflight", note: "Pre-submission safety checks" },
+                    { n: 5, label: "Order Preparation",   note: "Broker-connected order draft" },
+                    { n: 6, label: "Order Preview",       note: "Review before submission" },
+                    { n: 7, label: "Final Review",        note: "Explicit consent and confirmation" },
+                    { n: 8, label: "Order Confirmation",  note: "Broker submission (gated)" },
+                  ].map(s => (
+                    <div key={s.n} className="flex items-center gap-2">
+                      <span className={`shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        s.n <= 3 ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                      }`}>{s.n}</span>
+                      <span className={s.n <= 3 ? "text-foreground" : ""}>{s.label}</span>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">— {s.note}</span>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 

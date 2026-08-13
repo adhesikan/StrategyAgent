@@ -306,6 +306,80 @@ export function registerTradePlanRoutes(
     }
   });
 
+  // ── POST /api/trade-plans/:id/lifecycle/review ─────────────────────────────
+  // Explicit user research-review acknowledgement.
+  // Sets lastReviewedAt = now, records RESEARCH_REVIEWED activity, re-evaluates lifecycle.
+  // Only the plan owner may acknowledge. Cross-user → 404 (same as all other /:id routes).
+  app.post("/api/trade-plans/:id/lifecycle/review", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const planId = req.params.id;
+    const startMs = Date.now();
+
+    try {
+      // 1. Verify ownership — strict: unknown plan → 404 (not 403, to avoid ID enumeration)
+      const { db } = await import("../db");
+      const { tradePlans } = await import("../../shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+
+      const planRows = await db
+        .select({ id: tradePlans.id, userId: tradePlans.userId, planHealth: tradePlans.planHealth, status: tradePlans.status })
+        .from(tradePlans)
+        .where(and(eq(tradePlans.id, planId), eq(tradePlans.userId, userId)))
+        .limit(1);
+
+      if (!planRows.length) {
+        return res.status(404).json({ message: "Trade plan not found." });
+      }
+
+      const previousLifecycleState = planRows[0].planHealth as string | null;
+
+      // 2. Persist review timestamp — authoritative, server-set
+      const reviewedAt = new Date();
+      await db
+        .update(tradePlans)
+        .set({ lastReviewedAt: reviewedAt, updatedAt: new Date() })
+        .where(and(eq(tradePlans.id, planId), eq(tradePlans.userId, userId)));
+
+      // 3. Record RESEARCH_REVIEWED activity event
+      const reviewActivity: Omit<import("../../shared/trade-plan-lifecycle-types").TradePlanActivity, "id" | "tradePlanId" | "userId" | "fingerprint"> = {
+        activityType:  "RESEARCH_REVIEWED",
+        observedAt:    reviewedAt.toISOString(),
+        previousState: previousLifecycleState ?? "UNKNOWN",
+        currentState:  "CURRENT",
+        summary:       "Research Reviewed — user explicitly acknowledged current conditions",
+        metadata: {
+          reviewedAt: reviewedAt.toISOString(),
+          acknowledgedBy: "USER",
+        },
+      };
+
+      await persistLifecycleActivity(userId, planId, [reviewActivity]).catch(() => {});
+
+      // 4. Re-evaluate lifecycle with the new lastReviewedAt in place
+      const lifecycleResult = await evaluateTradePlanLifecycle(userId, planId, { force: true });
+
+      // 5. Persist any new lifecycle activity events
+      const activityDrafts = buildActivitiesFromLifecycleResult(lifecycleResult, null);
+      const newActivities = await persistLifecycleActivity(userId, planId, activityDrafts).catch(() => []);
+
+      return res.status(200).json({
+        tradePlanId:      planId,
+        reviewedAt:       reviewedAt.toISOString(),
+        lifecycleResult,
+        newActivities,
+        durationMs:       Date.now() - startMs,
+      });
+    } catch (err: any) {
+      console.error("[trade-plans] lifecycle review failed:", err?.message);
+      if (err?.message?.includes("not found")) {
+        return res.status(404).json({ message: "Trade plan not found." });
+      }
+      return res.status(500).json({ message: "Failed to record research review." });
+    }
+  });
+
   // ── POST /api/trade-plans/:id/lifecycle/evaluate (evaluate first — deeper static) ─
   app.post("/api/trade-plans/:id/lifecycle/evaluate", isAuthenticated, async (req: Request, res: Response) => {
     const userId = req.session.userId!;

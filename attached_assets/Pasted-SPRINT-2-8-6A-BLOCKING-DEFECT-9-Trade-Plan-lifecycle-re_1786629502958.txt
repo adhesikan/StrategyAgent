@@ -1,0 +1,504 @@
+SPRINT 2.8.6A — BLOCKING DEFECT-9
+Trade Plan lifecycle review dead-end / broken Research Workspace link
+
+PRODUCTION UAT EVIDENCE
+
+Current NVDA Trade Plan:
+
+- Equity
+- Research Complete
+- Current
+- Broker connected
+- Execution Preflight works
+- Quote Validation = PASS
+- Preflight blocker:
+  [PLAN_REQUIRES_REVIEW]
+  Trade Plan requires review. Assess current conditions before proceeding.
+
+Trade Plan Lifecycle panel offers:
+
+- Open Research Workspace
+- Review Research
+
+When user clicks:
+
+Open Research Workspace
+
+production navigates to a Research page that returns:
+
+{"error":{"code":"NOT_FOUND","message":"Research record not found"}}
+
+Therefore the lifecycle review workflow is currently a dead end.
+
+DO NOT:
+- bypass PLAN_REQUIRES_REVIEW
+- suppress lifecycle checks
+- force preflight PASS
+- create a new Trade Plan
+- change TEST_LIVE safety gates
+- submit a broker order
+
+============================================================
+1. TRACE BOTH LIFECYCLE ACTIONS
+============================================================
+
+Inspect Trade Plan Detail lifecycle actions:
+
+Open Research Workspace
+Review Research
+
+Report:
+
+- exact href/route for each
+- parameters/IDs passed
+- client component
+- server endpoint
+- expected data object
+
+Determine whether these two actions are intended to do different things.
+
+============================================================
+2. IDENTIFY THE BROKEN IDENTIFIER
+============================================================
+
+The current Open Research Workspace action produces:
+
+NOT_FOUND
+Research record not found
+
+Determine what identifier it is passing.
+
+Possibilities:
+
+researchRecordId
+reportId
+workspaceId
+tradePlanId
+symbol
+snapshotId
+another object ID
+
+Report:
+
+- actual value used
+- object type expected by destination route
+- object type actually supplied
+
+Do not guess.
+
+============================================================
+3. COMPARE WITH WORKING NVDA RESEARCH WORKSPACE
+============================================================
+
+We already know NVDA's current research workspace works when opened from:
+
+Opportunity Workspace / Research flow
+
+That page correctly shows:
+
+NVDA
+Growth Candidate
+Research Score 62
+Technical 75
+Fundamental 60
+Institutional 50
+strong_bull
+
+Compare the working route with the broken Trade Plan lifecycle link.
+
+The Trade Plan should navigate to the canonical current NVDA research workspace
+using the same valid route contract.
+
+Do not create a duplicate research page.
+
+============================================================
+4. FIX "OPEN RESEARCH WORKSPACE"
+============================================================
+
+If the correct canonical destination is symbol-based, use that.
+
+Conceptually:
+
+/opportunities/NVDA
+
+or the actual canonical research route
+
+rather than a missing persisted research-record ID.
+
+Use existing route conventions.
+
+Do not hard-code NVDA.
+
+============================================================
+5. DEFINE WHAT "REVIEW RESEARCH" MEANS
+============================================================
+
+This is the more important issue.
+
+Preflight blocks because the plan requires review.
+
+There must be a user action that actually satisfies that review requirement.
+
+Determine the intended architecture for:
+
+Review Research
+
+Does it:
+
+A. merely navigate to current research?
+B. acknowledge that the user reviewed current research?
+C. create a new Trade Plan version?
+D. re-evaluate lifecycle state?
+E. update a reviewedAt timestamp?
+F. another intended mechanism?
+
+Report the existing intended design from Sprint 2.7.6 / Trade Plan lifecycle code.
+
+Do not invent semantics until you inspect the existing model.
+
+============================================================
+6. NO FAKE REVIEW
+============================================================
+
+Do NOT make clicking "Open Research Workspace" automatically clear the review.
+
+Viewing a page is not necessarily acknowledgement.
+
+If review acknowledgement is required, the user should explicitly perform it.
+
+Example conceptually:
+
+[Review Current Research]
+
+→ show current-vs-saved differences
+
+→ user explicitly clicks:
+
+[Mark Research Reviewed]
+
+Neutral wording only.
+
+No buy/sell recommendation language.
+
+============================================================
+7. REVIEW SHOULD USE CURRENT RESEARCH STATE
+============================================================
+
+For NVDA, current research now differs from saved creation state.
+
+Saved plan:
+Research 67
+Technical 85
+Risk high
+
+Current:
+Research 62
+Technical 75
+Risk medium
+
+The review UI should show these differences clearly.
+
+Do not hide material/current differences.
+
+============================================================
+8. DEFINE REVIEW COMPLETION CONTRACT
+============================================================
+
+After explicit review completion, persist a server-authoritative record.
+
+Potential canonical fields, if existing:
+
+lastReviewedAt
+lastReviewedSnapshotId
+reviewedByUserId
+reviewEvent
+planVersion
+activity event
+
+Use existing schema if available.
+
+Do not add redundant persistence if lifecycle service already supports this.
+
+============================================================
+9. RE-EVALUATE LIFECYCLE AFTER REVIEW
+============================================================
+
+After review is completed:
+
+run lifecycle evaluation again.
+
+Expected possibilities:
+
+CURRENT / PASS
+or
+still REQUIRES_REVIEW
+or
+THESIS_INVALIDATED
+
+based on current data.
+
+Do not blindly mark PASS.
+
+============================================================
+10. PREFLIGHT CONTRACT
+============================================================
+
+Execution Preflight should consume the authoritative lifecycle result.
+
+Expected:
+
+If review still outstanding:
+PLAN_REQUIRES_REVIEW
+
+If review completed and lifecycle acceptable:
+Research Lifecycle = PASS
+Plan Freshness = PASS or acceptable state
+
+Do not special-case preflight.
+
+============================================================
+11. FIX BROKEN RESEARCH LINK
+============================================================
+
+Add regression test:
+
+Trade Plan → Open Research Workspace
+
+for a symbol-backed Trade Plan
+
+Expected:
+valid current Research/Opportunity Workspace
+
+NOT:
+Research record NOT_FOUND
+
+============================================================
+12. REVIEW WORKFLOW TEST
+============================================================
+
+Add test:
+
+Trade Plan lifecycle = REQUIRES_REVIEW
+
+→ Review Research
+
+→ current vs saved evidence displayed
+
+→ explicit user acknowledgement
+
+→ lifecycle re-evaluated
+
+→ persisted activity event
+
+→ preflight result updated accordingly
+
+============================================================
+13. NO AUTO-ACKNOWLEDGEMENT
+============================================================
+
+Opening the page alone must NOT mark research reviewed.
+
+Test:
+
+open workspace
+close tab
+return to preflight
+
+Expected:
+still REQUIRES_REVIEW
+
+until explicit review completion.
+
+============================================================
+14. REVIEW OWNERSHIP / SECURITY
+============================================================
+
+Only the Trade Plan owner may acknowledge/review it.
+
+Reject:
+
+userId injection
+cross-user plan review
+admin bypass unless existing canonical admin rules explicitly allow it
+
+Keep ownership fail-closed.
+
+============================================================
+15. ACTIVITY TIMELINE
+============================================================
+
+If Sprint 2.7.6 activity timeline supports user actions, add/reuse event such as:
+
+RESEARCH_REVIEWED
+
+or existing canonical equivalent.
+
+Record safe metadata:
+
+snapshot ID
+timestamp
+user-owned plan
+
+No sensitive data.
+
+============================================================
+16. PLAN VERSIONING
+============================================================
+
+Determine whether review should create a new Trade Plan version.
+
+Do not create a version automatically unless existing Trade Plan architecture
+defines review as a versioned change.
+
+If review only acknowledges current evidence, record activity/review state.
+
+Document decision.
+
+============================================================
+17. CLIENT UX
+============================================================
+
+Lifecycle panel should make the path obvious.
+
+Example:
+
+Research Review Required
+
+[Review Current Research]
+
+After review UI:
+
+Saved at creation
+vs
+Current research
+
+Then:
+
+[Mark Research Reviewed]
+
+After success:
+
+Research Reviewed
+Reviewed <timestamp>
+
+and lifecycle refreshes.
+
+Do not expose raw JSON errors to user.
+
+============================================================
+18. ERROR HANDLING
+============================================================
+
+Replace raw:
+
+{"error":{"code":"NOT_FOUND","message":"Research record not found"}}
+
+with a safe user-facing error state if a destination truly cannot be loaded.
+
+But fixing the route is primary.
+
+============================================================
+19. TEST_LIVE REMAINS BLOCKED
+============================================================
+
+Do not submit any live broker order.
+
+Do not change:
+
+BROKER_EXECUTION_ENABLED
+BROKER_EXECUTION_MODE
+EXECUTION_TEST_LIVE_ARMED
+account allowlist
+symbol allowlist
+quantity cap
+notional cap
+
+============================================================
+20. QUALITY GATES
+============================================================
+
+Run:
+
+trade-plan tests
+lifecycle tests
+candidate consistency
+trade-planning tests
+execution preflight
+order preparation
+equity preview
+readiness
+confirmation
+execution
+TEST_LIVE certification
+integration
+security
+smoke
+regression
+release/full release
+build
+TypeScript
+
+Report exact counts.
+
+============================================================
+21. PRODUCTION UAT AFTER DEPLOY
+============================================================
+
+After redeploy I will:
+
+1. Open existing NVDA Trade Plan.
+2. Confirm Research Review Required.
+3. Click Open Research Workspace.
+4. Confirm valid NVDA current research opens.
+5. Return to Trade Plan.
+6. Click Review Research.
+7. Compare saved vs current research.
+8. Explicitly mark review complete.
+9. Confirm lifecycle re-evaluates.
+10. Run Execution Preflight again.
+11. Confirm PLAN_REQUIRES_REVIEW is resolved only if lifecycle permits.
+
+No broker submission in automated UAT.
+
+============================================================
+22. DOCUMENTATION
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+docs/operations/33-trade-plan-workspace.md
+lifecycle operations doc
+docs/operations/45-test-live-execution-certification.md
+
+Record Defect-9.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Root cause of NOT_FOUND
+2. Broken route
+3. Expected route
+4. Identifier mismatch
+5. Open Research Workspace fix
+6. Intended Review Research semantics
+7. Review persistence mechanism
+8. Explicit acknowledgement required YES/NO
+9. Lifecycle re-evaluation behavior
+10. Preflight behavior after review
+11. Activity event
+12. Versioning behavior
+13. Security/ownership result
+14. Files changed
+15. New tests
+16. Full test count
+17. Build result
+18. TypeScript result
+19. Docs updated
+20. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not place any broker order.

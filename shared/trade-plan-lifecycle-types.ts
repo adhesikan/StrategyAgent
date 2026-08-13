@@ -327,6 +327,7 @@ export const ACTIVITY_EVENT_TYPES = [
   "LIQUIDITY_CHANGED",
   "USER_NOTES_UPDATED",
   "CHECKLIST_UPDATED",
+  "RESEARCH_REVIEWED",
 ] as const;
 
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
@@ -349,6 +350,7 @@ export const ACTIVITY_EVENT_LABELS: Record<ActivityEventType, string> = {
   LIQUIDITY_CHANGED:              "Liquidity Changed",
   USER_NOTES_UPDATED:             "Notes Updated",
   CHECKLIST_UPDATED:              "Research Checklist Updated",
+  RESEARCH_REVIEWED:              "Research Reviewed",
 };
 
 /**
@@ -373,6 +375,7 @@ export const ACTIVITY_CATEGORY_MAP: Record<ActivityEventType, "research" | "risk
   LIQUIDITY_CHANGED:            "risk",
   USER_NOTES_UPDATED:           "user_action",
   CHECKLIST_UPDATED:            "user_action",
+  RESEARCH_REVIEWED:            "user_action",
 };
 
 // ============================================================================

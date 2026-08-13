@@ -3752,6 +3752,11 @@ export const tradePlans = pgTable("trade_plans", {
   // Creation-time context
   freshnessAtCreation:   text("freshness_at_creation").notNull().default("unknown"),
   limitations:           jsonb("limitations").notNull().$type<string[]>().default([]),
+  // Sprint 2.8.6A — Explicit research review acknowledgement
+  // Set when the user explicitly marks "Research Reviewed" in the lifecycle panel.
+  // When set and recent (<= 7 days), clears REQUIRES_REVIEW lifecycle state.
+  // Does NOT clear THESIS_INVALIDATED or DATA_STALE — those take priority.
+  lastReviewedAt:        timestamp("last_reviewed_at", { withTimezone: true }),
 }, (t) => ({
   idxUserId:        index("idx_trade_plans_user_id").on(t.userId),
   idxUserStatus:    index("idx_trade_plans_user_status").on(t.userId, t.status),

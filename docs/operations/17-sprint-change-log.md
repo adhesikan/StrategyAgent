@@ -112,6 +112,81 @@ The "Execution Preparation" section must always be visible for eligible EQUITY n
 
 ---
 
+## Sprint 2.8.6A-defect-9 — Lifecycle Review Dead-End / Broken Research Link
+**Date:** 2026-08-13
+**Status:** COMPLETE
+**Tests:** 27 suites / 1,767 tests
+
+### Production Symptom (Railway UAT)
+NVDA trade plan showed `PLAN_REQUIRES_REVIEW`. The lifecycle panel offered "Open Research Workspace" and "Review Research." Clicking "Open Research Workspace" returned `{"error":{"code":"NOT_FOUND","message":"Research record not found"}}`. "Review Research" navigated to `/opportunities/NVDA` which is unrelated. No mechanism existed to acknowledge the review and clear the REQUIRES_REVIEW state — TEST_LIVE was therefore blocked on the lifecycle review workflow.
+
+### Root Causes
+
+**R1 — Broken navigation route (link to wrong page)**
+Both "Open Research Workspace" buttons (THESIS_INVALIDATED banner and REQUIRES_REVIEW block) navigated to `/research/${plan.symbol}` → `ResearchDetailPage` which expects a Sprint 5.4D research-record UUID, not a symbol ticker. `"NVDA"` is not a valid UUID → `NOT_FOUND`.
+
+**R2 — No review acknowledgement mechanism**
+`REQUIRES_REVIEW` was only cleared by underlying data changes (score delta < 5). No `lastReviewedAt` field, no `RESEARCH_REVIEWED` activity type, no review endpoint. The user could not explicitly accept current conditions to unblock execution.
+
+**R3 — "Review Research" CTA had no lifecycle effect**
+The button navigated to `/opportunities/${plan.symbol}` — page navigation alone never triggered any server-side lifecycle update.
+
+### Fix
+
+**Schema** (`shared/schema.ts`)
+- Added `lastReviewedAt` nullable timestamp column (`last_reviewed_at`) to `tradePlans` table
+
+**Lifecycle Engine** (`server/services/trade-plan-lifecycle-service.ts`)
+- Added `REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS = 7` constant
+- `computeLifecycleState()` accepts new optional `lastReviewedAt?: Date | null` param
+- If lifecycle would be `REQUIRES_REVIEW` but `lastReviewedAt` is set and ≤ 7 days old → returns `"CURRENT"` (user explicitly acknowledged)
+- `THESIS_INVALIDATED` and `DATA_STALE` always take priority — cannot be cleared by review
+- `evaluateTradePlanLifecycle` reads `lastReviewedAt` from plan row and passes it through
+
+**Review Endpoint** (`server/routes/trade-plans.ts`)
+- Added `POST /api/trade-plans/:id/lifecycle/review` (placed before `/lifecycle/evaluate`, which is the deeper static route)
+- Validates plan ownership: cross-user → 404 (not 403, to prevent ID enumeration)
+- Sets `lastReviewedAt = now` in DB
+- Records `RESEARCH_REVIEWED` activity event
+- Forces lifecycle re-evaluation with `force: true`
+- Returns `{ reviewedAt, lifecycleResult, newActivities, durationMs }`
+
+**Activity Types** (`shared/trade-plan-lifecycle-types.ts`)
+- Added `"RESEARCH_REVIEWED"` to `ACTIVITY_EVENT_TYPES`, `ACTIVITY_EVENT_LABELS` (`"Research Reviewed"`), `ACTIVITY_CATEGORY_MAP` (`"user_action"`)
+
+**Client UI** (`client/src/pages/trade-plan-detail.tsx`)
+- Fixed both "Open Research Workspace" links: `/research/${plan.symbol}` → `/research-workspace?symbol=${plan.symbol}` (canonical AI Research Workspace route)
+- Added `isReviewing` / `reviewPanelOpen` state; `handleMarkReviewed()` function
+- "Review Research" replaced by "Review Current Research" toggle button that opens an inline panel
+- Inline panel: score comparison (Saved vs Now for Research/Technical/Fundamental/Institutional), review reasons list, compliance note, "Mark Research Reviewed" button
+- "Mark Research Reviewed" POSTs to `/lifecycle/review`, invalidates preflight cache, and collapses panel on success
+- Opening the workspace alone does NOT record a review — explicit button click required (§6 invariant)
+
+**Tests** (`server/routes/__tests__/trade-plan-lifecycle-review.test.ts`)
+- 37 new deterministic tests (§RR1–§RR20) covering: computeLifecycleState with lastReviewedAt, window boundary precision, priority ordering (THESIS_INVALIDATED > DATA_STALE > review), broken-link regression, activity type/label/category, schema column, service signature, route contract
+
+### Safety Invariants
+- ✅ Opening Research Workspace does NOT auto-clear REQUIRES_REVIEW
+- ✅ THESIS_INVALIDATED cannot be cleared by user review
+- ✅ DATA_STALE cannot be cleared by user review
+- ✅ Review window expires after 7 days — user must review again if scores still diverge
+- ✅ Only plan owner can acknowledge (userId guard → 404 on mismatch)
+- ✅ No broker order at any step
+
+### Files Changed
+- `shared/schema.ts` — `lastReviewedAt` column in `tradePlans`
+- `shared/trade-plan-lifecycle-types.ts` — `RESEARCH_REVIEWED` activity type/label/category
+- `server/services/trade-plan-lifecycle-service.ts` — `computeLifecycleState` review param; `evaluateTradePlanLifecycle` wired
+- `server/routes/trade-plans.ts` — `POST /api/trade-plans/:id/lifecycle/review`
+- `client/src/pages/trade-plan-detail.tsx` — route fix + review panel
+- `server/routes/__tests__/trade-plan-lifecycle-review.test.ts` — 37 new tests
+- `docs/operations/17-sprint-change-log.md` — this entry
+
+### Test Results
+27 suites / 1,767 tests passing. READY_FOR_RAILWAY_REDEPLOY.
+
+---
+
 ## Sprint 2.8.6A-defect-8 rev1 — Restore End-to-End Manual Execution Entry Point (initial fix — superseded)
 **Date:** 2026-08-12
 **Status:** SUPERSEDED by rev2

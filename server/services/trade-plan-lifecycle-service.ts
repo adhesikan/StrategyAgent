@@ -457,6 +457,13 @@ export function computeFreshnessChanges(
 /**
  * Determine lifecycle state from all computed changes and freshness.
  */
+/**
+ * How long an explicit user research review acknowledgement clears
+ * the REQUIRES_REVIEW lifecycle state. After this window, the user
+ * must review again (in case new changes have accumulated).
+ */
+const REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS = 7;
+
 export function computeLifecycleState(params: {
   planStatus:           string;
   currentAvailable:     boolean;
@@ -464,29 +471,50 @@ export function computeLifecycleState(params: {
   researchChanges:      ResearchChangeItem[];
   invalidationChanges:  InvalidationChange[];
   structureChanges:     StructureChangeItem[];
+  /**
+   * Timestamp of the last explicit user research-review acknowledgement.
+   * When set and within REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS, the REQUIRES_REVIEW
+   * state is downgraded to CURRENT — the user has explicitly accepted current conditions.
+   *
+   * Does NOT clear THESIS_INVALIDATED or DATA_STALE; those take priority.
+   */
+  lastReviewedAt?:      Date | null;
 }): LifecycleState {
-  const { planStatus, currentAvailable, freshnessChanges, researchChanges, invalidationChanges, structureChanges } = params;
+  const { planStatus, currentAvailable, freshnessChanges, researchChanges, invalidationChanges, structureChanges, lastReviewedAt } = params;
 
   if (planStatus === "ARCHIVED" || planStatus === "INVALIDATED") return "ARCHIVED";
 
   if (!currentAvailable) return "UNKNOWN";
 
-  // Data stale check
+  // Data stale check — review cannot clear this; data must be refreshed.
   const isDataStale = freshnessChanges.some(
     fc => fc.changeType === "DATA_BECAME_STALE" || fc.changeType === "DATA_UNAVAILABLE"
   );
   if (isDataStale) return "DATA_STALE";
 
-  // Thesis invalidation
+  // Thesis invalidation — review cannot clear this; explicit action required.
   const hasInvalidation = invalidationChanges.some(ic => ic.observationState === "observed");
   if (hasInvalidation) return "THESIS_INVALIDATED";
 
-  // Material research changes → requires review
+  // Material research changes → requires review (or already reviewed and accepted).
   const hasMaterialChange = [
     ...researchChanges,
     ...structureChanges,
   ].some(c => c.isMaterial);
-  if (hasMaterialChange) return "REQUIRES_REVIEW";
+
+  if (hasMaterialChange) {
+    // Check whether the user has explicitly reviewed within the acknowledgement window.
+    if (lastReviewedAt) {
+      const ageMs = Date.now() - new Date(lastReviewedAt).getTime();
+      const ageDays = ageMs / (1000 * 60 * 60 * 24);
+      if (ageDays <= REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS) {
+        // User explicitly reviewed and accepted current conditions — treat as CURRENT.
+        // THESIS_INVALIDATED and DATA_STALE always take priority above this branch.
+        return "CURRENT";
+      }
+    }
+    return "REQUIRES_REVIEW";
+  }
 
   // Minor changes
   const hasAnyChange = [
@@ -757,6 +785,7 @@ export async function evaluateTradePlanLifecycle(
     );
 
     // 5. Compute lifecycle state
+    // Pass lastReviewedAt so an explicit user review can clear REQUIRES_REVIEW.
     const lifecycleState = computeLifecycleState({
       planStatus:          plan.status,
       currentAvailable,
@@ -764,6 +793,7 @@ export async function evaluateTradePlanLifecycle(
       researchChanges,
       invalidationChanges,
       structureChanges,
+      lastReviewedAt:      (plan as any).lastReviewedAt ?? null,
     });
 
     // 6. Compute review reasons (transparent, no opaque score)

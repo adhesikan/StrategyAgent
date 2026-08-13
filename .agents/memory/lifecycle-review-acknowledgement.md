@@ -42,6 +42,16 @@ description: How the REQUIRES_REVIEW lifecycle state is cleared by an explicit u
 
 **Invariant:** QUALIFICATION_LOST → REQUIRES_REVIEW → preflight always blocks, even after `Mark Research Reviewed`.
 
+## Schema deployment contract (Defect-10b — production 500 on GET /api/trade-plans)
+
+**Root cause:** `last_reviewed_at` added to Drizzle schema but NOT to `ensureTradePlanTables()` ALTER block → Railway startup ran ensure but column was never added → SQLSTATE 42703 on every list query.
+
+**Canonical deployment path:** `ensureTradePlanTables()` in `trade-plan-service.ts` is the ONLY thing that runs on Railway startup. Files in `server/migrations/*.sql` are NOT auto-executed. Every new column on `trade_plans` MUST appear in the `ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS ...` block inside `ensureTradePlanTables()`.
+
+**Contract test:** `server/services/__tests__/trade-plan-schema-contract.test.ts` — update `NEWER_COLUMNS` there whenever a new column is added to `trade_plans`.
+
+**Nullability rule:** `last_reviewed_at` is nullable; existing plans that have never been reviewed must remain NULL (no backfill).
+
 ## Broken link fix (Defect-9)
 Both "Open Research Workspace" CTAs in the lifecycle panel previously navigated to `/research/${plan.symbol}` → `ResearchDetailPage` which expects a Sprint 5.4D record UUID — not a symbol ticker. Fixed to `/research-workspace?symbol=${plan.symbol}` (AI Research Workspace).
 

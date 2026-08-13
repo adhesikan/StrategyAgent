@@ -1,0 +1,435 @@
+SPRINT 2.8.6A — BLOCKING DEFECT-10
+Trade Plans list fails after lifecycle-review deployment
+
+PRODUCTION EVIDENCE
+
+After deploying the latest Trade Plan lifecycle/review fix, production now fails to load:
+
+GET /api/trade-plans
+
+UI:
+
+"Failed to load trade plans. Try refreshing."
+
+Server log:
+
+[trade-plans] list failed: Failed query:
+
+select
+"id",
+"user_id",
+"symbol",
+"company_name",
+"plan_type",
+"status",
+"plan_health",
+"planning_context_id",
+"research_goal_id",
+"portfolio_id",
+"selected_expression_family",
+"research_snapshot",
+"planning_snapshot",
+"structure_snapshot",
+"risk_snapshot",
+"monitoring_snapshot",
+"user_notes",
+"review_checklist",
+"version",
+"created_at",
+"updated_at",
+"archived_at",
+"completed_research_at",
+"monitoring_started_at",
+"broad_expression_type",
+"expression_selected_by",
+"expression_selected_at",
+"freshness_at_creation",
+"limitations",
+"last_reviewed_at"
+
+from "trade_plans"
+where "trade_plans"."user_id" = $1
+order by "trade_plans"."created_at" desc
+limit $2
+
+GET /api/trade-plans → 500
+
+The newly deployed lifecycle-review work appears to have introduced or started selecting:
+
+last_reviewed_at
+
+This strongly suggests production schema drift.
+
+DO NOT:
+- drop trade_plans
+- recreate trade_plans destructively
+- delete existing Trade Plans
+- remove historical snapshots
+- bypass lifecycle review
+- continue TEST_LIVE
+- submit broker orders
+
+============================================================
+1. CONFIRM THE REAL POSTGRES ERROR
+============================================================
+
+Do not assume.
+
+Reproduce the failing query and capture the actual PostgreSQL error.
+
+Return:
+
+- SQLSTATE code
+- error message
+- missing column/table/constraint if applicable
+- original TypeScript file
+- original source line
+
+Likely example:
+
+column "last_reviewed_at" does not exist
+
+but prove it.
+
+============================================================
+2. AUDIT trade_plans SCHEMA
+============================================================
+
+Compare:
+
+A. shared/Drizzle schema
+B. trade plan startup CREATE/ALTER logic
+C. formal migrations
+D. fields currently queried by trade-plan-service
+E. expected Railway production schema
+
+Create a field matrix:
+
+column
+code expects?
+migration creates?
+startup ensure adds?
+nullable?
+default?
+introduced sprint
+
+Pay particular attention to:
+
+last_reviewed_at
+
+and any other columns added after Sprint 2.7.5.
+
+============================================================
+3. INSPECT ACTUAL PRODUCTION COLUMN CONTRACT
+============================================================
+
+Use a safe diagnostic query against information_schema.columns for:
+
+trade_plans
+
+Confirm whether these newer fields exist:
+
+broad_expression_type
+expression_selected_by
+expression_selected_at
+freshness_at_creation
+limitations
+last_reviewed_at
+
+Do not expose user data.
+
+============================================================
+4. FIX WITH ADDITIVE IDEMPOTENT MIGRATION
+============================================================
+
+If last_reviewed_at is missing:
+
+add it safely.
+
+Preferred:
+
+ALTER TABLE trade_plans
+ADD COLUMN IF NOT EXISTS last_reviewed_at timestamp ...
+
+Use the exact canonical PostgreSQL type expected by the application.
+
+Do not invent nullability/defaults.
+
+This should be nullable unless existing lifecycle architecture explicitly requires otherwise.
+
+Do not backfill fake review timestamps.
+
+Existing plans that have never been reviewed should remain:
+
+last_reviewed_at = NULL
+
+============================================================
+5. CHECK OTHER NEW REVIEW FIELDS
+============================================================
+
+The lifecycle review implementation may have added additional persistence such as:
+
+last_reviewed_snapshot_id
+reviewed_by
+review_state
+review acknowledgement/event metadata
+
+Audit all fields introduced in the recent fix.
+
+Do not fix one column and leave another latent production failure.
+
+============================================================
+6. MIGRATION STRATEGY
+============================================================
+
+Determine why this was not automatically applied on Railway.
+
+Trade Plan tables originally used ensureTradePlanTables() startup creation.
+
+If later schema evolution only updated the TypeScript schema but not the startup ALTER/migration path, fix that contract.
+
+Preferred:
+
+formal additive migration
+AND/OR safe ensure ALTER statements according to the current project migration convention.
+
+There must be one documented canonical deployment path.
+
+============================================================
+7. EXISTING DATA MUST SURVIVE
+============================================================
+
+After migration verify:
+
+existing NVDA Trade Plan still exists
+
+same ID
+same symbol
+same snapshots
+same version
+same status
+same creation timestamp
+
+No data loss.
+
+============================================================
+8. LIST ROUTE REGRESSION
+============================================================
+
+After migration:
+
+GET /api/trade-plans
+
+Expected:
+
+200
+
+Existing NVDA Trade Plan appears.
+
+No dependency on NVDA currently being qualified.
+
+============================================================
+9. DETAIL ROUTE REGRESSION
+============================================================
+
+GET /api/trade-plans/:existingNvdaPlanId
+
+Expected:
+
+200
+
+Even though NVDA is not currently in the latest qualified Opportunity snapshot.
+
+Persistent Trade Plan existence must remain independent from current candidate qualification.
+
+============================================================
+10. REVIEW FIELD SEMANTICS
+============================================================
+
+For an existing plan that has not completed the new explicit review:
+
+lastReviewedAt = null
+
+This must not crash serialization/rendering.
+
+Client must handle null correctly.
+
+============================================================
+11. LIFECYCLE REGRESSION
+============================================================
+
+Using the existing NVDA plan:
+
+current opportunity state = removed/not qualified
+
+saved Trade Plan exists
+
+Expected lifecycle:
+
+REQUIRES_REVIEW / NO_LONGER_QUALIFIED
+or canonical equivalents
+
+NOT:
+
+NOT_FOUND
+
+============================================================
+12. HISTORICAL RESEARCH REGRESSION
+============================================================
+
+Existing saved research_snapshot must remain readable.
+
+Current Opportunity absence must not cause historical research loss.
+
+============================================================
+13. REVIEW WORKFLOW REGRESSION
+============================================================
+
+After schema is fixed:
+
+Review Research
+
+must be able to persist the explicit review timestamp/state using the new field.
+
+Verify:
+
+lastReviewedAt changes only after explicit user action.
+
+Opening the workspace alone must not populate it.
+
+============================================================
+14. DB FAILURE HANDLING
+============================================================
+
+Trade Plan list route should return a controlled 500 if DB genuinely fails.
+
+It must not crash the process.
+
+Current behavior appears controlled, which is good.
+
+Preserve that.
+
+============================================================
+15. SCHEMA CONTRACT TEST
+============================================================
+
+Add a permanent DB schema test asserting every column selected by trade-plan-service exists in the migration/startup schema contract.
+
+This should prevent another deployment where TypeScript expects a column that Railway does not have.
+
+============================================================
+16. MIGRATION TEST
+============================================================
+
+Test upgrading an OLD trade_plans schema from before last_reviewed_at existed.
+
+Expected:
+
+migration applies
+existing rows preserved
+new column null
+list/detail work
+
+============================================================
+17. IDEMPOTENCY
+============================================================
+
+Run migration twice.
+
+Expected:
+
+second run succeeds with no destructive effects.
+
+============================================================
+18. QUALITY GATES
+============================================================
+
+Run:
+
+trade-plan tests
+lifecycle tests
+DB schema tests
+migration tests
+integration
+smoke
+regression
+security
+execution-preflight
+order-preparation
+equity-preview
+execution-readiness
+order-confirmation
+execution
+TEST_LIVE certification
+release/full release
+build
+TypeScript
+
+Report exact counts.
+
+============================================================
+19. PRODUCTION UAT AFTER REDEPLOY
+============================================================
+
+After I redeploy:
+
+1. Open /trade-plans
+2. Existing NVDA plan must appear.
+3. Open NVDA plan.
+4. Plan must load.
+5. Confirm current candidate state = no longer qualified.
+6. Confirm historical saved research remains present.
+7. Review Research must load.
+8. Explicit review must persist.
+9. Return to Trade Plan.
+10. Run Execution Preflight.
+11. Verify lifecycle block reflects current methodology, not missing data.
+
+No broker submission yet.
+
+============================================================
+20. DOCUMENTATION
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+docs/operations/33-trade-plan-workspace.md
+lifecycle operations doc
+docs/operations/45-test-live-execution-certification.md
+
+Record Defect-10:
+
+Trade Plan schema drift — lifecycle review field deployed without production migration.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact PostgreSQL error
+2. SQLSTATE
+3. Root cause
+4. Missing column(s)
+5. Why tests missed production schema drift
+6. Files changed
+7. Migration file/change
+8. Startup ensure behavior
+9. Existing NVDA data preserved YES/NO
+10. GET /api/trade-plans result
+11. GET existing plan result
+12. lastReviewedAt null behavior
+13. Explicit review persistence result
+14. Lifecycle result for removed NVDA
+15. Historical research result
+16. Migration idempotency result
+17. DB contract test
+18. Full test count
+19. Build result
+20. TypeScript result
+21. Docs updated
+22. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.
+Do not place any broker order.

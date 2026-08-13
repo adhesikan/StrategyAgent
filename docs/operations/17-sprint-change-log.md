@@ -112,6 +112,92 @@ The "Execution Preparation" section must always be visible for eligible EQUITY n
 
 ---
 
+## Sprint 2.8.6A-defect-10b — Trade Plans List 500: schema drift (last_reviewed_at missing)
+**Date:** 2026-08-13
+**Status:** COMPLETE
+**Tests:** 28 suites / 1,851 tests
+
+### Production Symptom
+After deploying the Defect-9 lifecycle-review fix, production returned HTTP 500 on `GET /api/trade-plans`:
+
+```
+[trade-plans] list failed: Failed query:
+  select ... "last_reviewed_at" from "trade_plans" ...
+```
+
+**Exact PostgreSQL error (reproduced locally):** `column "last_reviewed_at" does not exist` (SQLSTATE 42703 — undefined_column)
+
+### Root Cause
+
+**R1 — Deployment contract mismatch: Drizzle schema vs `ensureTradePlanTables()`**
+
+The project has two parallel schema paths:
+1. `shared/schema.ts` (Drizzle ORM) — source of truth for query types; updated when columns are added
+2. `ensureTradePlanTables()` in `trade-plan-service.ts` — the canonical idempotent table creator; Railway startup applies this; standalone `.sql` migration files in `server/migrations/` are NOT auto-executed on Railway
+
+When `lastReviewedAt` was added to the Drizzle schema (Sprint 2.8.6A Defect-9), only the standalone `add-trade-plan-last-reviewed-at.sql` migration was created. The `ensureTradePlanTables()` `ALTER TABLE` block for `trade_plans` was never updated. On Railway, `ensureTradePlanTables()` ran but did not add the column → Drizzle queried a missing column → 500.
+
+**R2 — No schema contract test**
+No test existed to assert that every column in the Drizzle schema for `trade_plans` is covered by `ensureTradePlanTables()`. The gap was invisible until production.
+
+### Column Gap Audit (`trade_plans`)
+
+| Column | CREATE TABLE (original) | ensureTradePlanTables ALTER | Drizzle schema | Production before fix |
+|---|---|---|---|---|
+| `broad_expression_type` | ❌ | ✅ (sessions ALTER only — was already in prod via prior migration) | ✅ | ✅ already present |
+| `expression_selected_by` | ❌ | ✅ (sessions ALTER only) | ✅ | ✅ already present |
+| `expression_selected_at` | ❌ | ✅ (sessions ALTER only) | ✅ | ✅ already present |
+| **`last_reviewed_at`** | ❌ | ❌ **MISSING** | ✅ | ❌ **MISSING — caused 500** |
+
+### Fix
+
+**`server/services/trade-plan-service.ts`** — `ensureTradePlanTables()`:
+Added an `ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS` block immediately after `CREATE TABLE IF NOT EXISTS trade_plans`, covering all 4 post-Sprint-2.7.5 columns:
+```sql
+ALTER TABLE trade_plans
+  ADD COLUMN IF NOT EXISTS broad_expression_type   TEXT,
+  ADD COLUMN IF NOT EXISTS expression_selected_by  TEXT,
+  ADD COLUMN IF NOT EXISTS expression_selected_at  TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS last_reviewed_at        TIMESTAMPTZ
+```
+Each column:
+- Uses `ADD COLUMN IF NOT EXISTS` — safe to run on fresh tables (no-op) and existing tables (adds column without touching data)
+- `last_reviewed_at`: `TIMESTAMPTZ`, nullable, no default — existing plans that have never been reviewed remain `NULL`
+- Accompanied by a comment documenting column history, sprint attribution, and the Railway deployment contract
+
+**`server/services/__tests__/trade-plan-schema-contract.test.ts`** — 42 new deterministic source-inspection tests:
+- §SC1–§SC10: schema contract assertions (every newer column in Drizzle has a matching `ADD COLUMN IF NOT EXISTS` in `ensureTradePlanTables`)
+- §MIG1–§MIG6: migration file safety (idempotency, no DROP/TRUNCATE/DELETE, verification DO block)
+- Bonus: client null-safety for `lastReviewedAt` and `symbolQualificationStatus`
+
+### Safety Invariants
+- ✅ `ADD COLUMN IF NOT EXISTS` — idempotent; running twice does not error or modify data
+- ✅ Existing plans retain all data; `last_reviewed_at = NULL` for never-reviewed plans
+- ✅ Client review panel already handles `lastReviewedAt = null` gracefully (optional chaining)
+- ✅ `computeLifecycleState` accepts `lastReviewedAt?: Date | null` (optional parameter)
+- ✅ No destructive operations; no data loss
+
+### Files Changed
+- `server/services/trade-plan-service.ts` — `ensureTradePlanTables()` ALTER block for `trade_plans` (4 columns)
+- `server/services/__tests__/trade-plan-schema-contract.test.ts` — 42 new schema contract tests
+- `docs/operations/17-sprint-change-log.md` — this entry
+
+### Test Results
+28 suites / 1,851 tests passing. READY_FOR_RAILWAY_REDEPLOY.
+
+### Deployment Notes
+On the next Railway redeploy:
+1. `ensureTradePlanTables()` runs at startup — adds `last_reviewed_at` (and idempotently re-applies the other 3 columns)
+2. `GET /api/trade-plans` returns 200; existing NVDA plan appears
+3. `GET /api/trade-plans/:id` returns 200; plan data intact (same ID, symbol, snapshots, status)
+4. `lastReviewedAt` is `NULL` for all existing plans — no fake timestamps backfilled
+5. Lifecycle review workflow works: explicit "Mark Research Reviewed" populates `lastReviewedAt`
+
+### Prevention
+The new `trade-plan-schema-contract.test.ts` will catch any future column added to the Drizzle schema without a corresponding `ADD COLUMN IF NOT EXISTS` in `ensureTradePlanTables()`. Update `NEWER_COLUMNS` in that file whenever a new column is added to `trade_plans`.
+
+---
+
 ## Sprint 2.8.6A-defect-10 — Lifecycle Qualification Loss (symbol drops from OppIntel)
 **Date:** 2026-08-13
 **Status:** COMPLETE

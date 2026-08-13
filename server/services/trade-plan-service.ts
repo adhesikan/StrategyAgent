@@ -1085,6 +1085,25 @@ export async function ensureTradePlanTables(): Promise<void> {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tp_user_symbol ON trade_plans(user_id, symbol)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tp_created_at ON trade_plans(created_at DESC)`);
 
+    // ── Additive column migrations for trade_plans ─────────────────────────
+    // Columns added after Sprint 2.7.5 that were NOT in the original CREATE TABLE.
+    // Each ALTER is idempotent (ADD COLUMN IF NOT EXISTS).
+    // This block is the canonical deployment path; the standalone .sql migration
+    // files in server/migrations/ are supplemental and NOT auto-executed on Railway.
+    //
+    // Column history:
+    //   broad_expression_type   — Sprint 2.8.1A (Expression Selection UX)
+    //   expression_selected_by  — Sprint 2.8.1A (always "USER")
+    //   expression_selected_at  — Sprint 2.8.1A (timestamp of expression lock)
+    //   last_reviewed_at        — Sprint 2.8.6A Defect-9 (explicit research review)
+    await db.execute(sql`
+      ALTER TABLE trade_plans
+        ADD COLUMN IF NOT EXISTS broad_expression_type   TEXT,
+        ADD COLUMN IF NOT EXISTS expression_selected_by  TEXT,
+        ADD COLUMN IF NOT EXISTS expression_selected_at  TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS last_reviewed_at        TIMESTAMPTZ
+    `);
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS trade_plan_versions (
         id             VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -353,6 +353,8 @@ export default function TradePlanDetailPage() {
   const isReviewRequired = lifecycleState !== null && REVIEW_STATES.has(lifecycleState);
   const isInvalidated = lifecycleState === "THESIS_INVALIDATED";
   const isDataStale   = lifecycleState === "DATA_STALE";
+  // Symbol specifically dropped from OppIntel qualified-candidate list (not a system error).
+  const isNotQualified = lifecycle?.symbolQualificationStatus === "NOT_QUALIFIED";
 
   return (
     <div className="min-h-screen bg-background">
@@ -440,14 +442,22 @@ export default function TradePlanDetailPage() {
                   </div>
                 )}
 
-                {/* Review Required — CTA block (Defect-9 fix) */}
+                {/* Review Required — CTA block (Defect-9 fix; qualification-loss handling) */}
                 {isReviewRequired && !isInvalidated && (
                   <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 p-4 space-y-3" data-testid="research-review-required-block">
                     <p className="text-sm font-medium text-orange-700 dark:text-orange-400 flex items-start gap-2">
                       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      Research Review Required
+                      {isNotQualified
+                        ? `${plan.symbol} — No Longer Qualified`
+                        : "Research Review Required"}
                     </p>
-                    {lifecycle.reviewReasons.length > 0 && (
+                    {isNotQualified && (
+                      <p className="text-xs text-orange-600 dark:text-orange-300">
+                        {plan.symbol} no longer qualifies in the latest Opportunity Intelligence snapshot.
+                        Review the original research thesis against current conditions before continuing.
+                      </p>
+                    )}
+                    {!isNotQualified && lifecycle.reviewReasons.length > 0 && (
                       <ul className="text-xs text-orange-600 dark:text-orange-300 space-y-1 list-disc list-inside">
                         {lifecycle.reviewReasons.map((r, i) => (
                           <li key={i}>{r.description}</li>
@@ -455,66 +465,109 @@ export default function TradePlanDetailPage() {
                       </ul>
                     )}
                     <div className="flex flex-wrap gap-2">
-                      {/* Defect-9 fix: was /research/${plan.symbol} → ResearchDetailPage (expects record UUID) → NOT_FOUND */}
+                      {/* Canonical AI Research Workspace — works even when symbol is not in current OppIntel */}
                       <Button size="sm" variant="outline" onClick={() => navigate(`/research-workspace?symbol=${plan.symbol}`)} data-testid="open-research-workspace-btn">
                         <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                         Open Research Workspace
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setReviewPanelOpen(v => !v)} data-testid="review-current-research-btn">
                         <Info className="h-3.5 w-3.5 mr-1.5" />
-                        Review Current Research
+                        {isNotQualified ? "Review Saved Research" : "Review Current Research"}
                       </Button>
                     </div>
 
-                    {/* Inline review panel — explicit user acknowledgement required (§6: opening workspace alone does NOT mark reviewed) */}
+                    {/* Inline review panel — explicit user acknowledgement required */}
                     {reviewPanelOpen && (
                       <div className="mt-3 rounded-lg border border-orange-500/30 bg-background p-4 space-y-4" data-testid="research-review-panel">
-                        <p className="text-sm font-semibold text-foreground">Saved at Creation vs Current Research</p>
 
-                        {/* Score comparison */}
-                        {lifecycle.savedResearchSummary && lifecycle.currentResearchSummary && (
-                          <div className="space-y-1">
-                            {[
-                              { label: "Overall Research Score", saved: lifecycle.savedResearchSummary.researchScore ?? 0, current: lifecycle.currentResearchSummary.researchScore ?? 0 },
-                              { label: "Technical Score",        saved: lifecycle.savedResearchSummary.technicalScore ?? 0, current: lifecycle.currentResearchSummary.technicalScore ?? 0 },
-                              { label: "Fundamental Score",      saved: lifecycle.savedResearchSummary.fundamentalScore ?? 0, current: lifecycle.currentResearchSummary.fundamentalScore ?? 0 },
-                              { label: "Institutional Score",    saved: lifecycle.savedResearchSummary.institutionalScore ?? 0, current: lifecycle.currentResearchSummary.institutionalScore ?? 0 },
-                            ].map(row => {
-                              const delta = row.current - row.saved;
-                              return (
-                                <div key={row.label} className="flex items-center justify-between py-1.5 border-b last:border-b-0 text-sm">
-                                  <span className="text-muted-foreground">{row.label}</span>
-                                  <div className="flex items-center gap-3">
-                                    <span className="font-mono text-xs text-muted-foreground">Saved: {row.saved}</span>
-                                    <span className="font-mono text-xs">Now: {row.current}</span>
-                                    {delta !== 0 && (
-                                      <span className={`flex items-center gap-0.5 text-xs font-medium ${delta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                                        {delta > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                        {delta > 0 ? "+" : ""}{delta}
-                                      </span>
-                                    )}
-                                  </div>
+                        {/* ── No Longer Qualified: show saved research + current status ── */}
+                        {isNotQualified ? (
+                          <>
+                            <div className="space-y-3">
+                              <p className="text-sm font-semibold text-foreground">Research at Plan Creation</p>
+                              {lifecycle.savedResearchSummary && (
+                                <div className="space-y-1">
+                                  {[
+                                    { label: "Research Score",   value: lifecycle.savedResearchSummary.researchScore },
+                                    { label: "Technical",        value: lifecycle.savedResearchSummary.technicalScore },
+                                    { label: "Fundamental",      value: lifecycle.savedResearchSummary.fundamentalScore },
+                                    { label: "Institutional",    value: lifecycle.savedResearchSummary.institutionalScore },
+                                  ].map(row => (
+                                    <div key={row.label} className="flex items-center justify-between py-1 border-b last:border-b-0 text-sm">
+                                      <span className="text-muted-foreground">{row.label}</span>
+                                      <span className="font-mono text-xs">{row.value}</span>
+                                    </div>
+                                  ))}
+                                  {lifecycle.savedResearchSummary.marketRegime && (
+                                    <div className="flex items-center justify-between py-1 text-sm">
+                                      <span className="text-muted-foreground">Market Regime at Creation</span>
+                                      <span className="text-xs font-mono">{lifecycle.savedResearchSummary.marketRegime}</span>
+                                    </div>
+                                  )}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                              )}
+                            </div>
+                            <div className="rounded-md bg-orange-500/10 border border-orange-500/20 p-3">
+                              <p className="text-sm font-medium text-orange-700 dark:text-orange-400">Current Opportunity Status</p>
+                              <p className="text-xs text-orange-600 dark:text-orange-300 mt-1">
+                                No Longer Qualified — {plan.symbol} is not present in the latest qualified-candidate snapshot.
+                              </p>
+                              {lifecycle.limitations.length > 0 && (
+                                <p className="text-xs text-muted-foreground mt-1">{lifecycle.limitations[0]}</p>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-foreground">Saved at Creation vs Current Research</p>
 
-                        {/* Review reasons */}
-                        {lifecycle.reviewReasons.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Material changes detected</p>
-                            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-                              {lifecycle.reviewReasons.map((r, i) => (
-                                <li key={i}>{r.description}</li>
-                              ))}
-                            </ul>
-                          </div>
+                            {/* Score comparison — shown when both summaries are available */}
+                            {lifecycle.savedResearchSummary && lifecycle.currentResearchSummary && (
+                              <div className="space-y-1">
+                                {[
+                                  { label: "Overall Research Score", saved: lifecycle.savedResearchSummary.researchScore ?? 0, current: lifecycle.currentResearchSummary.researchScore ?? 0 },
+                                  { label: "Technical Score",        saved: lifecycle.savedResearchSummary.technicalScore ?? 0, current: lifecycle.currentResearchSummary.technicalScore ?? 0 },
+                                  { label: "Fundamental Score",      saved: lifecycle.savedResearchSummary.fundamentalScore ?? 0, current: lifecycle.currentResearchSummary.fundamentalScore ?? 0 },
+                                  { label: "Institutional Score",    saved: lifecycle.savedResearchSummary.institutionalScore ?? 0, current: lifecycle.currentResearchSummary.institutionalScore ?? 0 },
+                                ].map(row => {
+                                  const delta = row.current - row.saved;
+                                  return (
+                                    <div key={row.label} className="flex items-center justify-between py-1.5 border-b last:border-b-0 text-sm">
+                                      <span className="text-muted-foreground">{row.label}</span>
+                                      <div className="flex items-center gap-3">
+                                        <span className="font-mono text-xs text-muted-foreground">Saved: {row.saved}</span>
+                                        <span className="font-mono text-xs">Now: {row.current}</span>
+                                        {delta !== 0 && (
+                                          <span className={`flex items-center gap-0.5 text-xs font-medium ${delta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                            {delta > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                            {delta > 0 ? "+" : ""}{delta}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Review reasons */}
+                            {lifecycle.reviewReasons.length > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Material changes detected</p>
+                                <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                                  {lifecycle.reviewReasons.map((r, i) => (
+                                    <li key={i}>{r.description}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </>
                         )}
 
                         <p className="text-xs text-muted-foreground border-t pt-2">
-                          Reviewing current conditions does not constitute a buy or sell recommendation.
-                          After marking reviewed, re-run execution preflight to see the updated result.
+                          {isNotQualified
+                            ? "Acknowledging this review records your awareness of current conditions. It does not restore qualification or make the plan executable."
+                            : "Reviewing current conditions does not constitute a buy or sell recommendation. After marking reviewed, re-run execution preflight to see the updated result."}
                         </p>
 
                         {/* §6: Explicit acknowledgement — opening this panel alone does NOT mark reviewed */}

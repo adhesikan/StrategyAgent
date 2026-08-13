@@ -476,14 +476,43 @@ export function computeLifecycleState(params: {
    * When set and within REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS, the REQUIRES_REVIEW
    * state is downgraded to CURRENT — the user has explicitly accepted current conditions.
    *
-   * Does NOT clear THESIS_INVALIDATED or DATA_STALE; those take priority.
+   * Does NOT clear THESIS_INVALIDATED, DATA_STALE, or SYMBOL_NOT_QUALIFIED;
+   * those take priority and cannot be cleared by review alone.
    */
   lastReviewedAt?:      Date | null;
+  /**
+   * True when getCanonicalOpportunity() returned null without throwing an exception.
+   * Means the symbol was specifically excluded from the current qualified-candidate
+   * snapshot — not a transient system error.
+   *
+   * When true:
+   *   - lifecycle state = REQUIRES_REVIEW (not UNKNOWN)
+   *   - reason = QUALIFICATION_LOST
+   *   - lastReviewedAt does NOT clear this state — the symbol remains unqualified
+   *   - execution preflight continues to block
+   */
+  symbolNotQualified?:  boolean;
 }): LifecycleState {
-  const { planStatus, currentAvailable, freshnessChanges, researchChanges, invalidationChanges, structureChanges, lastReviewedAt } = params;
+  const {
+    planStatus,
+    currentAvailable,
+    freshnessChanges,
+    researchChanges,
+    invalidationChanges,
+    structureChanges,
+    lastReviewedAt,
+    symbolNotQualified,
+  } = params;
 
   if (planStatus === "ARCHIVED" || planStatus === "INVALIDATED") return "ARCHIVED";
 
+  // Symbol specifically not in current qualified-candidate list → REQUIRES_REVIEW.
+  // This takes priority over UNKNOWN (which is for transient system errors).
+  // Review acknowledgement does NOT clear this — the user can review and acknowledge
+  // but the symbol remains unqualified until OppIntel re-qualifies it.
+  if (symbolNotQualified) return "REQUIRES_REVIEW";
+
+  // Data unavailable due to a system/transient error (not a qualification decision).
   if (!currentAvailable) return "UNKNOWN";
 
   // Data stale check — review cannot clear this; data must be refreshed.
@@ -509,7 +538,7 @@ export function computeLifecycleState(params: {
       const ageDays = ageMs / (1000 * 60 * 60 * 24);
       if (ageDays <= REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS) {
         // User explicitly reviewed and accepted current conditions — treat as CURRENT.
-        // THESIS_INVALIDATED and DATA_STALE always take priority above this branch.
+        // THESIS_INVALIDATED, DATA_STALE, and SYMBOL_NOT_QUALIFIED always take priority.
         return "CURRENT";
       }
     }
@@ -536,8 +565,28 @@ export function computeReviewReasons(params: {
   eventChanges:        EventChange[];
   liquidityChanges:    LiquidityChange[];
   freshnessChanges:    FreshnessChange[];
+  /**
+   * True when the symbol specifically dropped out of the OppIntel
+   * qualified-candidate snapshot (not a transient system error).
+   * Emits QUALIFICATION_LOST as the first (most prominent) review reason.
+   */
+  symbolNotQualified?: boolean;
 }): ReviewReason[] {
   const reasons: ReviewReason[] = [];
+
+  // Qualification lost — highest priority reason; emitted first.
+  if (params.symbolNotQualified) {
+    reasons.push({
+      reasonType: "QUALIFICATION_LOST",
+      description:
+        "This symbol no longer qualifies in the latest Opportunity Intelligence snapshot. " +
+        "Review the original research thesis against current conditions before continuing. " +
+        "Acknowledging this review records your awareness but does not restore qualification.",
+    });
+    // When qualification is lost the remaining score-based reasons are unavailable
+    // (no current data to compare). Return early to avoid spurious CRITICAL_DATA_STALE.
+    return reasons;
+  }
   const { researchChanges, invalidationChanges, structureChanges, eventChanges, liquidityChanges, freshnessChanges } = params;
 
   // Qualification loss
@@ -733,13 +782,32 @@ export async function evaluateTradePlanLifecycle(
     });
 
     // 2. Fetch current opportunity (degrades gracefully if unavailable)
+    //
+    // Key distinction:
+    //   null returned (no exception) → symbol specifically NOT in qualified-candidate list
+    //                                  → symbolNotQualified = true → REQUIRES_REVIEW
+    //   exception thrown             → transient system error
+    //                                  → symbolNotQualified = false → UNKNOWN
+    //
+    // This separation is intentional: "dropped from the list" is a research event
+    // the user must acknowledge; "OppIntel is down" is not the user's concern.
     let currentOpportunity: any = null;
+    let symbolNotQualified = false;
+    let opportunityFetchError = false;
     try {
       currentOpportunity = await getCanonicalOpportunity(plan.symbol);
-    } catch { /* degrade */ }
+      if (currentOpportunity === null) {
+        // Symbol specifically not present in the latest qualified-candidate snapshot.
+        symbolNotQualified = true;
+      }
+    } catch {
+      // Transient system error — treat as data temporarily unavailable (UNKNOWN).
+      opportunityFetchError = true;
+    }
 
     const currentSummary  = _buildCurrentSummary(currentOpportunity);
     const savedSummary    = _buildSavedSummary(researchSnapshot);
+    // currentAvailable = false when either symbolNotQualified OR opportunityFetchError
     const currentAvailable = currentSummary !== null;
 
     // 3. Compute DTE for options plans
@@ -785,7 +853,8 @@ export async function evaluateTradePlanLifecycle(
     );
 
     // 5. Compute lifecycle state
-    // Pass lastReviewedAt so an explicit user review can clear REQUIRES_REVIEW.
+    // Pass lastReviewedAt so an explicit user review can clear score-based REQUIRES_REVIEW.
+    // Pass symbolNotQualified so qualification-loss REQUIRES_REVIEW is NOT clearable by review.
     const lifecycleState = computeLifecycleState({
       planStatus:          plan.status,
       currentAvailable,
@@ -794,6 +863,7 @@ export async function evaluateTradePlanLifecycle(
       invalidationChanges,
       structureChanges,
       lastReviewedAt:      (plan as any).lastReviewedAt ?? null,
+      symbolNotQualified,
     });
 
     // 6. Compute review reasons (transparent, no opaque score)
@@ -804,13 +874,21 @@ export async function evaluateTradePlanLifecycle(
       eventChanges,
       liquidityChanges,
       freshnessChanges,
+      symbolNotQualified,
     });
 
     const requiresReview = reviewReasons.length > 0;
 
     // 7. Limitations
     const limitations: string[] = [];
-    if (!currentAvailable)       limitations.push("Current research unavailable for this symbol.");
+    if (symbolNotQualified) {
+      limitations.push(
+        `${plan.symbol} is not present in the latest qualified-candidate snapshot. ` +
+        "Historical saved research is available. Current comparison data is unavailable."
+      );
+    } else if (!currentAvailable) {
+      limitations.push("Current research data is temporarily unavailable for this symbol.");
+    }
     if (plan.planType === "OPTIONS" && currentDTE === null)
       limitations.push("Current DTE could not be computed (expiration date unavailable in snapshot).");
     if (eventChanges.length === 0 && plan.planType === "OPTIONS")
@@ -822,12 +900,19 @@ export async function evaluateTradePlanLifecycle(
     const expirationState: ExpirationState | undefined =
       plan.planType === "OPTIONS" ? computeExpirationState(currentDTE) : undefined;
 
+    const symbolQualificationStatus: import("../../shared/trade-plan-lifecycle-types").SymbolQualificationStatus =
+      symbolNotQualified    ? "NOT_QUALIFIED" :
+      opportunityFetchError ? "UNKNOWN" :
+      currentAvailable      ? "QUALIFIED" :
+      "UNKNOWN";
+
     const result: TradePlanLifecycleResult = {
       tradePlanId,
       symbol:               plan.symbol,
       evaluatedAt:          new Date().toISOString(),
       savedPlanStatus:      plan.status,
       lifecycleState,
+      symbolQualificationStatus,
       expirationState,
       currentDTE:           plan.planType === "OPTIONS" ? currentDTE : undefined,
       researchChanges,

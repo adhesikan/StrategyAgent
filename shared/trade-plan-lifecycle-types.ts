@@ -251,6 +251,22 @@ export interface ReviewReason {
 }
 
 // ============================================================================
+// Symbol Qualification Status
+// ============================================================================
+
+/**
+ * Whether the plan's symbol currently qualifies in the Opportunity Intelligence
+ * qualified-candidate snapshot.
+ *
+ * QUALIFIED     — symbol present in the latest qualified-candidate snapshot.
+ * NOT_QUALIFIED — symbol specifically absent from the snapshot (dropped out).
+ *                 Distinct from a system error — the OppIntel engine ran and
+ *                 explicitly did not include this symbol.
+ * UNKNOWN       — could not determine (system error / OppIntel unavailable).
+ */
+export type SymbolQualificationStatus = "QUALIFIED" | "NOT_QUALIFIED" | "UNKNOWN";
+
+// ============================================================================
 // Research Summary (saved and current)
 // ============================================================================
 
@@ -279,6 +295,22 @@ export interface TradePlanLifecycleResult {
 
   savedPlanStatus:  string;   // TradePlanStatus value
   lifecycleState:   LifecycleState;
+
+  /**
+   * Whether the plan's symbol currently qualifies in the Opportunity
+   * Intelligence qualified-candidate snapshot.
+   *
+   * NOT_QUALIFIED means the symbol specifically dropped out — the OppIntel
+   * engine ran and excluded it. This is different from UNKNOWN (system error).
+   *
+   * When NOT_QUALIFIED:
+   * - lifecycleState === "REQUIRES_REVIEW"
+   * - reviewReasons contains QUALIFICATION_LOST
+   * - Review acknowledgement (lastReviewedAt) does NOT clear REQUIRES_REVIEW
+   * - currentResearchSummary is null (no current candidate data available)
+   * - Execution preflight continues to block
+   */
+  symbolQualificationStatus: SymbolQualificationStatus;
 
   // Option-specific
   expirationState?: ExpirationState;

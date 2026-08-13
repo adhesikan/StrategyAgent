@@ -112,6 +112,125 @@ The "Execution Preparation" section must always be visible for eligible EQUITY n
 
 ---
 
+## Sprint 2.8.6A-defect-10 — Lifecycle Qualification Loss (symbol drops from OppIntel)
+**Date:** 2026-08-13
+**Status:** COMPLETE
+**Tests:** 28 suites / 1,818 tests
+
+### Production Symptom (Railway UAT)
+NVDA dropped out of the latest Opportunity Intelligence qualified-candidate snapshot. Two downstream failures observed:
+
+**Failure 1 — "Research Not Available":** Clicking "Open Research Workspace" from the NVDA Trade Plan showed:
+> "NVDA — Research Not Available. This symbol is not present in the latest Opportunity Intelligence snapshot."
+
+Expected: historical saved research remains accessible; current status clearly labeled "No Longer Qualified."
+
+**Failure 2 — "Trade plan not found" (pre-Defect-9 path):** A separate navigation path showed "Trade plan not found." because the route depended on the symbol existing in the current OppIntel snapshot.
+
+**Failure 3 — Lifecycle UNKNOWN instead of REQUIRES_REVIEW:** When `getCanonicalOpportunity()` returned `null` (symbol not in OppIntel), `computeLifecycleState` returned `UNKNOWN` (generic error) instead of a meaningful `REQUIRES_REVIEW` with `QUALIFICATION_LOST` reason. Preflight blocked with `UNKNOWN_CRITICAL_STATE` ("Lifecycle state is unknown. Re-evaluate…") — not helpful to the user.
+
+### Root Causes
+
+**R1 — No distinction between "symbol dropped from OppIntel" and "OppIntel system error"**
+`getCanonicalOpportunity()` returning `null` (intentional exclusion) was treated identically to throwing an exception (transient system error). Both led to `currentAvailable = false` → `computeLifecycleState` returned `UNKNOWN`.
+
+**R2 — `QUALIFICATION_LOST` review reason type was never wired**
+`QUALIFICATION_LOST` exists in `REVIEW_REASON_TYPES` since Sprint 2.7.6 but `computeReviewReasons()` never emitted it. The reason was designed for exactly this case.
+
+**R3 — Review acknowledgement incorrectly designed to clear qualification loss**
+`lastReviewedAt` window cleared ANY `REQUIRES_REVIEW` including for unqualified symbols. After Defect-10, it only clears score-based `REQUIRES_REVIEW` — qualification loss requires the symbol to re-qualify in OppIntel, not just a user acknowledgement.
+
+**R4 — `TradePlanLifecycleResult` had no `symbolQualificationStatus` field**
+Clients and preflight could not distinguish "symbol specifically dropped" from "data temporarily unavailable."
+
+### Core Domain Rule (now enforced)
+There are three distinct objects:
+1. **Saved Trade Plan** — persistent user-owned record; survives symbol leaving OppIntel
+2. **Research Snapshot at Creation** — immutable historical evidence; remains viewable
+3. **Current Opportunity Intelligence State** — dynamic; symbol may be qualified, changed, removed, or unavailable
+
+These must never be conflated. A Trade Plan is NOT invalidated or made inaccessible when its symbol drops from the current OppIntel qualified-candidate list.
+
+### Fix
+
+**Lifecycle Engine** (`server/services/trade-plan-lifecycle-service.ts`)
+
+New distinction in `evaluateTradePlanLifecycle`:
+```
+null returned from getCanonicalOpportunity (no exception)
+  → symbolNotQualified = true
+  → symbolQualificationStatus = "NOT_QUALIFIED"
+  → lifecycle = REQUIRES_REVIEW  (reason: QUALIFICATION_LOST)
+  → review acknowledgement does NOT clear this
+
+exception thrown from getCanonicalOpportunity
+  → opportunityFetchError = true
+  → symbolQualificationStatus = "UNKNOWN"
+  → lifecycle = UNKNOWN (system error — unchanged)
+```
+
+`computeLifecycleState()` changes:
+- New `symbolNotQualified?: boolean` parameter
+- `symbolNotQualified = true` → returns `REQUIRES_REVIEW` immediately (before `UNKNOWN` early-return and before `DATA_STALE` check)
+- `lastReviewedAt` window only clears score-based `REQUIRES_REVIEW`; `symbolNotQualified = true` routes to `REQUIRES_REVIEW` before the `lastReviewedAt` branch
+
+`computeReviewReasons()` changes:
+- New `symbolNotQualified?: boolean` parameter
+- When `symbolNotQualified = true` → emits `QUALIFICATION_LOST` as the first (and only) reason, then returns early to prevent spurious `CRITICAL_DATA_STALE` from freshnessChanges
+
+Limitations text:
+- `symbolNotQualified = true` → `"${symbol} is not present in the latest qualified-candidate snapshot. Historical saved research is available. Current comparison data is unavailable."`
+- System error → `"Current research data is temporarily unavailable for this symbol."` (distinct wording)
+
+**Shared Types** (`shared/trade-plan-lifecycle-types.ts`)
+- Added `SymbolQualificationStatus = "QUALIFIED" | "NOT_QUALIFIED" | "UNKNOWN"` type
+- Added `symbolQualificationStatus: SymbolQualificationStatus` to `TradePlanLifecycleResult`
+
+**Client UI** (`client/src/pages/trade-plan-detail.tsx`)
+- Derived `isNotQualified = lifecycle?.symbolQualificationStatus === "NOT_QUALIFIED"`
+- REQUIRES_REVIEW panel header: `"${symbol} — No Longer Qualified"` when `isNotQualified` (vs generic "Research Review Required")
+- Added explicit paragraph: `"${plan.symbol} no longer qualifies in the latest Opportunity Intelligence snapshot. Review the original research thesis against current conditions before continuing."`
+- Review panel ("Review Saved Research" / "Review Current Research" button toggle) now has two modes:
+  - **NOT_QUALIFIED**: shows "Research at Plan Creation" saved scores + "Current Opportunity Status: No Longer Qualified" card with limitation text
+  - **Score-based**: shows Saved vs Now score comparison (existing behavior)
+- Acknowledgement disclaimer for NOT_QUALIFIED: `"Acknowledging this review records your awareness of current conditions. It does not restore qualification or make the plan executable."` (compliant language — no buy/sell advice)
+- "Open Research Workspace" always routes to `/research-workspace?symbol=${symbol}` (AI Research Workspace, works without OppIntel)
+
+**Tests** (`server/services/__tests__/lifecycle-qualification-state.test.ts`)
+- 51 new deterministic tests covering spec cases A–I plus §QS1–§QS15
+
+### Safety Invariants
+- ✅ Symbol dropping from OppIntel NEVER deletes or archives the Trade Plan
+- ✅ Historical saved research (savedResearchSummary) always accessible
+- ✅ REQUIRES_REVIEW (QUALIFICATION_LOST) is NOT clearable by `lastReviewedAt` review window
+- ✅ User can acknowledge the review — but preflight continues to block (lifecycle remains REQUIRES_REVIEW)
+- ✅ "No Longer Qualified" language — no buy/sell/exit instructions
+- ✅ System error (OppIntel down) → UNKNOWN (distinct from qualification loss → REQUIRES_REVIEW)
+- ✅ Plan ownership enforced; plan DB query does NOT join on OppIntel tables
+
+### Files Changed
+- `shared/trade-plan-lifecycle-types.ts` — `SymbolQualificationStatus` type; `symbolQualificationStatus` field on `TradePlanLifecycleResult`
+- `server/services/trade-plan-lifecycle-service.ts` — `computeLifecycleState` with `symbolNotQualified`; `computeReviewReasons` with early-return for qualification loss; `evaluateTradePlanLifecycle` tracking `symbolNotQualified` vs `opportunityFetchError`; `symbolQualificationStatus` in result; limitations text
+- `client/src/pages/trade-plan-detail.tsx` — `isNotQualified` derived state; review panel two-mode display; "No Longer Qualified" language; acknowledgement disclaimer
+- `server/services/__tests__/lifecycle-qualification-state.test.ts` — 51 new tests (spec A–I + §QS1–§QS15)
+- `docs/operations/17-sprint-change-log.md` — this entry
+
+### Test Results
+28 suites / 1,818 tests passing. READY_FOR_RAILWAY_REDEPLOY.
+
+### Production Verification Steps
+1. Using the existing saved NVDA Trade Plan:
+   - Navigate Trade Plans → NVDA → Open: plan opens (never "Trade plan not found")
+   - Lifecycle panel: shows "NVDA — No Longer Qualified" in orange (REQUIRES_REVIEW)
+   - Lifecycle reason: "This symbol no longer qualifies in the latest Opportunity Intelligence snapshot"
+   - Click "Open Research Workspace": opens `/research-workspace?symbol=NVDA` (AI Workspace — no NOT_FOUND)
+   - Click "Review Saved Research" → panel opens showing "Research at Plan Creation" saved scores + "No Longer Qualified" current status
+   - Click "Mark Research Reviewed": review recorded; lifecycle re-evaluated — still REQUIRES_REVIEW (not CURRENT)
+   - Run preflight: Research Lifecycle = REQUIRES_REVIEW → PLAN_REQUIRES_REVIEW blocker (execution blocked)
+2. No historical snapshot overwritten. No fake current NVDA candidate created.
+
+---
+
 ## Sprint 2.8.6A-defect-9 — Lifecycle Review Dead-End / Broken Research Link
 **Date:** 2026-08-13
 **Status:** COMPLETE

@@ -28,6 +28,20 @@ description: How the REQUIRES_REVIEW lifecycle state is cleared by an explicit u
 - Schema: `last_reviewed_at TIMESTAMPTZ` nullable column on `trade_plans`
 - Migration: `server/migrations/add-trade-plan-last-reviewed-at.sql`
 
+## Symbol qualification loss (Defect-10)
+
+**`symbolNotQualified` vs `opportunityFetchError`:**
+- `getCanonicalOpportunity()` returns `null` (no exception) → `symbolNotQualified = true` → lifecycle = `REQUIRES_REVIEW` with `QUALIFICATION_LOST` reason
+- exception thrown → `opportunityFetchError = true` → lifecycle = `UNKNOWN` (system error — unchanged)
+
+**`symbolNotQualified` in `computeLifecycleState`:** checked BEFORE `!currentAvailable → UNKNOWN` and BEFORE `DATA_STALE`. `lastReviewedAt` window does NOT apply to qualification loss — review records awareness but symbol stays unqualified until OppIntel re-qualifies it.
+
+**`computeReviewReasons` early return:** when `symbolNotQualified = true`, emits only `QUALIFICATION_LOST` then returns — prevents `CRITICAL_DATA_STALE` pollution from `DATA_UNAVAILABLE` freshness change.
+
+**`TradePlanLifecycleResult.symbolQualificationStatus`:** `"QUALIFIED"` | `"NOT_QUALIFIED"` | `"UNKNOWN"`. Client derives `isNotQualified = lifecycle?.symbolQualificationStatus === "NOT_QUALIFIED"`. Review panel shows two modes: (a) NOT_QUALIFIED: saved-research + "No Longer Qualified" current status card; (b) score-based: Saved vs Now comparison.
+
+**Invariant:** QUALIFICATION_LOST → REQUIRES_REVIEW → preflight always blocks, even after `Mark Research Reviewed`.
+
 ## Broken link fix (Defect-9)
 Both "Open Research Workspace" CTAs in the lifecycle panel previously navigated to `/research/${plan.symbol}` → `ResearchDetailPage` which expects a Sprint 5.4D record UUID — not a symbol ticker. Fixed to `/research-workspace?symbol=${plan.symbol}` (AI Research Workspace).
 

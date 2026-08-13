@@ -1,0 +1,296 @@
+VCP Trader AI — Trade Plan Lifecycle Bug Fix
+
+We have discovered an important lifecycle defect while testing the existing
+NVDA Trade Plan.
+
+DO NOT start a new sprint or add unrelated features.
+This is a blocker/bug fix in the current Trade Planning / Execution Preflight
+workflow.
+
+CURRENT OBSERVED BEHAVIOR
+
+A saved NVDA Trade Plan was successfully created earlier.
+
+NVDA has subsequently dropped out of the latest Opportunity Intelligence
+qualified-candidate snapshot.
+
+Opportunity Intelligence now correctly shows:
+
+NVDA
+REMOVED
+"NVDA dropped out of the ranking — it no longer meets qualification criteria."
+
+However, this causes two incorrect downstream behaviors:
+
+1. Clicking "Open Research Workspace" from the saved NVDA Trade Plan shows:
+
+   "NVDA — Research Not Available
+    This symbol is not present in the latest Opportunity Intelligence snapshot."
+
+2. In another Trade Plan navigation path the application shows:
+
+   "Trade plan not found."
+
+This is incorrect.
+
+CORE PRODUCT RULE
+
+A saved Trade Plan is a persistent historical research record.
+
+It MUST NOT disappear, become inaccessible, or be treated as nonexistent
+because the symbol later drops out of the current Opportunity Intelligence
+qualified-candidate list.
+
+Current qualification and historical persistence are separate concepts.
+
+EXPECTED DOMAIN MODEL
+
+There are three distinct objects/states:
+
+1. Saved Trade Plan
+   Persistent user-owned record.
+   Must remain accessible until explicitly archived/deleted by the user.
+
+2. Research Snapshot at Plan Creation
+   Immutable historical evidence used when the plan was created.
+   Must remain viewable even if current research disappears.
+
+3. Current Opportunity Intelligence State
+   Dynamic current-state information.
+   The symbol may currently be qualified, changed, removed, or unavailable.
+
+Do not conflate these.
+
+REQUIRED FIX
+
+1. TRADE PLAN PERSISTENCE
+
+Inspect all Trade Plan fetch/navigation logic.
+
+A Trade Plan lookup must be based on the persistent Trade Plan ID and
+authenticated user ownership.
+
+It must NOT depend on the symbol currently existing in the Opportunity
+Intelligence candidate list.
+
+If the Trade Plan exists in the database, the Trade Plan page must render.
+
+"Trade plan not found" should only appear when the persistent plan genuinely
+does not exist or is inaccessible to the authenticated user.
+
+2. LIFECYCLE EVALUATION
+
+When the saved Trade Plan symbol is no longer present in the latest qualified
+candidate snapshot, lifecycle evaluation should return a deterministic state
+such as:
+
+REQUIRES_REVIEW
+
+with a reason such as:
+
+SYMBOL_NO_LONGER_QUALIFIED
+
+Display:
+
+Research Review Required
+
+NVDA no longer qualifies in the latest Opportunity Intelligence snapshot.
+Review the original research thesis against current conditions before
+continuing.
+
+This should be a material research change.
+
+Do NOT silently invalidate or delete the Trade Plan.
+
+3. HISTORICAL RESEARCH WORKSPACE
+
+"Open Research Workspace" from a saved Trade Plan must still provide useful
+research context.
+
+Preferred behavior:
+
+If current qualified research exists:
+    open current research and allow comparison with saved research.
+
+If current qualified research does NOT exist:
+    open a historical/saved research view sourced from the immutable research
+    snapshot stored with the Trade Plan.
+
+The page should clearly distinguish:
+
+    Research at Plan Creation
+
+from:
+
+    Current Opportunity Status
+
+Example:
+
+NVDA — Saved Research
+
+Research at Plan Creation
+Research Score: 67
+Technical: 85
+Fundamental: 60
+Institutional: 50
+Classification: Growth Candidate
+Market Regime: strong_bull
+Created: <timestamp>
+
+Current Opportunity Status
+No Longer Qualified
+
+NVDA is not present in the latest qualified-candidate snapshot.
+
+Do not display "Research Not Available" when saved research evidence exists.
+
+4. REVIEW RESEARCH WORKFLOW
+
+The Review Research action must work even when the symbol is no longer
+qualified.
+
+The review page should compare:
+
+SAVED / AT CREATION
+versus
+CURRENT
+
+Current may legitimately contain:
+
+Qualification: No Longer Qualified
+Ranking: Not Ranked
+Latest candidate score: 0 or unavailable
+Removal reason: no longer meets qualification criteria
+
+The user should be able to acknowledge the material change.
+
+IMPORTANT:
+
+Acknowledging the review must NOT automatically make the plan executable.
+
+If the underlying thesis no longer meets qualification requirements,
+Execution Preflight should continue to block execution appropriately.
+
+5. EXECUTION PREFLIGHT
+
+Update/verify preflight behavior for this case.
+
+Expected:
+
+Trade Plan                 PASS
+Research Lifecycle         REQUIRES_REVIEW or FAIL
+Plan Freshness             REQUIRES_REVIEW
+Broker Connection          PASS
+Broker Account             PASS
+Quote Validation           independently evaluated
+Structure Validation       PASS
+
+Blocker should be something like:
+
+[PLAN_REQUIRES_REVIEW]
+NVDA no longer qualifies under the current research methodology.
+Review current research conditions before proceeding.
+
+After review acknowledgment, DO NOT automatically PASS lifecycle if the
+current methodology says the candidate remains unqualified.
+
+The lifecycle engine must distinguish:
+
+review has been performed
+
+from:
+
+research thesis currently qualifies.
+
+6. DATA INTEGRITY
+
+Do not mutate the immutable research-at-creation snapshot when current
+Opportunity Intelligence changes.
+
+Historical plan evidence must remain historically accurate.
+
+Do not create fake/current candidate records merely to make navigation work.
+
+7. NAVIGATION
+
+Audit these paths:
+
+Trade Plans -> NVDA -> Open
+Trade Plan -> Open Research Workspace
+Trade Plan -> Review Research
+Research -> Trade Plan
+Execution Preflight -> Trade Plan / Research links
+
+All must handle a saved plan whose symbol is no longer currently qualified.
+
+No route should assume:
+
+current candidate exists == saved plan exists
+
+8. UI LANGUAGE
+
+Keep language research-oriented and compliance-safe.
+
+Use:
+"No Longer Qualified"
+"Research Review Required"
+"Current research conditions changed"
+"Review current evidence"
+
+Do not use:
+"Sell"
+"Exit now"
+"Close position"
+"Bad trade"
+"Do not buy"
+
+This lifecycle system describes research state, not personalized investment
+instructions.
+
+TESTS
+
+Add regression coverage for:
+
+A. Qualified candidate -> create Trade Plan -> candidate remains qualified
+B. Qualified candidate -> create Trade Plan -> candidate later removed
+C. Removed candidate -> saved Trade Plan remains accessible
+D. Removed candidate -> historical research remains accessible
+E. Removed candidate -> Review Research works
+F. Removed candidate -> Execution Preflight blocks appropriately
+G. Archived plan behavior remains unchanged
+H. Another user's Trade Plan cannot be accessed
+I. Truly nonexistent Trade Plan still returns NOT_FOUND
+
+Run existing relevant tests plus new regression tests.
+
+Do not modify unrelated Opportunity Intelligence ranking methodology.
+
+ACCEPTANCE CRITERIA
+
+Using the EXISTING saved NVDA Trade Plan:
+
+1. Trade Plans -> NVDA -> Open successfully opens the plan.
+2. It never says "Trade plan not found" while the saved plan exists.
+3. Lifecycle clearly reports NVDA as no longer currently qualified.
+4. Saved research-at-creation evidence remains visible.
+5. Open Research Workspace works and shows historical research when current
+   qualified research is unavailable.
+6. Review Research works.
+7. Execution Preflight blocks appropriately based on lifecycle state.
+8. No historical snapshot is overwritten.
+9. No fake current NVDA candidate is created.
+10. Existing tests and new regression tests pass.
+
+After implementation, report:
+
+- root cause
+- files changed
+- API/endpoints changed
+- lifecycle state behavior before/after
+- tests added
+- test results
+- whether a database migration was required
+- exact production verification steps
+
+STOP after this bug fix.
+Do not begin Order Preparation or another sprint.

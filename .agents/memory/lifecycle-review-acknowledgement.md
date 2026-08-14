@@ -42,6 +42,16 @@ description: How the REQUIRES_REVIEW lifecycle state is cleared by an explicit u
 
 **Invariant:** QUALIFICATION_LOST → REQUIRES_REVIEW → preflight always blocks, even after `Mark Research Reviewed`.
 
+## Preflight–lifecycle consistency (Defect-10c)
+
+**Root cause:** `createDbPreflightDeps.getLifecycleResult()` read from `tradePlanActivity` event log with `.orderBy(observedAt)` ascending — oldest activity row, not the current state. `lastReviewedAt` in `trade_plans` was completely invisible to preflight. After review: lifecycle UI showed CURRENT, preflight still returned PLAN_REQUIRES_REVIEW.
+
+**Fix:** Replace the DB query in `getLifecycleResult` with a call to `evaluateTradePlanLifecycle(userId, planId)` — same function as the lifecycle UI endpoint. Uses in-process cache when recently evaluated; free if already computed.
+
+**Invariants unchanged:** THESIS_INVALIDATED, DATA_STALE, QUALIFICATION_LOST → cannot be cleared by review; remain FAIL/REQUIRES_REVIEW regardless of lastReviewedAt.
+
+---
+
 ## Schema deployment contract (Defect-10b — production 500 on GET /api/trade-plans)
 
 **Root cause:** `last_reviewed_at` added to Drizzle schema but NOT to `ensureTradePlanTables()` ALTER block → Railway startup ran ensure but column was never added → SQLSTATE 42703 on every list query.

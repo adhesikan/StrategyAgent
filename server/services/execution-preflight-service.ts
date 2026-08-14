@@ -930,19 +930,35 @@ export async function createDbPreflightDeps(
       };
     },
     async getLifecycleResult(planId, userId) {
-      const { tradePlanActivity } = await import("@shared/schema");
-      const rows = await db
-        .select()
-        .from(tradePlanActivity)
-        .where(and(eq(tradePlanActivity.tradePlanId, planId), eq(tradePlanActivity.userId, userId)))
-        .orderBy(tradePlanActivity.observedAt)
-        .limit(1);
-      if (!rows[0]) return null;
-      return {
-        planId,
-        lifecycleState: rows[0].currentState ?? "UNKNOWN",
-        evaluatedAt: rows[0].observedAt,
-      };
+      // Use the authoritative lifecycle evaluation function — the same path as the
+      // Trade Plan lifecycle UI endpoint (GET /api/trade-plans/:id/lifecycle).
+      //
+      // The previous implementation read from tradePlanActivity (event log) with
+      // an ascending sort (oldest row first), which caused two independent bugs:
+      //   1. Got the oldest activity state, not the current evaluated state.
+      //   2. Never read lastReviewedAt from the trade_plans row, so a user's
+      //      explicit review acknowledgement was invisible to preflight — the plan
+      //      showed "Research Current" in the UI but preflight still blocked with
+      //      PLAN_REQUIRES_REVIEW.
+      //
+      // evaluateTradePlanLifecycle() reads lastReviewedAt from trade_plans, applies
+      // the 7-day review window in computeLifecycleState(), and is cached in-process.
+      // If the lifecycle was recently evaluated (e.g. the user just did a lifecycle
+      // check in the UI), the cache hit is free. If not, the full evaluation runs.
+      try {
+        const { evaluateTradePlanLifecycle } = await import("./trade-plan-lifecycle-service");
+        const result = await evaluateTradePlanLifecycle(userId, planId);
+        return {
+          planId,
+          lifecycleState: result.lifecycleState,
+          evaluatedAt: result.evaluatedAt ? new Date(result.evaluatedAt) : null,
+        };
+      } catch {
+        // If the lifecycle evaluation fails (plan not found, OppIntel error, etc.)
+        // return null so the preflight marks the lifecycle dimension as UNAVAILABLE
+        // rather than crashing the entire preflight.
+        return null;
+      }
     },
     async savePreflight(result) {
       await db.insert(executionPreflights).values({

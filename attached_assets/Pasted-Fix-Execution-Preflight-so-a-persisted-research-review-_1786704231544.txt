@@ -1,0 +1,65 @@
+Fix Execution Preflight so a persisted research review acknowledgment is honored.
+
+We have confirmed the Trade Plan lifecycle review workflow works and persists across refresh:
+
+NVDA Trade Plan detected material research changes.
+Lifecycle became REQUIRES_REVIEW.
+User clicked Review Current Research.
+User clicked Mark Research Reviewed.
+Trade Plan subsequently displayed Research Current.
+This state persisted after page refresh.
+
+However, when the user then clicks Check Execution Preconditions, preflight incorrectly returns:
+
+Research Lifecycle: REQUIRES_REVIEW
+Plan Freshness: REQUIRES_REVIEW
+blocker: [PLAN_REQUIRES_REVIEW]
+
+This means the preflight evaluation is not using the same persisted lifecycle/review state as the Trade Plan lifecycle UI, or it is independently recalculating the state in a way that ignores the user's persisted review acknowledgment.
+
+Required behavior
+
+Execution Preflight must use the authoritative persisted lifecycle/review state.
+
+If:
+
+the user has acknowledged the latest material research changes,
+no newer material research change has occurred since that acknowledgment,
+and the lifecycle evaluation considers the plan CURRENT,
+
+then preflight should return:
+
+Research Lifecycle → PASS
+Plan Freshness → PASS
+no PLAN_REQUIRES_REVIEW blocker.
+
+A subsequent new material research change must invalidate that acknowledgment and cause REQUIRES_REVIEW again.
+
+Important
+
+Do not weaken or bypass lifecycle validation.
+Do not simply convert REQUIRES_REVIEW to PASS.
+Do not special-case NVDA.
+Do not modify quote freshness behavior.
+Do not change broker permission or risk-analysis behavior.
+
+Trace the current implementation first and identify:
+
+where Mark Research Reviewed persists the acknowledgment,
+how the Trade Plan page determines Research Current,
+how Execution Preflight determines Research Lifecycle and Plan Freshness,
+why those paths disagree.
+
+Establish a single authoritative lifecycle-state calculation/shared service if necessary so the Trade Plan UI and Execution Preflight cannot disagree.
+
+Add regression tests covering:
+
+material change → REQUIRES_REVIEW
+user acknowledges latest material change → CURRENT
+preflight after acknowledgment → lifecycle PASS / freshness PASS
+page refresh → acknowledgment remains effective
+new material change after acknowledgment → REQUIRES_REVIEW again
+
+Keep this change narrowly scoped to the lifecycle/preflight consistency bug.
+
+Report the root cause, files changed, tests added/run, and any migration required before deploying.

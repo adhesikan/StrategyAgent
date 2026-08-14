@@ -112,6 +112,67 @@ The "Execution Preparation" section must always be visible for eligible EQUITY n
 
 ---
 
+## Sprint 2.8.6A-defect-10c — Preflight ignores research review acknowledgement
+**Date:** 2026-08-14
+**Status:** COMPLETE
+**Tests:** 29 suites / 1,906 tests
+
+### Production Symptom
+After a user successfully reviewed their NVDA Trade Plan (lifecycle UI showed "Research Current"), clicking "Check Execution Preconditions" returned:
+
+```
+Research Lifecycle: REQUIRES_REVIEW
+Plan Freshness: REQUIRES_REVIEW
+blocker: [PLAN_REQUIRES_REVIEW]
+```
+
+### Root Cause
+
+`getLifecycleResult()` in `createDbPreflightDeps()` read from `tradePlanActivity` (an event-log table) rather than calling `evaluateTradePlanLifecycle()` — the authoritative function used by the lifecycle UI endpoint. Two independent bugs:
+
+**Bug 1 — Wrong data source:** `tradePlanActivity` stores activity events; `lastReviewedAt` (set by the review acknowledgement) lives in `trade_plans`. The activity log never surfaces the review window computation.
+
+**Bug 2 — Wrong sort order:** The query used `.orderBy(tradePlanActivity.observedAt)` (ascending) with `.limit(1)` — returning the **oldest** activity row, not the current state.
+
+Result: the preflight and the lifecycle UI used completely independent data sources and could never agree.
+
+### Fix
+
+`server/services/execution-preflight-service.ts` — `createDbPreflightDeps.getLifecycleResult()`:
+
+```typescript
+// BEFORE (broken):
+const rows = await db.select().from(tradePlanActivity)
+  .where(and(eq(tradePlanActivity.tradePlanId, planId), ...))
+  .orderBy(tradePlanActivity.observedAt)   // ← ascending (oldest first)
+  .limit(1);
+return { lifecycleState: rows[0].currentState ?? "UNKNOWN" };
+
+// AFTER (fixed):
+const { evaluateTradePlanLifecycle } = await import("./trade-plan-lifecycle-service");
+const result = await evaluateTradePlanLifecycle(userId, planId);
+return { planId, lifecycleState: result.lifecycleState, evaluatedAt: ... };
+```
+
+`evaluateTradePlanLifecycle()` reads `lastReviewedAt` from `trade_plans`, applies the 7-day review window in `computeLifecycleState()`, and is backed by an in-process cache — so if the lifecycle was recently evaluated (e.g. from the UI), the cache hit is free.
+
+### Invariants Preserved
+- ✅ `THESIS_INVALIDATED` → FAIL regardless of review (cannot be cleared by acknowledgement)
+- ✅ `DATA_STALE` → FAIL regardless of review
+- ✅ `QUALIFICATION_LOST` (symbolNotQualified) → REQUIRES_REVIEW regardless of review
+- ✅ `UNKNOWN` → FAIL (system error — not a review event)
+- ✅ Null lifecycle result → UNAVAILABLE (no crash)
+- ✅ Review window expiry (> 7 days) → REQUIRES_REVIEW again
+
+### New Test File
+`server/routes/__tests__/preflight-lifecycle-consistency.test.ts` — 55 tests (§PLC1–§PLC15 + bonus)
+
+### Files Changed
+- `server/services/execution-preflight-service.ts` — `createDbPreflightDeps.getLifecycleResult` (one function replaced)
+- `server/routes/__tests__/preflight-lifecycle-consistency.test.ts` — 55 new tests
+
+---
+
 ## Sprint 2.8.6A-defect-10b — Trade Plans List 500: schema drift (last_reviewed_at missing)
 **Date:** 2026-08-13
 **Status:** COMPLETE

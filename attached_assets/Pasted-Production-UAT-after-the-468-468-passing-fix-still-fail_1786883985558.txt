@@ -1,0 +1,64 @@
+Production UAT after the 468/468 passing fix still fails one lifecycle acceptance criterion.
+
+Current production preflight:
+
+Trade Plan → PASS
+Research Lifecycle → REQUIRES_REVIEW
+Plan Freshness → PASS
+Broker Connection → PASS
+Broker Account → PASS
+Buying Power → PASS
+Position Requirements → PASS
+Structure Validation → PASS
+Quote Validation → FAIL because market quote is stale (separate issue; DO NOT address)
+
+Blocker still returned:
+
+[PLAN_REQUIRES_REVIEW] Trade Plan requires review.
+
+This is useful because Plan Freshness now passes, meaning the stale stored-preflight/query invalidation problem appears fixed. The remaining defect is specifically the authoritative Research Lifecycle calculation.
+
+Do not make another speculative fix yet.
+
+Use the [preflight:lifecycle-diagnostic] logging added in the previous fix to diagnose the actual production NVDA request.
+
+For the failing preflight request, report the exact values of:
+
+tradePlanId
+lastReviewedAt
+researchDataTimestamp
+currentSummary.asOf
+saved research snapshot/asOf
+latestMaterialChangeAt if available
+computed lifecycle state
+reason/code causing REQUIRES_REVIEW
+whether force:true was used
+
+Also determine whether currentSummary.asOf represents:
+
+the timestamp when the underlying research evidence actually changed, or
+merely the timestamp when a new Opportunity Intelligence snapshot/evaluation was generated.
+
+This distinction is critical.
+
+Required semantic behavior:
+
+A user's review acknowledgment should remain valid until a new material research change occurs.
+
+A newly generated snapshot/evaluation containing the same material research state must NOT invalidate the acknowledgment merely because its asOf timestamp is newer than lastReviewedAt.
+
+Therefore, if the implementation currently does:
+
+lastReviewedAt >= currentSummary.asOf
+
+verify that currentSummary.asOf truly means latest material research change timestamp.
+
+If asOf is simply snapshot-generation time, it is the wrong timestamp for invalidating a review.
+
+The lifecycle decision should instead be based on whether there is a material research version/change newer than the acknowledged version/change.
+
+Prefer a deterministic material-change/version comparison over wall-clock evaluation timestamps if the architecture supports it.
+
+First report the production diagnostic values and confirmed root cause. Do not modify code until the root cause is established.
+
+Do not modify quote freshness, broker permissions, risk analysis, or other preflight dimensions.

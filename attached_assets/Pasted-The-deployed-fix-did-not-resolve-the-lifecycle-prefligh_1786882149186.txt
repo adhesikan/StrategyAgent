@@ -1,0 +1,50 @@
+The deployed fix did not resolve the lifecycle/preflight inconsistency.
+
+I retested the same NVDA Trade Plan after its research-review acknowledgment had already been persisted and the Trade Plan lifecycle UI showed Research Current.
+
+Execution Preflight still returns:
+
+Research Lifecycle: REQUIRES_REVIEW
+Plan Freshness: REQUIRES_REVIEW
+blocker: [PLAN_REQUIRES_REVIEW]
+
+Quote Validation also fails because the last quote is 14h 32m old, but this is expected outside regular market hours and is not part of this bug.
+
+Please debug this from the server-side data/state rather than making another UI-only change.
+
+For the exact Trade Plan being tested, log/inspect:
+
+persisted lastReviewedAt
+lifecycle evaluation timestamp
+timestamp of the latest material research change
+current lifecycle state returned to the Trade Plan detail endpoint
+lifecycle state consumed/calculated by Execution Preflight
+freshness timestamp/state consumed by Execution Preflight
+
+Then identify exactly why:
+
+Trade Plan detail = Research Current
+
+while
+
+Execution Preflight = REQUIRES_REVIEW
+
+These two surfaces must use the same authoritative lifecycle evaluation.
+
+Also check whether preflight is reading a cached lifecycle evaluation generated before Mark Research Reviewed, or whether lastReviewedAt is being compared against a newer evaluation timestamp rather than the timestamp of the latest material change.
+
+Important semantic requirement:
+
+lastReviewedAt should remain valid until a new material research change occurs. Simply re-running lifecycle evaluation after the review must not make the plan require review again.
+
+Do not change quote freshness, broker permissions, risk analysis, thresholds, or weaken the lifecycle guardrail.
+
+Add a regression/integration test that reproduces the complete API sequence:
+
+material change → requires review → mark reviewed → lifecycle current → run preflight → lifecycle PASS + freshness PASS.
+
+Then run preflight a second time without any new material research change and verify it still passes.
+
+Finally introduce a newer material change and verify preflight returns REQUIRES_REVIEW again.
+
+Before deploying, report the actual root cause and test results.

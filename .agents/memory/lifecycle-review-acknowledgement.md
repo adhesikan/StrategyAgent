@@ -42,13 +42,25 @@ description: How the REQUIRES_REVIEW lifecycle state is cleared by an explicit u
 
 **Invariant:** QUALIFICATION_LOST → REQUIRES_REVIEW → preflight always blocks, even after `Mark Research Reviewed`.
 
-## Preflight–lifecycle consistency (Defect-10c)
+## Preflight–lifecycle consistency (Defect-10c + production follow-up)
 
-**Root cause:** `createDbPreflightDeps.getLifecycleResult()` read from `tradePlanActivity` event log with `.orderBy(observedAt)` ascending — oldest activity row, not the current state. `lastReviewedAt` in `trade_plans` was completely invisible to preflight. After review: lifecycle UI showed CURRENT, preflight still returned PLAN_REQUIRES_REVIEW.
+**Original Defect-10c root cause:** `createDbPreflightDeps.getLifecycleResult()` read from `tradePlanActivity` event log with `.orderBy(observedAt)` ascending — oldest activity row, not the current state. `lastReviewedAt` in `trade_plans` was completely invisible to preflight.
 
-**Fix:** Replace the DB query in `getLifecycleResult` with a call to `evaluateTradePlanLifecycle(userId, planId)` — same function as the lifecycle UI endpoint. Uses in-process cache when recently evaluated; free if already computed.
+**Production follow-up (three additional bugs found after deploy):**
+
+**Bug 1 — Query key mismatch (client):** `handleMarkReviewed` invalidated `["/api/trade-plans", id, "execution", "preflight"]` but `ExecutionPreflightPanel` registers under `["execution-preflight", tradePlanId]` — mismatch means panel always shows the OLD stored preflight result (pre-review `evaluatedAt` → Plan Freshness also fails). Fix: invalidate both keys; server also deletes stored preflight row on review.
+
+**Bug 2 — In-process cache in preflight (server):** `getLifecycleResult` called `evaluateTradePlanLifecycle` without `force: true` — could serve a cache entry that pre-dated the review. Fix: always `{ force: true }` in preflight. Diagnostic logging added: `[preflight:lifecycle-diagnostic]`.
+
+**Bug 3 — Wall-clock review window (semantic):** `lastReviewedAt` compared against `Date.now()` (7-day window). Correct semantic: review is valid until **new research data** arrives (not wall-clock). Fix: `computeLifecycleState` now accepts `researchDataTimestamp?: Date | null` (= `currentSummary.asOf`). Primary check: `lastReviewedAt >= researchDataTimestamp` → CURRENT. Fallback (no timestamp): 7-day window.
+
+**Server-side preflight invalidation on review:** `POST .../lifecycle/review` now deletes all `execution_preflights` rows for the plan/user — forces the client GET to return 404, user must re-run preflight to see fresh state.
+
+**Diagnostic logging:** `evaluateTradePlanLifecycle` logs `[lifecycle:diagnostic]` with `planId`, `lastReviewedAt`, `researchDataTimestamp`, `reviewCoversData` when material changes exist. `getLifecycleResult` logs `[preflight:lifecycle-diagnostic]` with state and evaluatedAt.
 
 **Invariants unchanged:** THESIS_INVALIDATED, DATA_STALE, QUALIFICATION_LOST → cannot be cleared by review; remain FAIL/REQUIRES_REVIEW regardless of lastReviewedAt.
+
+**New integration tests:** `preflight-review-lifecycle-integration.test.ts` — 24 tests (§PRLCI-1 through §PRLCI-6): full UAT sequence, freshness thresholds, data-timestamp semantics, non-clearable states.
 
 ---
 

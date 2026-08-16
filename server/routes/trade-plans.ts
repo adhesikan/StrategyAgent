@@ -364,6 +364,25 @@ export function registerTradePlanRoutes(
       const activityDrafts = buildActivitiesFromLifecycleResult(lifecycleResult, null);
       const newActivities = await persistLifecycleActivity(userId, planId, activityDrafts).catch(() => []);
 
+      // 6. Invalidate any stored preflight results for this plan.
+      //    The stored preflight was computed before the review (pre-review lifecycle state,
+      //    old evaluatedAt). Deleting it forces the client GET to return 404 and prompts
+      //    the user to re-run preflight — which will now see the updated lifecycle state.
+      try {
+        const { executionPreflights } = await import("../../shared/schema");
+        await db
+          .delete(executionPreflights)
+          .where(
+            and(
+              eq(executionPreflights.tradePlanId, planId),
+              eq(executionPreflights.userId, userId)
+            )
+          );
+      } catch {
+        // Fire-and-forget: preflight invalidation is best-effort. If it fails,
+        // the stale stored result stays but the next POST preflight will overwrite it.
+      }
+
       return res.status(200).json({
         tradePlanId:      planId,
         reviewedAt:       reviewedAt.toISOString(),

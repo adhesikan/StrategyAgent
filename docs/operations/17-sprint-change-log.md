@@ -173,6 +173,81 @@ return { planId, lifecycleState: result.lifecycleState, evaluatedAt: ... };
 
 ---
 
+## Sprint 2.8.6A-defect-10c-prod — Preflight still blocks after review (production follow-up)
+**Date:** 2026-08-16
+**Status:** COMPLETE
+**Tests:** 30 suites / 1,955 tests (24 new integration tests + 3 test updates)
+
+### Production Symptom
+After the Defect-10c server fix was deployed, production UAT still showed:
+```
+Research Lifecycle: REQUIRES_REVIEW
+Plan Freshness: REQUIRES_REVIEW
+blocker: [PLAN_REQUIRES_REVIEW]
+```
+even when the lifecycle UI showed "Research Current" (review was persisted).
+
+### Root Cause Analysis — Three Independent Issues
+
+**Issue 1 (primary — data display):** The review success handler in `trade-plan-detail.tsx` invalidated query key `["/api/trade-plans", id, "execution", "preflight"]` but the `ExecutionPreflightPanel` registers under `["execution-preflight", tradePlanId]` — a complete mismatch. After a review, the panel kept displaying the OLD STORED preflight result (from before the review), which had:
+- `lifecycleState = "REQUIRES_REVIEW"` (computed pre-review)
+- `evaluatedAt = T_old` (2+ hours ago → Plan Freshness also fails)
+
+**Issue 2 (server — evaluation cache):** `getLifecycleResult` in preflight called `evaluateTradePlanLifecycle` without `force: true`, so it could hit an in-process lifecycle cache entry that pre-dated the review. Fixed to always use `force: true` — preflight is an explicit user action and must always compute authoritative state.
+
+**Issue 3 (semantic — review validity):** The 7-day time window compared `lastReviewedAt` against `Date.now()`. The correct semantic is: review is valid until *new research data* arrives. Using `lastReviewedAt >= researchDataTimestamp` (currentSummary.asOf) means re-running lifecycle evaluation against the **same** OppIntel snapshot never expires the review. The 7-day window remains as a fallback when no research data timestamp is available.
+
+### Fixes
+
+**`server/services/trade-plan-lifecycle-service.ts` — `computeLifecycleState`:**
+- Added `researchDataTimestamp?: Date | null` parameter (currentSummary.asOf)
+- Primary check: `lastReviewedAt >= researchDataTimestamp` → CURRENT
+- Fallback: 7-day wall-clock window (when no timestamp available)
+- Diagnostic logging when material changes exist (logs planId, lastReviewedAt, researchDataTimestamp, reviewCoversData, lifecycleState)
+
+**`server/services/execution-preflight-service.ts` — `getLifecycleResult`:**
+- Added `{ force: true }` to `evaluateTradePlanLifecycle` call — always fresh, never stale cache
+- Added diagnostic logging: `[preflight:lifecycle-diagnostic]` with state, evaluatedAt, reviewReasonsCount
+
+**`server/routes/trade-plans.ts` — `POST .../lifecycle/review`:**
+- Added step 6: delete stored preflight rows from `execution_preflights` for this plan/user after review — forces the panel GET to return 404, so the user must re-run preflight against fresh state
+
+**`client/src/pages/trade-plan-detail.tsx` — `handleMarkReviewed`:**
+- Fixed query key to `["execution-preflight", id]` (matching the panel's actual key)
+- Also invalidates the legacy key shape for belt-and-suspenders
+
+### New Test File
+`server/routes/__tests__/preflight-review-lifecycle-integration.test.ts` — 24 pure-computation tests covering:
+- §PRLCI-1: Full review sequence (pre-review REQUIRES_REVIEW → review → CURRENT → new data → REQUIRES_REVIEW)
+- §PRLCI-2: Preflight integration sequence (4-step UAT scenario)
+- §PRLCI-3: Plan Freshness passes with recent evaluatedAt, fails with 3h-old evaluatedAt
+- §PRLCI-4: researchDataTimestamp validity semantics (boundary conditions)
+- §PRLCI-5: Non-clearable states (THESIS_INVALIDATED, DATA_STALE, QUALIFICATION_LOST) unaffected
+- §PRLCI-6: No material changes → always CURRENT
+
+### Test Updates
+- `preflight-lifecycle-consistency.test.ts`: Updated "6 days ago" test to use data-anchored `researchDataTimestamp` (fixed pre-existing clock-drift failure — `daysAgo()` uses a fixed NOW constant but `Date.now()` in the window check uses real time)
+- `trade-plan-lifecycle-review.test.ts`: Updated two source-inspection tests to search for `if (lastReviewedAt)` (function body) instead of `lastReviewedAt` (which now also appears in the parameter JSDoc)
+
+### Invariants Preserved
+- ✅ `THESIS_INVALIDATED` → FAIL regardless of review
+- ✅ `DATA_STALE` → FAIL regardless of review
+- ✅ `QUALIFICATION_LOST` → REQUIRES_REVIEW regardless of review
+- ✅ Second preflight run after review (no new change) → same PASS result
+- ✅ New OppIntel data after review (researchDataTimestamp > lastReviewedAt) → REQUIRES_REVIEW (user re-reviews latest data)
+- ✅ No researchDataTimestamp available → falls back to 7-day window (backwards compatible)
+
+### Files Changed
+- `server/services/trade-plan-lifecycle-service.ts` — `computeLifecycleState`: added `researchDataTimestamp` param + diagnostic logging
+- `server/services/execution-preflight-service.ts` — `getLifecycleResult`: `force: true` + diagnostic logging
+- `server/routes/trade-plans.ts` — review route: delete stored preflight on review
+- `client/src/pages/trade-plan-detail.tsx` — `handleMarkReviewed`: fix query key invalidation
+- `server/routes/__tests__/preflight-review-lifecycle-integration.test.ts` — 24 new tests
+- `server/routes/__tests__/preflight-lifecycle-consistency.test.ts` — 1 test updated (clock-drift fix)
+- `server/routes/__tests__/trade-plan-lifecycle-review.test.ts` — 2 tests updated (source-inspection anchor)
+
+---
+
 ## Sprint 2.8.6A-defect-10b — Trade Plans List 500: schema drift (last_reviewed_at missing)
 **Date:** 2026-08-13
 **Status:** COMPLETE

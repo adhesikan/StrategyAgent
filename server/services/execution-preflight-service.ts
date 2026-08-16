@@ -930,33 +930,41 @@ export async function createDbPreflightDeps(
       };
     },
     async getLifecycleResult(planId, userId) {
-      // Use the authoritative lifecycle evaluation function — the same path as the
-      // Trade Plan lifecycle UI endpoint (GET /api/trade-plans/:id/lifecycle).
+      // ALWAYS force a fresh lifecycle evaluation for preflight.
       //
-      // The previous implementation read from tradePlanActivity (event log) with
-      // an ascending sort (oldest row first), which caused two independent bugs:
-      //   1. Got the oldest activity state, not the current evaluated state.
-      //   2. Never read lastReviewedAt from the trade_plans row, so a user's
-      //      explicit review acknowledgement was invisible to preflight — the plan
-      //      showed "Research Current" in the UI but preflight still blocked with
-      //      PLAN_REQUIRES_REVIEW.
+      // Rationale: execution preflight is an explicit, high-stakes user action.
+      // The 5-min in-process cache is an optimization for the lifecycle UI polling;
+      // preflight must never serve a pre-review cache entry.
       //
-      // evaluateTradePlanLifecycle() reads lastReviewedAt from trade_plans, applies
-      // the 7-day review window in computeLifecycleState(), and is cached in-process.
-      // If the lifecycle was recently evaluated (e.g. the user just did a lifecycle
-      // check in the UI), the cache hit is free. If not, the full evaluation runs.
+      // Using force:true ensures:
+      //   1. lastReviewedAt is always read fresh from trade_plans in the DB.
+      //   2. researchDataTimestamp (currentSummary.asOf) reflects the latest OppIntel scan.
+      //   3. The lifecycle state shown in preflight is the authoritative computed state,
+      //      not a potentially stale in-process cache entry from before the review.
       try {
         const { evaluateTradePlanLifecycle } = await import("./trade-plan-lifecycle-service");
-        const result = await evaluateTradePlanLifecycle(userId, planId);
+        const result = await evaluateTradePlanLifecycle(userId, planId, { force: true });
+
+        // Diagnostic: log the lifecycle state feeding into preflight so operators can
+        // trace discrepancies between the lifecycle UI and preflight in production.
+        console.log("[preflight:lifecycle-diagnostic]", JSON.stringify({
+          planId,
+          lifecycleState:  result.lifecycleState,
+          evaluatedAt:     result.evaluatedAt,
+          requiresReview:  result.requiresReview,
+          reviewReasonsCount: result.reviewReasons?.length ?? 0,
+        }));
+
         return {
           planId,
           lifecycleState: result.lifecycleState,
           evaluatedAt: result.evaluatedAt ? new Date(result.evaluatedAt) : null,
         };
-      } catch {
+      } catch (err: any) {
         // If the lifecycle evaluation fails (plan not found, OppIntel error, etc.)
         // return null so the preflight marks the lifecycle dimension as UNAVAILABLE
         // rather than crashing the entire preflight.
+        console.error("[preflight:lifecycle-diagnostic] evaluation failed:", err?.message);
         return null;
       }
     },

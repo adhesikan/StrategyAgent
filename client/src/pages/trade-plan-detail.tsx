@@ -300,6 +300,10 @@ export default function TradePlanDetailPage() {
       await apiRequest("POST", `/api/trade-plans/${id}/lifecycle/review`, {});
       await refetchLifecycle();
       await refetchActivity();
+      // Invalidate the stored preflight result. The server deletes the stored row on review,
+      // so the panel's GET will return 404 and the user must re-run preflight to get fresh results.
+      // Both query keys are invalidated: the panel key and any legacy key shapes.
+      qc.invalidateQueries({ queryKey: ["execution-preflight", id] });
       qc.invalidateQueries({ queryKey: ["/api/trade-plans", id, "execution", "preflight"] });
       setReviewPanelOpen(false);
       toast({ title: "Research marked reviewed", description: "Lifecycle status has been re-evaluated." });

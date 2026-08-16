@@ -473,13 +473,24 @@ export function computeLifecycleState(params: {
   structureChanges:     StructureChangeItem[];
   /**
    * Timestamp of the last explicit user research-review acknowledgement.
-   * When set and within REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS, the REQUIRES_REVIEW
-   * state is downgraded to CURRENT — the user has explicitly accepted current conditions.
+   *
+   * Validity rule (primary): the review is valid as long as no NEWER research data
+   * has arrived since the review. Concretely: if lastReviewedAt >= researchDataTimestamp,
+   * the user has reviewed the most-recent data → CURRENT.
+   * If researchDataTimestamp is unavailable, falls back to the 7-day window.
    *
    * Does NOT clear THESIS_INVALIDATED, DATA_STALE, or SYMBOL_NOT_QUALIFIED;
    * those take priority and cannot be cleared by review alone.
    */
-  lastReviewedAt?:      Date | null;
+  lastReviewedAt?:          Date | null;
+  /**
+   * The "as of" timestamp of the current research data snapshot (currentSummary.asOf).
+   * Used as the primary validity anchor for lastReviewedAt:
+   *   - if lastReviewedAt >= researchDataTimestamp → review covers current data → CURRENT
+   *   - if lastReviewedAt < researchDataTimestamp  → newer data since review → re-evaluate
+   * When null/undefined, falls back to the REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS time window.
+   */
+  researchDataTimestamp?:   Date | null;
   /**
    * True when getCanonicalOpportunity() returned null without throwing an exception.
    * Means the symbol was specifically excluded from the current qualified-candidate
@@ -491,7 +502,7 @@ export function computeLifecycleState(params: {
    *   - lastReviewedAt does NOT clear this state — the symbol remains unqualified
    *   - execution preflight continues to block
    */
-  symbolNotQualified?:  boolean;
+  symbolNotQualified?:      boolean;
 }): LifecycleState {
   const {
     planStatus,
@@ -501,6 +512,7 @@ export function computeLifecycleState(params: {
     invalidationChanges,
     structureChanges,
     lastReviewedAt,
+    researchDataTimestamp,
     symbolNotQualified,
   } = params;
 
@@ -532,14 +544,35 @@ export function computeLifecycleState(params: {
   ].some(c => c.isMaterial);
 
   if (hasMaterialChange) {
-    // Check whether the user has explicitly reviewed within the acknowledgement window.
+    // Check whether the user has explicitly reviewed and the review still covers current data.
+    //
+    // Primary check (data-anchored): the review is valid as long as the user reviewed AFTER
+    // the latest research data snapshot was produced. Re-running lifecycle evaluation against
+    // the same snapshot must not expire the review.
+    //   lastReviewedAt >= researchDataTimestamp → review covers current data → CURRENT
+    //   lastReviewedAt < researchDataTimestamp  → newer data since review → REQUIRES_REVIEW
+    //
+    // Fallback (time-window): when no research data timestamp is available, the review is
+    // valid for REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS days from the review date.
+    //
+    // THESIS_INVALIDATED, DATA_STALE, and SYMBOL_NOT_QUALIFIED always take priority (above).
     if (lastReviewedAt) {
-      const ageMs = Date.now() - new Date(lastReviewedAt).getTime();
-      const ageDays = ageMs / (1000 * 60 * 60 * 24);
-      if (ageDays <= REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS) {
-        // User explicitly reviewed and accepted current conditions — treat as CURRENT.
-        // THESIS_INVALIDATED, DATA_STALE, and SYMBOL_NOT_QUALIFIED always take priority.
-        return "CURRENT";
+      const reviewedAtMs = new Date(lastReviewedAt).getTime();
+      if (!isNaN(reviewedAtMs)) {
+        if (researchDataTimestamp) {
+          // Primary: compare review against research data timestamp
+          const dataMs = new Date(researchDataTimestamp).getTime();
+          if (!isNaN(dataMs) && reviewedAtMs >= dataMs) {
+            return "CURRENT";
+          }
+          // New research data arrived after the review — fall through to REQUIRES_REVIEW
+        } else {
+          // Fallback: time-window check
+          const ageDays = (Date.now() - reviewedAtMs) / (1000 * 60 * 60 * 24);
+          if (ageDays <= REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS) {
+            return "CURRENT";
+          }
+        }
       }
     }
     return "REQUIRES_REVIEW";
@@ -854,15 +887,38 @@ export async function evaluateTradePlanLifecycle(
 
     // 5. Compute lifecycle state
     // Pass lastReviewedAt so an explicit user review can clear score-based REQUIRES_REVIEW.
+    // Pass researchDataTimestamp (currentSummary.asOf) so the review validity is anchored to
+    // the research data rather than wall-clock time — re-running evaluation against the same
+    // data snapshot must never expire a recent review.
     // Pass symbolNotQualified so qualification-loss REQUIRES_REVIEW is NOT clearable by review.
+    const lastReviewedAt = (plan as any).lastReviewedAt ?? null;
+    const researchDataTimestamp = currentSummary ? new Date(currentSummary.asOf) : null;
+
+    // Diagnostic log: emitted whenever there are material changes, so operators can trace
+    // why a plan is CURRENT vs REQUIRES_REVIEW in production without modifying logic.
+    if (researchChanges.some(c => c.isMaterial) || structureChanges.some(c => c.isMaterial)) {
+      console.log("[lifecycle:diagnostic]", JSON.stringify({
+        planId:                tradePlanId,
+        symbol:                plan.symbol,
+        lastReviewedAt:        lastReviewedAt ? new Date(lastReviewedAt).toISOString() : null,
+        researchDataTimestamp: researchDataTimestamp ? researchDataTimestamp.toISOString() : null,
+        materialResearchChanges: researchChanges.filter(c => c.isMaterial).map(c => c.changeType),
+        materialStructureChanges: structureChanges.filter(c => c.isMaterial).map(c => c.changeType),
+        reviewCoversData: lastReviewedAt && researchDataTimestamp
+          ? new Date(lastReviewedAt).getTime() >= researchDataTimestamp.getTime()
+          : null,
+      }));
+    }
+
     const lifecycleState = computeLifecycleState({
-      planStatus:          plan.status,
+      planStatus:             plan.status,
       currentAvailable,
       freshnessChanges,
       researchChanges,
       invalidationChanges,
       structureChanges,
-      lastReviewedAt:      (plan as any).lastReviewedAt ?? null,
+      lastReviewedAt,
+      researchDataTimestamp,
       symbolNotQualified,
     });
 

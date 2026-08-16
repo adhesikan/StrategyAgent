@@ -406,17 +406,23 @@ describe("§RR — lifecycle service: computeLifecycleState signature", () => {
     expect(svcSrc).toContain("REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS = 7");
   });
 
-  it("THESIS_INVALIDATED check appears before the lastReviewedAt branch", () => {
+  it("THESIS_INVALIDATED check appears before the lastReviewedAt branch in function body", () => {
     const fnStart = svcSrc.indexOf("export function computeLifecycleState");
     const invalidationPos = svcSrc.indexOf("THESIS_INVALIDATED", fnStart);
-    const reviewedAtPos = svcSrc.indexOf("lastReviewedAt", fnStart);
+    // Search for the runtime branch, not the param declaration which also contains the string.
+    // "if (lastReviewedAt)" is the actual decision-point in the function body.
+    const reviewedAtPos = svcSrc.indexOf("if (lastReviewedAt)", fnStart);
+    expect(invalidationPos).toBeGreaterThan(0);
+    expect(reviewedAtPos).toBeGreaterThan(0);
     expect(invalidationPos).toBeLessThan(reviewedAtPos);
   });
 
-  it("DATA_STALE check appears before the lastReviewedAt branch", () => {
+  it("DATA_STALE check appears before the lastReviewedAt branch in function body", () => {
     const fnStart = svcSrc.indexOf("export function computeLifecycleState");
     const stalePos = svcSrc.indexOf("DATA_STALE", fnStart);
-    const reviewedAtPos = svcSrc.indexOf("lastReviewedAt", fnStart);
+    const reviewedAtPos = svcSrc.indexOf("if (lastReviewedAt)", fnStart);
+    expect(stalePos).toBeGreaterThan(0);
+    expect(reviewedAtPos).toBeGreaterThan(0);
     expect(stalePos).toBeLessThan(reviewedAtPos);
   });
 });

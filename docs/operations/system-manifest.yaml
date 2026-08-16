@@ -2,8 +2,31 @@
 # Machine-readable catalog for operations, agents, and orchestration.
 # DO NOT include secret values — names only.
 
-version: "2.3.6"
-updated: "2026-08-08"
+version: "2.8.6"
+updated: "2026-08-16"
+
+architecture_principles:
+  - name: broker_independence
+    recorded: "2026-08-16"
+    applies_from: "sprint-2.8.7"
+    status: active
+    doc: docs/operations/46-broker-independence-architecture.md
+    summary: >
+      All research, intelligence, opportunity discovery, analysis, trade-plan creation,
+      lifecycle monitoring, risk modeling, and other non-execution capabilities shall
+      operate independently of a brokerage connection wherever technically feasible.
+    capability_classes:
+      - BROKER_INDEPENDENT
+      - BROKER_ENHANCED
+      - BROKER_REQUIRED
+    broker_required_scope:
+      - actual order submission
+      - live buying power
+      - actual broker positions (unless manually supplied)
+      - broker trading permissions
+      - broker-specific order validation
+      - order status, fills, cancellations
+      - broker position linking
 
 services:
   - name: api-server

@@ -34,6 +34,7 @@
 | [15](15-known-issues-and-backlog.md) | Known Issues & Backlog | Active issues, deferred work |
 | [16](16-api-and-uat-reference.md) | API & UAT Reference | Production URLs, smoke tests, UAT sequences, POST/GET caveat |
 | [17](17-sprint-change-log.md) | Sprint Change Log | Per-sprint inventory of routes, tables, jobs, incidents |
+| [46](46-broker-independence-architecture.md) | Broker Independence Architecture | Principle, feature classification, conflicts, Sprint 2.8.7 audit plan |
 | [manifest](system-manifest.yaml) | System Manifest | Machine-readable service/job/flag catalog |
 
 ---

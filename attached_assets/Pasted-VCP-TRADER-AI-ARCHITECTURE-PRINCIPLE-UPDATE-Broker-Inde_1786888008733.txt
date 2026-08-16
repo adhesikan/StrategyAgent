@@ -1,0 +1,87 @@
+VCP TRADER AI — ARCHITECTURE PRINCIPLE UPDATE
+Broker-Independent-First Product Architecture
+
+CONTEXT
+
+We are making a foundational product decision for VCP Trader AI:
+
+Users should be able to use as much of the platform as technically possible
+WITHOUT connecting a brokerage account.
+
+A supported brokerage connection must NOT be an onboarding requirement or
+a prerequisite for core research/planning functionality.
+
+Brokerage connectivity should enhance the product with account-specific
+information and execution capabilities.
+
+It should not gate:
+
+- Opportunity discovery
+- Research
+- Technical analysis
+- Fundamental/institutional analysis
+- Trade Planning
+- Trade Plan creation
+- Trade Plan lifecycle monitoring
+- Scenario analysis
+- Risk modeling where account data is not inherently required
+- Position sizing using user-entered hypothetical constraints
+- Alerts/monitoring
+- Options research where independent market data is available
+- Portfolio intelligence when portfolio data is manually entered/imported
+
+BROKER INDEPENDENCE PRINCIPLE
+
+Lock the following architectural principle into the roadmap:
+
+"All VCP Trader AI research, intelligence, opportunity discovery, analysis,
+Trade Plan creation, lifecycle monitoring, risk modeling, and other
+non-execution capabilities shall operate independently of a brokerage
+connection wherever technically feasible.
+
+Broker-independent market-data providers such as Twelve Data shall be used
+for research/planning market data where appropriate.
+
+Broker connections shall primarily provide account-specific information
+and execution capabilities rather than gate core product functionality."
+
+Every capability going forward should be classified as:
+
+1. BROKER_INDEPENDENT
+2. BROKER_ENHANCED
+3. BROKER_REQUIRED
+
+The design goal is to move as much functionality as technically possible
+into #1 and #2.
+
+BROKER_REQUIRED should generally be limited to genuinely account-specific
+or execution-specific functions such as:
+
+- real brokerage account details
+- live buying power
+- actual broker positions unless manually supplied
+- broker trading permissions
+- broker-specific order validation
+- actual order submission
+- order status
+- fills
+- broker position linking
+
+Do not change application behavior yet.
+
+Update only:
+
+- roadmap / architecture documentation
+- relevant operations documentation
+- sprint backlog
+
+Do not start Sprint 2.8.7 implementation yet.
+
+Return:
+
+1. documents updated
+2. exact principle recorded
+3. features classified at high level
+4. conflicts found with current architecture
+5. proposed next architecture audit
+6. confirmation that no application code changed

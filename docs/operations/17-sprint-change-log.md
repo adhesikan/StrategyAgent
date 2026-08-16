@@ -1,5 +1,29 @@
 # Sprint Change Log
 
+## Architecture Principle — Broker-Independent-First (2026-08-16)
+**Status:** DOCUMENTED — no code changes
+
+**Principle recorded:** All research, intelligence, opportunity discovery, analysis, Trade Plan
+creation, lifecycle monitoring, risk modeling, and other non-execution capabilities shall operate
+independently of a brokerage connection wherever technically feasible.
+
+**Documents updated:**
+- `docs/operations/46-broker-independence-architecture.md` — NEW: full principle, taxonomy, feature classification, conflicts, Sprint 2.8.7 audit plan
+- `docs/operations/01-system-architecture.md` — Added broker independence section and taxonomy table
+- `docs/operations/15-known-issues-and-backlog.md` — Added Sprint 2.8.7 architecture backlog (BI-001 through BI-005)
+- `docs/operations/README.md` — Added Doc 46 entry
+- `docs/operations/system-manifest.yaml` — Added `architecture_principles` block; bumped version to 2.8.6
+
+**Conflicts documented (require Sprint 2.8.7 resolution):**
+- CON-001: Execution Preflight hard-fails on broker disconnect for all 12 dims — Independent dims 1–3 should always evaluate
+- CON-002: Options Contract Research requires live broker chain — independent-mode fallback (Twelve Data) to be investigated
+- CON-003: `brokerConnected` client gates suppress planning-level features — should be graceful degradation, not hard block
+- CON-004: Risk guardrails buying-power check unavailable without broker — hypothetical budget should be accepted
+
+**No application code changed.**
+
+---
+
 ## Sprint 2.8.6A-defect-QUOTE_STALE — Quote Timestamp Truthfulness (NVDA UAT)
 **Date:** 2026-08-12
 **Status:** COMPLETE

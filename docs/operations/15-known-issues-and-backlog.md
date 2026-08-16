@@ -111,6 +111,22 @@ The following were discovered during Sprint 2.7.7 end-to-end validation. All cla
 
 ---
 
+## Sprint 2.8.7 Architecture Backlog — Broker Independence
+
+Recorded 2026-08-16. See [Doc 46](46-broker-independence-architecture.md) for full context.
+
+These items are the **required pre-work** before Sprint 2.8.7 implementation begins:
+
+| ID | Item | Type | Priority |
+|----|------|------|----------|
+| BI-001 | Execution Preflight split: Independent Layer (dims 1–3) vs Broker Layer (dims 4–12) | CON-001 | P1 |
+| BI-002 | Audit all `brokerConnected` client gates; reclassify planning-level features as BROKER_INDEPENDENT | CON-003 | P1 |
+| BI-003 | Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback | CON-002 | P2 |
+| BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode | CON-004 | P2 |
+| BI-005 | Populate gate-site manifest in Doc 46 §6 (output of Audit A) | Audit | P1 |
+
+---
+
 ## Deferred Features
 
 The following are explicitly deferred and must NOT be implemented until explicitly scheduled:

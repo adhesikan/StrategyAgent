@@ -93,6 +93,30 @@ flowchart LR
 
 ---
 
+## Broker Independence Principle
+
+> **Recorded 2026-08-16 — applies Sprint 2.8.7 forward.**
+>
+> All research, intelligence, opportunity discovery, analysis, Trade Plan creation, lifecycle
+> monitoring, risk modeling, and other non-execution capabilities shall operate independently
+> of a brokerage connection wherever technically feasible.
+>
+> Broker connections provide account-specific information and execution capabilities;
+> they must not gate core product functionality.
+
+Every capability is classified as:
+
+| Class | Meaning |
+|---|---|
+| **BROKER_INDEPENDENT** | Works fully without a broker. Twelve Data / SEC / MCP / user data sufficient. |
+| **BROKER_ENHANCED** | Works without broker; richer when one is connected. Graceful degradation required. |
+| **BROKER_REQUIRED** | Genuinely account-specific or execution-specific (order submission, live buying power, actual positions, fills). |
+
+See [Doc 46 — Broker Independence Architecture](46-broker-independence-architecture.md) for the
+full feature classification, current architecture conflicts, and Sprint 2.8.7 audit plan.
+
+---
+
 ## Admin Surfaces
 
 | URL | Purpose |

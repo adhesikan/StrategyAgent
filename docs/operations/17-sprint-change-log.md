@@ -1191,3 +1191,21 @@ Live broker chain; `normalizeOptionChainContract` reads `greeks.mid_iv`; `clearC
 **Status:** COMPLETE
 
 Categorical match states only; `MapIterator` needs `Array.from()`; static routes before `/:id`; TradePlanningContextShape is Phase 2.7 doc only.
+
+---
+
+## Defect-10c Production Follow-Up — State-Anchored Review Validity
+**Status:** COMPLETE
+
+**Root cause confirmed:** `currentSummary.asOf` = `opportunity-ranking-engine.ts` scan timestamp (`new Date().toISOString()` at scoring time). Every 4-hour scan advanced `asOf` even with identical scores. `lastReviewedAt >= asOf` comparison wrongly treated routine scans as "new data" → Research Lifecycle permanently REQUIRES_REVIEW after first post-review scan.
+
+**Fix:** State-anchored review validity.
+- New JSONB column `last_reviewed_research_state` on `trade_plans` (additive, idempotent ALTER).
+- `POST .../lifecycle/review` captures `getCanonicalOpportunity(symbol)` scores at review time
+  (strips scan timestamps) → persists as `lastReviewedResearchState`. Fire-and-forget; failure
+  falls back to legacy 7-day window.
+- `evaluateTradePlanLifecycle()` computes `reviewedStateChanges = computeResearchChanges(reviewedBaseline, currentSummary)` using the SAME canonical comparator as plan-creation → current.
+- `computeLifecycleState()`: no material changes in `reviewedStateChanges` → CURRENT (scan timestamps irrelevant); material changes → REQUIRES_REVIEW; `reviewedStateChanges = null` (legacy) → 7-day window.
+- `researchDataTimestamp` param removed from `computeLifecycleState` (was the wrong approach).
+
+**Test results:** 9752 tests, 3 new failures fixed (all in the old timestamp-semantics integration tests), zero regressions.

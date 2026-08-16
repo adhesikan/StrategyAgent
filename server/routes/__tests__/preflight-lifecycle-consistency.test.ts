@@ -544,9 +544,10 @@ describe("§PLC15  lifecycle REQUIRES_REVIEW → PLAN_REQUIRES_REVIEW blocker", 
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("Page refresh — review persists via trade_plans.last_reviewed_at", () => {
-  it("lastReviewedAt after researchDataTimestamp → CURRENT (data-anchored primary check)", () => {
-    // Primary semantic: review is valid as long as user reviewed AFTER the data snapshot.
-    // Uses researchDataTimestamp so the check is not clock-dependent.
+  it("reviewedStateChanges empty → review covers current state → CURRENT (state-anchored check)", () => {
+    // Primary semantic: review is valid when computeResearchChanges(reviewedBaseline, current)
+    // produces no material changes — regardless of when the last scan ran.
+    // reviewedStateChanges: [] means scores are identical since the review was acknowledged.
     expect(computeLifecycleState({
       planStatus: "RESEARCH_COMPLETE",
       currentAvailable: true,
@@ -554,8 +555,8 @@ describe("Page refresh — review persists via trade_plans.last_reviewed_at", ()
       researchChanges: [{ isMaterial: true, changeType: "RESEARCH_WEAKENED", description: "Technical -5" }],
       invalidationChanges: [],
       structureChanges: [],
-      lastReviewedAt: daysAgo(6),         // review: 6 days before NOW (Aug 14)
-      researchDataTimestamp: daysAgo(8),  // data: 8 days before NOW → older than review → CURRENT
+      lastReviewedAt: daysAgo(6),
+      reviewedStateChanges: [],  // empty = no material change since the review baseline
     })).toBe("CURRENT");
   });
 

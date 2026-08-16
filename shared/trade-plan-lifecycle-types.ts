@@ -284,6 +284,34 @@ export interface LifecycleResearchSummary {
   available: boolean;
 }
 
+/**
+ * Snapshot of the research state at the moment the user clicked "Mark Research Reviewed".
+ * Persisted as JSONB in trade_plans.last_reviewed_research_state.
+ *
+ * Intentionally does NOT include asOf / scan timestamps.
+ * Scan execution time is irrelevant to review validity — only the research state matters.
+ *
+ * Structurally compatible with TradePlanResearchSnapshot for use with
+ * computeResearchChanges(reviewedState as TradePlanResearchSnapshot, currentSummary).
+ *
+ * Review validity rule:
+ *   On subsequent lifecycle evaluations, computeResearchChanges() is called with
+ *   lastReviewedResearchState as the "saved" baseline.  If the result contains no
+ *   material changes the review acknowledgement remains valid → CURRENT.
+ *   If any material change has occurred since the review → REQUIRES_REVIEW.
+ */
+export interface ReviewedResearchState {
+  researchScore:      number;
+  technicalScore:     number;
+  fundamentalScore:   number;
+  institutionalScore: number;
+  riskLevel:          string;
+  qualified:          boolean;
+  marketRegime:       string | null;
+  sector:             string | null;
+  themes:             string[];
+}
+
 // ============================================================================
 // Canonical Lifecycle Result
 // ============================================================================

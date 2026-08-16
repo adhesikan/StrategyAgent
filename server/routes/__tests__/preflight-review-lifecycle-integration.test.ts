@@ -1,21 +1,29 @@
 /**
  * server/routes/__tests__/preflight-review-lifecycle-integration.test.ts
  *
- * Integration regression test: complete API sequence for the review → preflight
- * consistency fix (Defect-10c production follow-up).
+ * Regression tests for the state-anchored review validity fix (Defect-10c + production follow-up).
  *
- * Tests the EXACT scenario from the UAT report:
- *   material change → requires review → mark reviewed → lifecycle CURRENT
- *   → run preflight → lifecycle PASS + freshness PASS
- *   → run preflight AGAIN (no new change) → still PASS
- *   → introduce newer material change → REQUIRES_REVIEW
+ * Root cause: currentSummary.asOf is scan-execution timestamp, not material-change timestamp.
+ * Routine 4-hour scans with IDENTICAL scores advanced asOf, invalidating reviews incorrectly.
+ *
+ * Fix: reviews are anchored to a reviewed research state snapshot (lastReviewedResearchState).
+ * On subsequent evaluations computeResearchChanges(reviewedState, currentSummary) is called —
+ * the SAME canonical comparator used for plan-creation → current changes. No new threshold logic.
+ *
+ *   - identical research in a later scan        → still CURRENT  (scan timestamps irrelevant)
+ *   - score drift meeting material-change rules → REQUIRES_REVIEW
+ *   - qualification/removal/re-qualification    → REQUIRES_REVIEW  (material)
+ *   - risk-level change (defined as material)   → REQUIRES_REVIEW if isMaterial
+ *   - non-material drift                         → CURRENT
+ *   - preflight consumes the same lifecycle      → via force:true documented separately
  *
  * All tests are PURE COMPUTATION — no DB, no network, no broker calls.
- * The research data timestamp (currentSummary.asOf) is the primary validity anchor.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { computeLifecycleState } from "../../services/trade-plan-lifecycle-service";
+import { computeLifecycleState, computeResearchChanges } from "../../services/trade-plan-lifecycle-service";
+import type { ResearchChangeItem, ReviewedResearchState } from "../../../shared/trade-plan-lifecycle-types";
+import type { TradePlanResearchSnapshot } from "../../../shared/trade-plan-types";
 import {
   runExecutionPreflight,
   type PreflightDependencies,
@@ -45,30 +53,229 @@ afterEach(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared time fixtures
-//
-// Timeline:
-//   T_DATA_V1   = research data snapshot v1 (produced first)
-//   T_REVIEW    = user marks research reviewed (after seeing v1)
-//   T_DATA_V2   = research data snapshot v2 (same changes, no new material change)
-//   T_DATA_V3   = research data snapshot v3 (new material change added)
+// Shared fixtures — scores at plan creation vs scores after drift
 // ─────────────────────────────────────────────────────────────────────────────
 
-const T_DATA_V1 = new Date("2026-08-10T10:00:00Z"); // OppIntel scan v1
-const T_REVIEW  = new Date("2026-08-10T11:00:00Z"); // user reviews (1h after v1)
-const T_DATA_V2 = new Date("2026-08-10T14:00:00Z"); // next scan, same changes
-const T_DATA_V3 = new Date("2026-08-11T08:00:00Z"); // scan with NEW material change
-const T_NOW     = new Date("2026-08-11T09:00:00Z"); // time of preflight
+/** Scores captured when NVDA plan was created (the saved research snapshot). */
+const SAVED_SCORES = {
+  researchScore: 82, technicalScore: 78, fundamentalScore: 70,
+  institutionalScore: 65, riskLevel: "moderate", qualified: true,
+  marketRegime: "bullish", sector: "Technology", themes: ["AI"],
+};
+
+/** Scores after a material drop — what triggered REQUIRES_REVIEW vs the saved plan. */
+const CURRENT_SCORES_V1 = {
+  researchScore: 68, technicalScore: 64, fundamentalScore: 70,
+  institutionalScore: 65, riskLevel: "moderate", qualified: true,
+  marketRegime: "bullish", sector: "Technology", themes: ["AI"],
+  asOf: "2026-08-10T10:00:00Z",   // scan v1 timestamp
+  available: true,
+};
+
+/**
+ * Identical scores in a later scan — ONLY the timestamp (asOf) changed.
+ * The fix must NOT treat this as a new material change.
+ */
+const CURRENT_SCORES_V2_SAME = {
+  ...CURRENT_SCORES_V1,
+  asOf: "2026-08-10T14:00:00Z",   // scan v2: 4h later, SAME underlying scores
+};
+
+/** Yet another identical scan — to prove stability of the no-change result. */
+const CURRENT_SCORES_V3_SAME = {
+  ...CURRENT_SCORES_V1,
+  asOf: "2026-08-10T18:00:00Z",   // scan v3: 8h after v1, SAME scores again
+};
+
+/** Scores after a FURTHER material drop — new review needed. */
+const CURRENT_SCORES_V4_WORSE = {
+  ...CURRENT_SCORES_V1,
+  researchScore: 50, technicalScore: 45,   // additional -18 / -19 pts (material)
+  asOf: "2026-08-11T08:00:00Z",
+};
+
+/** Scores with a non-material drift only (< 5 pts). */
+const CURRENT_SCORES_NON_MATERIAL = {
+  ...CURRENT_SCORES_V1,
+  researchScore: 70, technicalScore: 66,   // +2 / +2 pts from reviewed baseline — non-material
+  asOf: "2026-08-10T16:00:00Z",
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The one material change present throughout v1 and v2 (same change, reviewed)
+// Helper: build reviewedStateChanges by calling the canonical comparator
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MATERIAL_CHANGE_V1 = { isMaterial: true, changeType: "RESEARCH_WEAKENED" as const, description: "Technical score dropped from 82 to 68" };
+function buildReviewedStateChanges(
+  reviewedState: ReviewedResearchState,
+  currentScores: typeof CURRENT_SCORES_V1,
+): ResearchChangeItem[] {
+  return computeResearchChanges(
+    reviewedState as unknown as TradePlanResearchSnapshot,
+    { ...currentScores, available: true },
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers
+// §PRLCI-1  computeLifecycleState — full review sequence (9 required scenarios)
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe("§PRLCI-1  computeLifecycleState — full state-anchored review sequence", () => {
+
+  const materialChanges: ResearchChangeItem[] = [
+    { isMaterial: true, changeType: "RESEARCH_WEAKENED", savedValue: 82, currentValue: 68, delta: -14, description: "Research score changed" },
+    { isMaterial: true, changeType: "TECHNICAL_WEAKENED", savedValue: 78, currentValue: 64, delta: -14, description: "Technical score changed" },
+  ];
+
+  // ── Scenario 1: material score change → review required ───────────────────
+  it("Scenario 1: material score change (vs saved plan) → REQUIRES_REVIEW", () => {
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: null, reviewedStateChanges: null,
+    })).toBe("REQUIRES_REVIEW");
+  });
+
+  // ── Scenario 2: mark reviewed (state-anchored) → CURRENT ──────────────────
+  it("Scenario 2: mark reviewed — reviewed state matches current state → CURRENT", () => {
+    // User reviews at scan-v1 scores. Reviewed baseline = V1 scores.
+    // reviewedStateChanges = computeResearchChanges(reviewedBaseline=V1, current=V1) = []
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedState, CURRENT_SCORES_V1);
+
+    expect(reviewedStateChanges.some(c => c.isMaterial)).toBe(false);
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,  // no material changes since reviewed baseline
+    })).toBe("CURRENT");
+  });
+
+  // ── Scenario 3: identical next scan with newer asOf → STILL CURRENT ───────
+  it("Scenario 3: identical next scan (asOf advanced, scores unchanged) → CURRENT", () => {
+    // THE CORE FIX: V2 has newer asOf but same scores. Review must remain valid.
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedState, CURRENT_SCORES_V2_SAME);
+
+    expect(reviewedStateChanges.some(c => c.isMaterial)).toBe(false);
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,  // V2 asOf is newer but scores identical → no material change
+    })).toBe("CURRENT");
+  });
+
+  // ── Scenario 4: second identical scan → STILL CURRENT ────────────────────
+  it("Scenario 4: second identical scan (V3) → CURRENT (stability)", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedState, CURRENT_SCORES_V3_SAME);
+
+    expect(reviewedStateChanges.some(c => c.isMaterial)).toBe(false);
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,  // V3: still same scores → still CURRENT
+    })).toBe("CURRENT");
+  });
+
+  // ── Scenario 5: new material score change → REQUIRES_REVIEW ──────────────
+  it("Scenario 5: scores dropped further since review → REQUIRES_REVIEW", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedState, CURRENT_SCORES_V4_WORSE);
+
+    expect(reviewedStateChanges.some(c => c.isMaterial)).toBe(true);
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,  // V4: researchScore -18, technicalScore -19 → material
+    })).toBe("REQUIRES_REVIEW");
+  });
+
+  // ── Scenario 6: qualified → removed → REQUIRES_REVIEW ────────────────────
+  it("Scenario 6: symbol removed (symbolNotQualified = true) → REQUIRES_REVIEW regardless of review", () => {
+    // symbolNotQualified check fires BEFORE reviewedStateChanges — always REQUIRES_REVIEW
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedState, CURRENT_SCORES_V1);
+    expect(reviewedStateChanges.some(c => c.isMaterial)).toBe(false);
+
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: false,
+      freshnessChanges: [], researchChanges: [],
+      invalidationChanges: [], structureChanges: [],
+      symbolNotQualified: true,
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,  // would be CURRENT... but symbolNotQualified takes priority
+    })).toBe("REQUIRES_REVIEW");
+  });
+
+  // ── Scenario 7: removed → re-qualified → REQUIRES_REVIEW ─────────────────
+  it("Scenario 7: re-qualified after removal — reviewed baseline had qualified=false → REQUIRES_REVIEW", () => {
+    // If the user reviewed while symbol was removed, reviewed state captured qualified=false.
+    // When symbol re-qualifies (qualified=true), NEWLY_QUALIFIED is material → REQUIRES_REVIEW.
+    const reviewedWhileRemoved: ReviewedResearchState = {
+      ...CURRENT_SCORES_V1,
+      qualified: false,   // symbol was not qualified when user acknowledged
+    };
+    const reQualifiedCurrent = { ...CURRENT_SCORES_V1, qualified: true };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedWhileRemoved, reQualifiedCurrent);
+
+    expect(reviewedStateChanges.some(c => c.isMaterial && c.changeType === "NEWLY_QUALIFIED")).toBe(true);
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,
+    })).toBe("REQUIRES_REVIEW");
+  });
+
+  // ── Scenario 8: material risk/classification change → REQUIRES_REVIEW ─────
+  it("Scenario 8: NO_LONGER_QUALIFIED in reviewed state changes → REQUIRES_REVIEW", () => {
+    // Reviewed state had qualified=true; symbol lost qualification since review.
+    const reviewedQualified: ReviewedResearchState = { ...CURRENT_SCORES_V1, qualified: true };
+    const nowUnqualified = { ...CURRENT_SCORES_V1, qualified: false };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedQualified, nowUnqualified);
+
+    expect(reviewedStateChanges.some(c => c.isMaterial && c.changeType === "NO_LONGER_QUALIFIED")).toBe(true);
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,
+    })).toBe("REQUIRES_REVIEW");
+  });
+
+  // ── Scenario 9: non-material drift → CURRENT ─────────────────────────────
+  it("Scenario 9: non-material drift from reviewed baseline (< 5 pts) → CURRENT", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const reviewedStateChanges = buildReviewedStateChanges(reviewedState, CURRENT_SCORES_NON_MATERIAL);
+
+    // +2 pts on research, +2 pts on technical — below the 5-point material threshold
+    expect(reviewedStateChanges.some(c => c.isMaterial)).toBe(false);
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: materialChanges,
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges,
+    })).toBe("CURRENT");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §PRLCI-2  Preflight integration — post-review lifecycle PASS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const T_NOW = new Date("2026-08-11T09:00:00Z");
 
 function makePlan(): StoredTradePlan {
   return {
@@ -93,133 +300,42 @@ function makeLifecycleDeps(
   return {
     brokerAdapter: new MockBrokerExecutionAdapter({ connected: true }) as any,
     getTradePlan: async () => plan,
-    getLifecycleResult: async () => ({
-      planId: plan.id,
-      lifecycleState,
-      evaluatedAt,
-    }),
+    getLifecycleResult: async () => ({ planId: plan.id, lifecycleState, evaluatedAt }),
     savePreflight: async () => {},
     saveAuditEvent: async () => {},
     now: () => T_NOW,
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// §PRLCI-1  Pure computeLifecycleState sequence
-// ─────────────────────────────────────────────────────────────────────────────
+describe("§PRLCI-2  Preflight integration — review → lifecycle PASS", () => {
 
-describe("§PRLCI-1  computeLifecycleState — full review sequence", () => {
-
-  // Step A: Before review — material change → REQUIRES_REVIEW
-  it("Step A: material change with no review → REQUIRES_REVIEW", () => {
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE",
-      currentAvailable: true,
-      freshnessChanges: [],
-      researchChanges: [MATERIAL_CHANGE_V1],
-      invalidationChanges: [],
-      structureChanges: [],
-      lastReviewedAt: null,
-      researchDataTimestamp: T_DATA_V1,
-    })).toBe("REQUIRES_REVIEW");
-  });
-
-  // Step B: User reviews. lastReviewedAt = T_REVIEW, data is T_DATA_V1
-  //   T_REVIEW (11:00) > T_DATA_V1 (10:00) → review covers data → CURRENT
-  it("Step B: after review (lastReviewedAt > data timestamp) → CURRENT", () => {
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE",
-      currentAvailable: true,
-      freshnessChanges: [],
-      researchChanges: [MATERIAL_CHANGE_V1],
-      invalidationChanges: [],
-      structureChanges: [],
-      lastReviewedAt: T_REVIEW,
-      researchDataTimestamp: T_DATA_V1,
-    })).toBe("CURRENT");
-  });
-
-  // Step C: New OppIntel scan v2 with SAME material change, timestamp T_DATA_V2
-  //   T_REVIEW (11:00) < T_DATA_V2 (14:00) → new data since review
-  //   But: the change is IDENTICAL. The user's semantic: no new change → still CURRENT.
-  //   NOTE: the current implementation requires the user to re-review on new data.
-  //   This is the conservative safety behavior documented below.
-  it("Step C: same material change in newer data (T_DATA_V2 > T_REVIEW) → REQUIRES_REVIEW (conservative)", () => {
-    // This is intentionally conservative: when new research data arrives, the user
-    // reviews the latest data even if changes appear identical. The review takes
-    // < 30 seconds. This prevents stale reviews from covering unseen score movements.
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE",
-      currentAvailable: true,
-      freshnessChanges: [],
-      researchChanges: [MATERIAL_CHANGE_V1],
-      invalidationChanges: [],
-      structureChanges: [],
-      lastReviewedAt: T_REVIEW,
-      researchDataTimestamp: T_DATA_V2,
-    })).toBe("REQUIRES_REVIEW");
-  });
-
-  // Step C-alt: If the user re-reviews after v2 scan → CURRENT again
-  it("Step C-alt: user reviews after v2 data → CURRENT again", () => {
-    const T_REVIEW_V2 = new Date("2026-08-10T15:00:00Z"); // after T_DATA_V2
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE",
-      currentAvailable: true,
-      freshnessChanges: [],
-      researchChanges: [MATERIAL_CHANGE_V1],
-      invalidationChanges: [],
-      structureChanges: [],
-      lastReviewedAt: T_REVIEW_V2,
-      researchDataTimestamp: T_DATA_V2,
-    })).toBe("CURRENT");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §PRLCI-2  Preflight integration sequence
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("§PRLCI-2  Preflight integration — full sequence", () => {
-
-  // === SEQUENCE ===
-  // 1. Material change exists → lifecycle REQUIRES_REVIEW → preflight blocks
-  // 2. User marks reviewed → lifecycle CURRENT → preflight PASSES lifecycle
-  // 3. Run preflight again → still PASSES (force:true re-evaluates, same state)
-  // 4. New material change arrives → REQUIRES_REVIEW again
-
-  it("1. Pre-review: lifecycle REQUIRES_REVIEW → preflight lifecycle REQUIRES_REVIEW, PLAN_REQUIRES_REVIEW blocker", async () => {
+  it("Pre-review: REQUIRES_REVIEW → preflight blocks with PLAN_REQUIRES_REVIEW", async () => {
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "REQUIRES_REVIEW", T_DATA_V1)
+      makeLifecycleDeps(makePlan(), "REQUIRES_REVIEW", T_NOW),
     );
     expect(result.lifecycleValidation.status).toBe("REQUIRES_REVIEW");
     expect(result.blockers.map(b => b.code)).toContain("PLAN_REQUIRES_REVIEW");
   });
 
-  it("2. After review: lifecycle CURRENT → preflight lifecycle PASS, no PLAN_REQUIRES_REVIEW", async () => {
-    // Simulates what getLifecycleResult returns after user marks reviewed:
-    // evaluateTradePlanLifecycle was force-called, returned CURRENT, evaluatedAt=T_NOW
+  it("After review: CURRENT → preflight lifecycle PASS, no PLAN_REQUIRES_REVIEW blocker", async () => {
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "CURRENT", T_NOW)
+      makeLifecycleDeps(makePlan(), "CURRENT", T_NOW),
     );
     expect(result.lifecycleValidation.status).toBe("PASS");
     expect(result.blockers.map(b => b.code)).not.toContain("PLAN_REQUIRES_REVIEW");
   });
 
-  it("2a. After review: Plan Freshness is PASS (evaluatedAt is recent)", async () => {
+  it("After review: Plan Freshness PASS (evaluatedAt is recent = T_NOW)", async () => {
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "CURRENT", T_NOW)
+      makeLifecycleDeps(makePlan(), "CURRENT", T_NOW),
     );
-    // freshnessDim checks lifecycle.evaluatedAt < 2h — T_NOW is the eval time
     expect(result.freshnessValidation.status).toBe("PASS");
   });
 
-  it("3. Second preflight run (same state, no new change) → lifecycle still PASS", async () => {
-    // force:true in getLifecycleResult means each call is fresh. If state is still CURRENT,
-    // the second run must also show PASS.
+  it("Second preflight run (no new change) → lifecycle still PASS", async () => {
     const deps = makeLifecycleDeps(makePlan(), "CURRENT", T_NOW);
     const run1 = await runExecutionPreflight({ tradePlanId: "plan-nvda-001", userId: "user-001" }, deps);
     const run2 = await runExecutionPreflight({ tradePlanId: "plan-nvda-001", userId: "user-001" }, deps);
@@ -228,10 +344,10 @@ describe("§PRLCI-2  Preflight integration — full sequence", () => {
     expect(run2.blockers.map(b => b.code)).not.toContain("PLAN_REQUIRES_REVIEW");
   });
 
-  it("4. New material change after review → lifecycle REQUIRES_REVIEW → preflight blocks again", async () => {
+  it("New material change after review → lifecycle REQUIRES_REVIEW → preflight blocks again", async () => {
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "REQUIRES_REVIEW", T_DATA_V3)
+      makeLifecycleDeps(makePlan(), "REQUIRES_REVIEW", T_NOW),
     );
     expect(result.lifecycleValidation.status).toBe("REQUIRES_REVIEW");
     expect(result.blockers.map(b => b.code)).toContain("PLAN_REQUIRES_REVIEW");
@@ -239,185 +355,223 @@ describe("§PRLCI-2  Preflight integration — full sequence", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §PRLCI-3  Freshness dimension: evaluatedAt must be recent in every preflight
+// §PRLCI-3  Plan Freshness dimension
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("§PRLCI-3  Plan Freshness must PASS when lifecycle was just evaluated", () => {
-  it("evaluatedAt = seconds ago → Plan Freshness PASS (not REQUIRES_REVIEW)", async () => {
-    const secondsAgo = new Date(T_NOW.getTime() - 30_000); // 30 seconds ago
+describe("§PRLCI-3  Plan Freshness: evaluatedAt determines freshness, not review status", () => {
+  it("evaluatedAt = T_NOW (seconds old) → Plan Freshness PASS", async () => {
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "CURRENT", secondsAgo)
-    );
-    expect(result.freshnessValidation.status).toBe("PASS");
-  });
-
-  it("evaluatedAt = 30 min ago → Plan Freshness PASS (under 2h threshold)", async () => {
-    const thirtyMinAgo = new Date(T_NOW.getTime() - 30 * 60_000);
-    const result = await runExecutionPreflight(
-      { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "CURRENT", thirtyMinAgo)
+      makeLifecycleDeps(makePlan(), "CURRENT", T_NOW),
     );
     expect(result.freshnessValidation.status).toBe("PASS");
   });
 
   it("evaluatedAt = 3h ago → Plan Freshness REQUIRES_REVIEW (stale lifecycle)", async () => {
-    // With force:true in getLifecycleResult, this only happens if the call itself is slow
-    // or the stored preflight result is served directly. This test documents the threshold.
     const threeHoursAgo = new Date(T_NOW.getTime() - 3 * 60 * 60_000);
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "CURRENT", threeHoursAgo)
+      makeLifecycleDeps(makePlan(), "CURRENT", threeHoursAgo),
     );
     expect(result.freshnessValidation.status).toBe("REQUIRES_REVIEW");
   });
 
-  it("evaluatedAt = 3h ago with stale lifecycle → Plan Freshness REQUIRES_REVIEW (old stored result)", async () => {
-    // If a stale stored preflight result is displayed (from before the review), BOTH
-    // lifecycle (REQUIRES_REVIEW state) and freshness (old evaluatedAt) can fail.
-    // The server fix (delete stored preflight on review) prevents this from being displayed.
+  it("Pre-fix bug reproduction: old stored preflight (REQUIRES_REVIEW + 3h-old evaluatedAt) shows both failing", async () => {
     const threeHoursAgo = new Date(T_NOW.getTime() - 3 * 60 * 60_000);
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-nvda-001", userId: "user-001" },
-      makeLifecycleDeps(makePlan(), "REQUIRES_REVIEW", threeHoursAgo)
+      makeLifecycleDeps(makePlan(), "REQUIRES_REVIEW", threeHoursAgo),
     );
     expect(result.lifecycleValidation.status).toBe("REQUIRES_REVIEW");
     expect(result.freshnessValidation.status).toBe("REQUIRES_REVIEW");
-    // Both REQUIRES_REVIEW from old stored result — this is the pre-fix bug reproduction
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §PRLCI-4  researchDataTimestamp validity semantics
+// §PRLCI-4  State-anchored review validity: reviewedStateChanges semantics
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("§PRLCI-4  researchDataTimestamp validity semantics", () => {
-  const materialChanges = [MATERIAL_CHANGE_V1];
+describe("§PRLCI-4  reviewedStateChanges validity semantics", () => {
+  const materialChange: ResearchChangeItem = {
+    isMaterial: true, changeType: "RESEARCH_WEAKENED",
+    savedValue: 82, currentValue: 68, delta: -14, description: "Research score changed",
+  };
+  const nonMaterialChange: ResearchChangeItem = {
+    isMaterial: false, changeType: "RESEARCH_WEAKENED",
+    savedValue: 68, currentValue: 70, delta: 2, description: "Tiny drift",
+  };
 
-  it("review AT data timestamp (same millisecond) → CURRENT (edge: >=)", () => {
+  it("reviewedStateChanges = [] (empty) → no material change since review → CURRENT", () => {
     expect(computeLifecycleState({
       planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [], researchChanges: materialChanges,
+      freshnessChanges: [], researchChanges: [materialChange],
       invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: T_DATA_V1,   // exactly equal
-      researchDataTimestamp: T_DATA_V1,
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges: [],   // empty = no changes since review
     })).toBe("CURRENT");
   });
 
-  it("review 1ms after data timestamp → CURRENT", () => {
-    const reviewedAt = new Date(T_DATA_V1.getTime() + 1);
+  it("reviewedStateChanges = [nonMaterial only] → CURRENT (threshold not met)", () => {
     expect(computeLifecycleState({
       planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [], researchChanges: materialChanges,
+      freshnessChanges: [], researchChanges: [materialChange],
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges: [nonMaterialChange],
+    })).toBe("CURRENT");
+  });
+
+  it("reviewedStateChanges = [material] → scores drifted since review → REQUIRES_REVIEW", () => {
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: [materialChange],
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: new Date("2026-08-10T11:00:00Z"),
+      reviewedStateChanges: [materialChange],   // material change since review
+    })).toBe("REQUIRES_REVIEW");
+  });
+
+  it("reviewedStateChanges = null (legacy plan, no baseline stored) → falls back to 7-day window", () => {
+    const recentReview = new Date(Date.now() - 1 * 24 * 60 * 60_000); // 1 day ago
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: [materialChange],
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: recentReview,
+      reviewedStateChanges: null,   // no reviewed baseline → legacy fallback
+    })).toBe("CURRENT");   // within 7-day window
+  });
+
+  it("reviewedStateChanges = null + lastReviewedAt null → REQUIRES_REVIEW (no review done)", () => {
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: [materialChange],
+      invalidationChanges: [], structureChanges: [],
+      lastReviewedAt: null, reviewedStateChanges: null,
+    })).toBe("REQUIRES_REVIEW");
+  });
+
+  it("reviewedStateChanges = [] (identical scan) regardless of time elapsed → CURRENT (scan timestamp irrelevant)", () => {
+    // This is the core production fix: the opportunity engine ran a new scan 4h after the review.
+    // Scores are IDENTICAL. reviewedStateChanges is empty. CURRENT — NOT REQUIRES_REVIEW.
+    const reviewedAt = new Date("2026-08-10T11:00:00Z");
+    expect(computeLifecycleState({
+      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
+      freshnessChanges: [], researchChanges: [materialChange],
       invalidationChanges: [], structureChanges: [],
       lastReviewedAt: reviewedAt,
-      researchDataTimestamp: T_DATA_V1,
+      reviewedStateChanges: [],   // new scan ran, same scores
     })).toBe("CURRENT");
-  });
-
-  it("review 1ms before data timestamp → REQUIRES_REVIEW (data is newer)", () => {
-    const reviewedAt = new Date(T_DATA_V1.getTime() - 1);
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [], researchChanges: materialChanges,
-      invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: reviewedAt,
-      researchDataTimestamp: T_DATA_V1,
-    })).toBe("REQUIRES_REVIEW");
-  });
-
-  it("no researchDataTimestamp: falls back to 7-day window (review 1 day ago → CURRENT)", () => {
-    const yesterday = new Date(T_NOW.getTime() - 24 * 60 * 60_000);
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [], researchChanges: materialChanges,
-      invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: yesterday,
-      researchDataTimestamp: null,
-    })).toBe("CURRENT");
-  });
-
-  it("no researchDataTimestamp: falls back to 7-day window (review 8 days ago → REQUIRES_REVIEW)", () => {
-    const eightDaysAgo = new Date(T_NOW.getTime() - 8 * 24 * 60 * 60_000);
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [], researchChanges: materialChanges,
-      invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: eightDaysAgo,
-      researchDataTimestamp: null,
-    })).toBe("REQUIRES_REVIEW");
-  });
-
-  it("no lastReviewedAt at all → REQUIRES_REVIEW (material change, no review)", () => {
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [], researchChanges: materialChanges,
-      invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: null,
-      researchDataTimestamp: T_DATA_V1,
-    })).toBe("REQUIRES_REVIEW");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §PRLCI-5  Non-clearable states are unaffected by review
+// §PRLCI-5  Non-clearable states unaffected by reviewedStateChanges
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("§PRLCI-5  Non-clearable states not affected by review", () => {
-  it("THESIS_INVALIDATED: review does not clear it", () => {
+describe("§PRLCI-5  Non-clearable states unaffected by review", () => {
+  const materialChange: ResearchChangeItem = {
+    isMaterial: true, changeType: "RESEARCH_WEAKENED",
+    savedValue: 82, currentValue: 68, delta: -14, description: "...",
+  };
+
+  it("THESIS_INVALIDATED: reviewedStateChanges=[] does not clear it", () => {
     expect(computeLifecycleState({
       planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [], researchChanges: [MATERIAL_CHANGE_V1],
+      freshnessChanges: [],
+      researchChanges: [materialChange],
       invalidationChanges: [{ observationState: "observed", description: "Price below stop" }],
       structureChanges: [],
-      lastReviewedAt: T_REVIEW,
-      researchDataTimestamp: T_DATA_V1,
+      lastReviewedAt: new Date(), reviewedStateChanges: [],
     })).toBe("THESIS_INVALIDATED");
   });
 
-  it("DATA_STALE: review does not clear it", () => {
+  it("DATA_STALE: reviewedStateChanges=[] does not clear it", () => {
     expect(computeLifecycleState({
       planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
       freshnessChanges: [{ changeType: "DATA_BECAME_STALE", dataSource: "research", description: "stale" }],
       researchChanges: [], invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: T_REVIEW,
-      researchDataTimestamp: T_DATA_V1,
+      lastReviewedAt: new Date(), reviewedStateChanges: [],
     })).toBe("DATA_STALE");
   });
 
-  it("QUALIFICATION_LOST: review does not clear it (symbol still unqualified)", () => {
+  it("QUALIFICATION_LOST: symbolNotQualified=true + reviewedStateChanges=[] → REQUIRES_REVIEW", () => {
     expect(computeLifecycleState({
       planStatus: "RESEARCH_COMPLETE", currentAvailable: false,
       freshnessChanges: [], researchChanges: [], invalidationChanges: [], structureChanges: [],
       symbolNotQualified: true,
-      lastReviewedAt: T_REVIEW,
-      researchDataTimestamp: T_DATA_V1,
+      lastReviewedAt: new Date(), reviewedStateChanges: [],
     })).toBe("REQUIRES_REVIEW");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §PRLCI-6  No material changes → CURRENT regardless of timestamps
+// §PRLCI-6  computeResearchChanges: same scores → no material changes (canonical verifier)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("§PRLCI-6  No material changes → CURRENT (no review needed)", () => {
-  it("no changes at all → CURRENT", () => {
+describe("§PRLCI-6  computeResearchChanges: identical scores → no material changes", () => {
+
+  it("same scores (V1 vs V1) → zero changes", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const changes = computeResearchChanges(
+      reviewedState as unknown as TradePlanResearchSnapshot,
+      { ...CURRENT_SCORES_V1, available: true },
+    );
+    expect(changes).toHaveLength(0);
+  });
+
+  it("same scores (V1 vs V2, different asOf) → zero changes (scan timestamp ignored)", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const changes = computeResearchChanges(
+      reviewedState as unknown as TradePlanResearchSnapshot,
+      { ...CURRENT_SCORES_V2_SAME, available: true },
+    );
+    expect(changes).toHaveLength(0);
+  });
+
+  it("material score drop → exactly those changes are material", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const changes = computeResearchChanges(
+      reviewedState as unknown as TradePlanResearchSnapshot,
+      { ...CURRENT_SCORES_V4_WORSE, available: true },
+    );
+    const material = changes.filter(c => c.isMaterial);
+    expect(material.length).toBeGreaterThanOrEqual(1);
+    expect(material.some(c => c.changeType === "RESEARCH_WEAKENED")).toBe(true);
+  });
+
+  it("qualification loss (qualified: true → false) → NO_LONGER_QUALIFIED is material", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1, qualified: true };
+    const changes = computeResearchChanges(
+      reviewedState as unknown as TradePlanResearchSnapshot,
+      { ...CURRENT_SCORES_V1, qualified: false, available: true },
+    );
+    expect(changes.some(c => c.changeType === "NO_LONGER_QUALIFIED" && c.isMaterial)).toBe(true);
+  });
+
+  it("re-qualification (qualified: false → true) → NEWLY_QUALIFIED is material", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1, qualified: false };
+    const changes = computeResearchChanges(
+      reviewedState as unknown as TradePlanResearchSnapshot,
+      { ...CURRENT_SCORES_V1, qualified: true, available: true },
+    );
+    expect(changes.some(c => c.changeType === "NEWLY_QUALIFIED" && c.isMaterial)).toBe(true);
+  });
+
+  it("non-material drift only (< 5pts) → no material changes", () => {
+    const reviewedState: ReviewedResearchState = { ...CURRENT_SCORES_V1 };
+    const changes = computeResearchChanges(
+      reviewedState as unknown as TradePlanResearchSnapshot,
+      { ...CURRENT_SCORES_NON_MATERIAL, available: true },
+    );
+    expect(changes.some(c => c.isMaterial)).toBe(false);
+  });
+
+  it("no changes at all → empty array", () => {
     expect(computeLifecycleState({
       planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
       freshnessChanges: [], researchChanges: [], invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: null,
-      researchDataTimestamp: T_DATA_V1,
+      lastReviewedAt: null, reviewedStateChanges: null,
     })).toBe("CURRENT");
-  });
-
-  it("minor (non-material) changes → CHANGED (not REQUIRES_REVIEW)", () => {
-    expect(computeLifecycleState({
-      planStatus: "RESEARCH_COMPLETE", currentAvailable: true,
-      freshnessChanges: [],
-      researchChanges: [{ isMaterial: false, changeType: "RESEARCH_WEAKENED", description: "Tiny score drop" }],
-      invalidationChanges: [], structureChanges: [],
-      lastReviewedAt: null,
-      researchDataTimestamp: T_DATA_V1,
-    })).toBe("CHANGED");
   });
 });

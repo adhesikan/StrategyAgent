@@ -1,81 +1,81 @@
 ---
 name: Lifecycle review acknowledgement
-description: How the REQUIRES_REVIEW lifecycle state is cleared by an explicit user review action (lastReviewedAt + /lifecycle/review endpoint).
+description: Review validity uses state-anchored computeResearchChanges(reviewedBaseline, current) — NOT timestamps. lastReviewedResearchState JSONB stores the baseline at review time.
 ---
 
 ## Rule
-`REQUIRES_REVIEW` can be cleared by the user explicitly clicking "Mark Research Reviewed" in the trade plan lifecycle panel. The server records `lastReviewedAt` and re-evaluates the lifecycle — if `lastReviewedAt` is within 7 days and the plan would otherwise be `REQUIRES_REVIEW`, it becomes `CURRENT`.
+`REQUIRES_REVIEW` is cleared by the user clicking "Mark Research Reviewed". The server records
+`lastReviewedAt` AND captures the current OppIntel research state as `lastReviewedResearchState`
+(JSONB). On subsequent lifecycle evaluations, `computeResearchChanges(reviewedBaseline, current)` is
+called — the SAME canonical comparator used for plan-creation → current changes. No separate
+threshold logic.
 
-**Why:** The NVDA UAT showed the lifecycle panel was a dead-end — no mechanism existed for the user to acknowledge material research changes and unblock execution.
+**Review validity (state-anchored, PRIMARY):**
+- No material changes between reviewed baseline and current state → CURRENT
+- Any material change since the review → REQUIRES_REVIEW
+
+**Legacy fallback (plans reviewed before this fix, `lastReviewedResearchState` = null):**
+7-day wall-clock window (`REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS = 7`).
+
+**Why state-anchored over timestamp-anchored:**
+`currentSummary.asOf` = `generatedAt` = timestamp of the opportunity-ranking engine scan run
+(every 4h). Identical scores in a new scan advance `asOf` — timestamp comparison wrongly treated
+that as "newer data" and invalidated the review. State comparison has no such false positive.
 
 ## Priority ordering in `computeLifecycleState`
 1. `ARCHIVED` / `INVALIDATED` plan status → `ARCHIVED`
-2. `DATA_STALE` (freshnessChanges with DATA_BECAME_STALE/DATA_UNAVAILABLE) → `DATA_STALE`
-3. `THESIS_INVALIDATED` (invalidationChanges observed) → `THESIS_INVALIDATED`
-4. Material changes + recent review (≤ 7 days) → `CURRENT`
-5. Material changes + no/expired review → `REQUIRES_REVIEW`
-6. Non-material changes → `CHANGED`
-7. No changes → `CURRENT`
+2. `DATA_STALE` → `DATA_STALE`
+3. `THESIS_INVALIDATED` → `THESIS_INVALIDATED`
+4. `symbolNotQualified = true` → `REQUIRES_REVIEW` (qualification-loss, NOT clearable by review)
+5. `!currentAvailable` (system error) → `UNKNOWN`
+6. Material changes + `reviewedStateChanges` empty/non-material → `CURRENT`
+7. Material changes + `reviewedStateChanges` has material change → `REQUIRES_REVIEW`
+8. Material changes + no reviewed baseline (`reviewedStateChanges = null`) → legacy 7-day window
+9. Non-material changes → `CHANGED`
+10. No changes → `CURRENT`
 
-`THESIS_INVALIDATED` and `DATA_STALE` are NEVER cleared by user review. Review only clears `REQUIRES_REVIEW`.
-
-## Review window
-`REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS = 7` — after 7 days, REQUIRES_REVIEW reappears if scores still diverge.
+`THESIS_INVALIDATED`, `DATA_STALE`, and `QUALIFICATION_LOST` are NEVER cleared by review.
 
 ## How to apply
-- `computeLifecycleState()` accepts `lastReviewedAt?: Date | null`
-- `evaluateTradePlanLifecycle()` reads `lastReviewedAt` from plan row via `(plan as any).lastReviewedAt`
-- Schema: `last_reviewed_at TIMESTAMPTZ` nullable column on `trade_plans`
-- Migration: `server/migrations/add-trade-plan-last-reviewed-at.sql`
+- `computeLifecycleState()` accepts `reviewedStateChanges?: ResearchChangeItem[] | null`
+  - `null` → no reviewed baseline stored → legacy 7-day fallback
+  - `[]` → reviewed baseline matches current → CURRENT
+  - `[...material...]` → scores drifted since review → REQUIRES_REVIEW
+- `evaluateTradePlanLifecycle()` reads `lastReviewedResearchState` from plan row, calls
+  `computeResearchChanges(lastReviewedResearchState as TradePlanResearchSnapshot, currentSummary)`,
+  passes result as `reviewedStateChanges`.
+- `POST .../lifecycle/review` captures `getCanonicalOpportunity(symbol)` at review time,
+  strips `asOf`/scan-timestamps, persists as `lastReviewedResearchState`. Fire-and-forget
+  capture failure → `lastReviewedResearchState = null` → legacy fallback still works.
+- Schema: `last_reviewed_research_state JSONB DEFAULT NULL` on `trade_plans`
+- Drizzle: `lastReviewedResearchState: jsonb("last_reviewed_research_state")`
+- `ensureTradePlanTables()` ALTER block: `ADD COLUMN IF NOT EXISTS last_reviewed_research_state JSONB DEFAULT NULL`
+- Schema contract test: `NEWER_COLUMNS` array — update when adding new columns to `trade_plans`
 
 ## Symbol qualification loss (Defect-10)
+`getCanonicalOpportunity()` returning `null` (symbol not in qualified snapshot) → `symbolNotQualified = true`
+→ `REQUIRES_REVIEW` with `QUALIFICATION_LOST` reason. Review RECORDS awareness but cannot clear it
+until OppIntel re-qualifies the symbol. `computeReviewReasons` early-returns for symbolNotQualified
+to prevent `CRITICAL_DATA_STALE` noise.
 
-**`symbolNotQualified` vs `opportunityFetchError`:**
-- `getCanonicalOpportunity()` returns `null` (no exception) → `symbolNotQualified = true` → lifecycle = `REQUIRES_REVIEW` with `QUALIFICATION_LOST` reason
-- exception thrown → `opportunityFetchError = true` → lifecycle = `UNKNOWN` (system error — unchanged)
+## Preflight consistency
+- `createDbPreflightDeps.getLifecycleResult()` always uses `{ force: true }` — never serves a
+  pre-review cache entry.
+- `POST .../lifecycle/review` deletes all `execution_preflights` rows for the plan/user.
+- Client `handleMarkReviewed` invalidates BOTH query keys: `["execution-preflight", tradePlanId]`
+  AND `["/api/trade-plans", id, "execution", "preflight"]`.
+- Diagnostic logging: `[lifecycle:diagnostic]` in `evaluateTradePlanLifecycle`;
+  `[preflight:lifecycle-diagnostic]` in `getLifecycleResult`.
 
-**`symbolNotQualified` in `computeLifecycleState`:** checked BEFORE `!currentAvailable → UNKNOWN` and BEFORE `DATA_STALE`. `lastReviewedAt` window does NOT apply to qualification loss — review records awareness but symbol stays unqualified until OppIntel re-qualifies it.
-
-**`computeReviewReasons` early return:** when `symbolNotQualified = true`, emits only `QUALIFICATION_LOST` then returns — prevents `CRITICAL_DATA_STALE` pollution from `DATA_UNAVAILABLE` freshness change.
-
-**`TradePlanLifecycleResult.symbolQualificationStatus`:** `"QUALIFIED"` | `"NOT_QUALIFIED"` | `"UNKNOWN"`. Client derives `isNotQualified = lifecycle?.symbolQualificationStatus === "NOT_QUALIFIED"`. Review panel shows two modes: (a) NOT_QUALIFIED: saved-research + "No Longer Qualified" current status card; (b) score-based: Saved vs Now comparison.
-
-**Invariant:** QUALIFICATION_LOST → REQUIRES_REVIEW → preflight always blocks, even after `Mark Research Reviewed`.
-
-## Preflight–lifecycle consistency (Defect-10c + production follow-up)
-
-**Original Defect-10c root cause:** `createDbPreflightDeps.getLifecycleResult()` read from `tradePlanActivity` event log with `.orderBy(observedAt)` ascending — oldest activity row, not the current state. `lastReviewedAt` in `trade_plans` was completely invisible to preflight.
-
-**Production follow-up (three additional bugs found after deploy):**
-
-**Bug 1 — Query key mismatch (client):** `handleMarkReviewed` invalidated `["/api/trade-plans", id, "execution", "preflight"]` but `ExecutionPreflightPanel` registers under `["execution-preflight", tradePlanId]` — mismatch means panel always shows the OLD stored preflight result (pre-review `evaluatedAt` → Plan Freshness also fails). Fix: invalidate both keys; server also deletes stored preflight row on review.
-
-**Bug 2 — In-process cache in preflight (server):** `getLifecycleResult` called `evaluateTradePlanLifecycle` without `force: true` — could serve a cache entry that pre-dated the review. Fix: always `{ force: true }` in preflight. Diagnostic logging added: `[preflight:lifecycle-diagnostic]`.
-
-**Bug 3 — Wall-clock review window (semantic):** `lastReviewedAt` compared against `Date.now()` (7-day window). Correct semantic: review is valid until **new research data** arrives (not wall-clock). Fix: `computeLifecycleState` now accepts `researchDataTimestamp?: Date | null` (= `currentSummary.asOf`). Primary check: `lastReviewedAt >= researchDataTimestamp` → CURRENT. Fallback (no timestamp): 7-day window.
-
-**Server-side preflight invalidation on review:** `POST .../lifecycle/review` now deletes all `execution_preflights` rows for the plan/user — forces the client GET to return 404, user must re-run preflight to see fresh state.
-
-**Diagnostic logging:** `evaluateTradePlanLifecycle` logs `[lifecycle:diagnostic]` with `planId`, `lastReviewedAt`, `researchDataTimestamp`, `reviewCoversData` when material changes exist. `getLifecycleResult` logs `[preflight:lifecycle-diagnostic]` with state and evaluatedAt.
-
-**Invariants unchanged:** THESIS_INVALIDATED, DATA_STALE, QUALIFICATION_LOST → cannot be cleared by review; remain FAIL/REQUIRES_REVIEW regardless of lastReviewedAt.
-
-**New integration tests:** `preflight-review-lifecycle-integration.test.ts` — 24 tests (§PRLCI-1 through §PRLCI-6): full UAT sequence, freshness thresholds, data-timestamp semantics, non-clearable states.
-
----
-
-## Schema deployment contract (Defect-10b — production 500 on GET /api/trade-plans)
-
-**Root cause:** `last_reviewed_at` added to Drizzle schema but NOT to `ensureTradePlanTables()` ALTER block → Railway startup ran ensure but column was never added → SQLSTATE 42703 on every list query.
-
-**Canonical deployment path:** `ensureTradePlanTables()` in `trade-plan-service.ts` is the ONLY thing that runs on Railway startup. Files in `server/migrations/*.sql` are NOT auto-executed. Every new column on `trade_plans` MUST appear in the `ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS ...` block inside `ensureTradePlanTables()`.
-
-**Contract test:** `server/services/__tests__/trade-plan-schema-contract.test.ts` — update `NEWER_COLUMNS` there whenever a new column is added to `trade_plans`.
-
-**Nullability rule:** `last_reviewed_at` is nullable; existing plans that have never been reviewed must remain NULL (no backfill).
+## Schema deployment contract
+Every new column on `trade_plans` MUST appear in the `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+block inside `ensureTradePlanTables()` in `trade-plan-service.ts`. That block is the ONLY thing
+Railway runs on startup. Files in `server/migrations/*.sql` are supplemental, NOT auto-executed.
 
 ## Broken link fix (Defect-9)
-Both "Open Research Workspace" CTAs in the lifecycle panel previously navigated to `/research/${plan.symbol}` → `ResearchDetailPage` which expects a Sprint 5.4D record UUID — not a symbol ticker. Fixed to `/research-workspace?symbol=${plan.symbol}` (AI Research Workspace).
+"Open Research Workspace" CTAs in lifecycle panel navigate to `/research-workspace?symbol=...`
+(AI Research Workspace) — NOT `/research/${plan.symbol}` (Sprint 5.4D record UUID route).
 
 ## Ownership guard
-`POST /api/trade-plans/:id/lifecycle/review` — cross-user returns 404 (not 403) to prevent plan-ID enumeration. Placement: before `/lifecycle/evaluate` in `trade-plans.ts` (deepest static route must register last).
+`POST .../lifecycle/review` returns 404 for unknown/unauthorized plans (not 403) to prevent
+plan-ID enumeration.

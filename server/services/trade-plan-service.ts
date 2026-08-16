@@ -1095,13 +1095,15 @@ export async function ensureTradePlanTables(): Promise<void> {
     //   broad_expression_type   — Sprint 2.8.1A (Expression Selection UX)
     //   expression_selected_by  — Sprint 2.8.1A (always "USER")
     //   expression_selected_at  — Sprint 2.8.1A (timestamp of expression lock)
-    //   last_reviewed_at        — Sprint 2.8.6A Defect-9 (explicit research review)
+    //   last_reviewed_at              — Sprint 2.8.6A Defect-9 (explicit research review)
+    //   last_reviewed_research_state  — Sprint 2.8.6A Defect-10c-prod (reviewed-state baseline)
     await db.execute(sql`
       ALTER TABLE trade_plans
-        ADD COLUMN IF NOT EXISTS broad_expression_type   TEXT,
-        ADD COLUMN IF NOT EXISTS expression_selected_by  TEXT,
-        ADD COLUMN IF NOT EXISTS expression_selected_at  TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS last_reviewed_at        TIMESTAMPTZ
+        ADD COLUMN IF NOT EXISTS broad_expression_type        TEXT,
+        ADD COLUMN IF NOT EXISTS expression_selected_by       TEXT,
+        ADD COLUMN IF NOT EXISTS expression_selected_at       TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS last_reviewed_at        TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS last_reviewed_research_state JSONB DEFAULT NULL
     `);
 
     await db.execute(sql`

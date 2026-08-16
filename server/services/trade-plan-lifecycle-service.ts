@@ -43,6 +43,7 @@ import type {
   ReviewReason,
   ReviewReasonType,
   LifecycleResearchSummary,
+  ReviewedResearchState,
   ExpirationState,
   ActivityEventType,
   TradePlanMonitoringHealthMetrics,
@@ -473,24 +474,28 @@ export function computeLifecycleState(params: {
   structureChanges:     StructureChangeItem[];
   /**
    * Timestamp of the last explicit user research-review acknowledgement.
-   *
-   * Validity rule (primary): the review is valid as long as no NEWER research data
-   * has arrived since the review. Concretely: if lastReviewedAt >= researchDataTimestamp,
-   * the user has reviewed the most-recent data → CURRENT.
-   * If researchDataTimestamp is unavailable, falls back to the 7-day window.
+   * Only used as a fallback when no reviewedStateChanges are available (legacy plans).
    *
    * Does NOT clear THESIS_INVALIDATED, DATA_STALE, or SYMBOL_NOT_QUALIFIED;
    * those take priority and cannot be cleared by review alone.
    */
   lastReviewedAt?:          Date | null;
   /**
-   * The "as of" timestamp of the current research data snapshot (currentSummary.asOf).
-   * Used as the primary validity anchor for lastReviewedAt:
-   *   - if lastReviewedAt >= researchDataTimestamp → review covers current data → CURRENT
-   *   - if lastReviewedAt < researchDataTimestamp  → newer data since review → re-evaluate
-   * When null/undefined, falls back to the REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS time window.
+   * Pre-computed changes between the reviewed research baseline (lastReviewedResearchState)
+   * and the current OppIntel state.  Computed by evaluateTradePlanLifecycle() via
+   * computeResearchChanges(lastReviewedResearchState, currentSummary) — the SAME comparator
+   * used for plan-creation → current changes.
+   *
+   * Review validity rule (primary, state-anchored):
+   *   - no material changes in reviewedStateChanges → review is valid → CURRENT
+   *   - material changes present → scores/qualification drifted since review → REQUIRES_REVIEW
+   *   - null → no reviewed baseline stored (plans reviewed before this fix) → use legacy fallback
+   *
+   * This correctly handles repeated scans with identical scores: the same scan data produces
+   * the same change vector → no material change → CURRENT (scan timestamp is irrelevant).
+   * Only genuine score/qualification movement triggers re-review.
    */
-  researchDataTimestamp?:   Date | null;
+  reviewedStateChanges?:    ResearchChangeItem[] | null;
   /**
    * True when getCanonicalOpportunity() returned null without throwing an exception.
    * Means the symbol was specifically excluded from the current qualified-candidate
@@ -512,7 +517,7 @@ export function computeLifecycleState(params: {
     invalidationChanges,
     structureChanges,
     lastReviewedAt,
-    researchDataTimestamp,
+    reviewedStateChanges,
     symbolNotQualified,
   } = params;
 
@@ -544,34 +549,37 @@ export function computeLifecycleState(params: {
   ].some(c => c.isMaterial);
 
   if (hasMaterialChange) {
-    // Check whether the user has explicitly reviewed and the review still covers current data.
+    // Check whether the user has explicitly reviewed and the review still covers current state.
     //
-    // Primary check (data-anchored): the review is valid as long as the user reviewed AFTER
-    // the latest research data snapshot was produced. Re-running lifecycle evaluation against
-    // the same snapshot must not expire the review.
-    //   lastReviewedAt >= researchDataTimestamp → review covers current data → CURRENT
-    //   lastReviewedAt < researchDataTimestamp  → newer data since review → REQUIRES_REVIEW
+    // PRIMARY — state-anchored check (reviewedStateChanges available):
+    //   computeResearchChanges() was called by evaluateTradePlanLifecycle() with
+    //   lastReviewedResearchState as the "saved" baseline and currentSummary as "current".
+    //   If the result has no material changes, the research state hasn't drifted beyond
+    //   what the user acknowledged → CURRENT.
+    //   If any change is material, scores/qualification moved since review → REQUIRES_REVIEW.
     //
-    // Fallback (time-window): when no research data timestamp is available, the review is
-    // valid for REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS days from the review date.
+    //   This correctly handles repeated scans with identical scores: the same scores
+    //   produce the same (empty or non-material) change vector regardless of scan time.
+    //   Only genuine score/qualification movement triggers re-review.
+    //   Scan timestamps (generatedAt / asOf) play NO role.
+    //
+    // LEGACY FALLBACK (reviewedStateChanges is null — plan reviewed before fix deployed):
+    //   Use the 7-day wall-clock window. Do not fabricate a reviewed baseline.
     //
     // THESIS_INVALIDATED, DATA_STALE, and SYMBOL_NOT_QUALIFIED always take priority (above).
-    if (lastReviewedAt) {
+    if (reviewedStateChanges !== null && reviewedStateChanges !== undefined) {
+      // State-anchored: no material changes since reviewed baseline → still valid
+      if (!reviewedStateChanges.some(c => c.isMaterial)) {
+        return "CURRENT";
+      }
+      // Material changes occurred since the reviewed baseline — needs re-review
+    } else if (lastReviewedAt) {
+      // Legacy fallback: 7-day wall-clock window (no reviewed baseline stored)
       const reviewedAtMs = new Date(lastReviewedAt).getTime();
       if (!isNaN(reviewedAtMs)) {
-        if (researchDataTimestamp) {
-          // Primary: compare review against research data timestamp
-          const dataMs = new Date(researchDataTimestamp).getTime();
-          if (!isNaN(dataMs) && reviewedAtMs >= dataMs) {
-            return "CURRENT";
-          }
-          // New research data arrived after the review — fall through to REQUIRES_REVIEW
-        } else {
-          // Fallback: time-window check
-          const ageDays = (Date.now() - reviewedAtMs) / (1000 * 60 * 60 * 24);
-          if (ageDays <= REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS) {
-            return "CURRENT";
-          }
+        const ageDays = (Date.now() - reviewedAtMs) / (1000 * 60 * 60 * 24);
+        if (ageDays <= REVIEW_ACKNOWLEDGEMENT_WINDOW_DAYS) {
+          return "CURRENT";
         }
       }
     }
@@ -886,39 +894,47 @@ export async function evaluateTradePlanLifecycle(
     );
 
     // 5. Compute lifecycle state
-    // Pass lastReviewedAt so an explicit user review can clear score-based REQUIRES_REVIEW.
-    // Pass researchDataTimestamp (currentSummary.asOf) so the review validity is anchored to
-    // the research data rather than wall-clock time — re-running evaluation against the same
-    // data snapshot must never expire a recent review.
-    // Pass symbolNotQualified so qualification-loss REQUIRES_REVIEW is NOT clearable by review.
-    const lastReviewedAt = (plan as any).lastReviewedAt ?? null;
-    const researchDataTimestamp = currentSummary ? new Date(currentSummary.asOf) : null;
+    // Read review acknowledgement fields from the plan row.
+    const lastReviewedAt          = (plan as any).lastReviewedAt ?? null;
+    const lastReviewedResearchState: ReviewedResearchState | null =
+      (plan as any).lastReviewedResearchState ?? null;
 
-    // Diagnostic log: emitted whenever there are material changes, so operators can trace
-    // why a plan is CURRENT vs REQUIRES_REVIEW in production without modifying logic.
+    // Compute changes between the reviewed baseline and current state.
+    // Uses the SAME comparator as plan-creation → current (no separate threshold logic).
+    // reviewedStateChanges === null means no baseline is stored (legacy plan) → fallback.
+    let reviewedStateChanges: ResearchChangeItem[] | null = null;
+    if (lastReviewedResearchState && currentSummary) {
+      reviewedStateChanges = computeResearchChanges(
+        lastReviewedResearchState as unknown as TradePlanResearchSnapshot,
+        currentSummary,
+      );
+    }
+
+    // Diagnostic log: emitted whenever there are material changes (vs saved plan) so
+    // operators can trace why a plan is CURRENT vs REQUIRES_REVIEW in production.
     if (researchChanges.some(c => c.isMaterial) || structureChanges.some(c => c.isMaterial)) {
       console.log("[lifecycle:diagnostic]", JSON.stringify({
-        planId:                tradePlanId,
-        symbol:                plan.symbol,
-        lastReviewedAt:        lastReviewedAt ? new Date(lastReviewedAt).toISOString() : null,
-        researchDataTimestamp: researchDataTimestamp ? researchDataTimestamp.toISOString() : null,
-        materialResearchChanges: researchChanges.filter(c => c.isMaterial).map(c => c.changeType),
-        materialStructureChanges: structureChanges.filter(c => c.isMaterial).map(c => c.changeType),
-        reviewCoversData: lastReviewedAt && researchDataTimestamp
-          ? new Date(lastReviewedAt).getTime() >= researchDataTimestamp.getTime()
+        planId:                    tradePlanId,
+        symbol:                    plan.symbol,
+        lastReviewedAt:            lastReviewedAt ? new Date(lastReviewedAt).toISOString() : null,
+        reviewedStateAvailable:    lastReviewedResearchState !== null,
+        reviewedStateHasMaterial:  reviewedStateChanges
+          ? reviewedStateChanges.some(c => c.isMaterial)
           : null,
+        materialPlanChanges:       researchChanges.filter(c => c.isMaterial).map(c => c.changeType),
+        materialStructureChanges:  structureChanges.filter(c => c.isMaterial).map(c => c.changeType),
       }));
     }
 
     const lifecycleState = computeLifecycleState({
-      planStatus:             plan.status,
+      planStatus:           plan.status,
       currentAvailable,
       freshnessChanges,
       researchChanges,
       invalidationChanges,
       structureChanges,
       lastReviewedAt,
-      researchDataTimestamp,
+      reviewedStateChanges,
       symbolNotQualified,
     });
 

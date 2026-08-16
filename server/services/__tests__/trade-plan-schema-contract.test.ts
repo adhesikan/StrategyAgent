@@ -20,7 +20,7 @@
  * §SC1  ensureTradePlanTables() ALTER block includes all newer columns
  * §SC2  Drizzle schema includes all newer columns (source of truth)
  * §SC3  last_reviewed_at is correctly typed as TIMESTAMPTZ (nullable)
- * §SC4  All 4 newer columns are covered by the additive ALTER (not just CREATE)
+ * §SC4  All 5 newer columns are covered by the additive ALTER (not just CREATE)
  * §SC5  Standalone migration file is idempotent (ADD COLUMN IF NOT EXISTS)
  * §SC6  ensureTradePlanTables() comment documents column history
  * §SC7  Drizzle schema lastReviewedAt has no NOT NULL constraint (nullable)
@@ -76,6 +76,7 @@ const NEWER_COLUMNS = [
   "expression_selected_by",
   "expression_selected_at",
   "last_reviewed_at",
+  "last_reviewed_research_state",
 ] as const;
 
 describe("§SC1  ensureTradePlanTables: ALTER block covers all newer columns", () => {
@@ -107,6 +108,10 @@ describe("§SC2  Drizzle schema includes all newer columns", () => {
 
   it('Drizzle has lastReviewedAt → timestamp("last_reviewed_at")', () => {
     expect(schemaSrc).toContain('"last_reviewed_at"');
+  });
+
+  it('Drizzle has lastReviewedResearchState → jsonb("last_reviewed_research_state")', () => {
+    expect(schemaSrc).toContain('"last_reviewed_research_state"');
   });
 });
 
@@ -148,7 +153,7 @@ describe("§SC3  last_reviewed_at is TIMESTAMPTZ and nullable in the ensure bloc
 // §SC4  ALTER block is additive — all 4 newer columns in a single ALTER
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("§SC4  Single ALTER block covers all 4 newer trade_plans columns", () => {
+describe("§SC4  Single ALTER block covers all 5 newer trade_plans columns", () => {
   it("ALTER block mentions trade_plans (not trade_planning_sessions)", () => {
     const alterBlock = svcSrc.slice(
       svcSrc.indexOf("Additive column migrations for trade_plans"),

@@ -1,0 +1,43 @@
+Root-cause diagnosis APPROVED.
+
+Do not implement the proposed four independent reviewed-score columns as the final architecture.
+
+The correct semantic is that a user's review acknowledges the material research state, not merely four scores and not a scan timestamp.
+
+Persist a canonical normalized lastReviewedResearchState (preferably JSONB, following existing project schema conventions) together with lastReviewedAt.
+
+When the user clicks Mark Research Reviewed, capture the lifecycle-relevant current research state that the user just reviewed.
+
+During subsequent lifecycle evaluation, compare that reviewed baseline against current Opportunity Intelligence using the same deterministic material-change detection logic already used by Trade Plan Lifecycle Intelligence.
+
+Required behavior:
+
+identical research in a later scheduled scan → CURRENT
+score drift that meets existing material-change rules → REQUIRES_REVIEW
+qualification/removal/re-qualification material change → REQUIRES_REVIEW
+classification material change → REQUIRES_REVIEW
+risk-level material change, if currently defined as material → REQUIRES_REVIEW
+other canonical lifecycle-relevant material changes → REQUIRES_REVIEW
+
+Do not create a second score-threshold implementation specifically for reviewed plans.
+
+Remove currentSummary.asOf / scan time from review-validity semantics. Scan timestamps may remain useful for freshness/diagnostics, but a routine scan must never invalidate a completed review.
+
+For plans reviewed before the new reviewed-state baseline exists, retain the current safe fallback behavior temporarily. Do not fabricate a reviewed baseline.
+
+Add regression tests for:
+
+material score change → review required
+mark reviewed → current
+identical next scan with newer generatedAt → still current
+second identical scan → still current
+new material score change → review required
+qualified → removed → review required
+removed → re-qualified → review required
+material risk/classification change → review required according to canonical lifecycle rules
+non-material drift → remains current
+preflight consumes the exact same lifecycle result as Trade Plan Detail
+
+Keep force:true in explicit Execution Preflight and keep the corrected React Query invalidation behavior.
+
+Report the schema change, normalized reviewed-state shape, reuse of the canonical material-change comparator, legacy fallback behavior, and full test results before deployment.

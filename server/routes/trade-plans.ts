@@ -335,11 +335,49 @@ export function registerTradePlanRoutes(
 
       const previousLifecycleState = planRows[0].planHealth as string | null;
 
-      // 2. Persist review timestamp — authoritative, server-set
+      // 2. Capture the current research state as the reviewed baseline.
+      //    This is the lifecycle-relevant state the user just reviewed.
+      //    Stored WITHOUT scan timestamps so routine scans never invalidate the baseline.
+      let lastReviewedResearchState: Record<string, unknown> | null = null;
+      try {
+        const { getCanonicalOpportunity } = await import("../services/opportunity-intelligence-service");
+        const planSymbolRows = await db
+          .select({ symbol: tradePlans.symbol })
+          .from(tradePlans)
+          .where(and(eq(tradePlans.id, planId), eq(tradePlans.userId, userId)))
+          .limit(1);
+        const symbol = planSymbolRows[0]?.symbol;
+        if (symbol) {
+          const opp = await getCanonicalOpportunity(symbol);
+          if (opp) {
+            // Capture all fields used by computeResearchChanges(), but NOT asOf/generatedAt.
+            lastReviewedResearchState = {
+              researchScore:      opp.researchScore      ?? 0,
+              technicalScore:     opp.technicalScore     ?? 0,
+              fundamentalScore:   opp.fundamentalScore   ?? 0,
+              institutionalScore: opp.institutionalScore ?? 0,
+              riskLevel:          opp.riskLevel          ?? "unknown",
+              qualified:          opp.qualified          ?? false,
+              marketRegime:       opp.marketRegime       ?? null,
+              sector:             opp.sector             ?? null,
+              themes:             opp.themes             ?? [],
+            };
+          }
+        }
+      } catch {
+        // Fire-and-forget: failing to capture the reviewed state is non-fatal.
+        // The review timestamp still persists; the legacy 7-day fallback applies.
+      }
+
+      // 3. Persist review timestamp and reviewed research state — both authoritative.
       const reviewedAt = new Date();
       await db
         .update(tradePlans)
-        .set({ lastReviewedAt: reviewedAt, updatedAt: new Date() })
+        .set({
+          lastReviewedAt:            reviewedAt,
+          lastReviewedResearchState: lastReviewedResearchState ?? undefined,
+          updatedAt:                 new Date(),
+        })
         .where(and(eq(tradePlans.id, planId), eq(tradePlans.userId, userId)));
 
       // 3. Record RESEARCH_REVIEWED activity event

@@ -192,13 +192,37 @@ Enumerate every location where broker connectivity gates a feature:
 
 ---
 
-## 6. Gate-Site Manifest (Populated by Sprint 2.8.7 Audit)
+## 6. Gate-Site Manifest
 
-_This section is populated by Audit A above. Pending Sprint 2.8.7._
+_Populated by Audit A (2026-08-16). Full details in [Doc 47 — Audit A Report](47-audit-a-broker-gate-inventory.md)._
 
-| File | Line | Gated Feature | Current Class | Correct Class | Action |
+| ID | Surface / File | Current Gate | Classification | P | Future Behavior |
 |---|---|---|---|---|---|
-| (pending audit) | | | | | |
+| BI-GATE-001 | `ExecutionPreflightPanel.tsx:219` — "Run Preflight" button | `disabled={!brokerConnected}` | BROKER_INDEPENDENT | **P0** | Enable button; show independent dims 1–3 without broker |
+| BI-GATE-002 | `trade-plan-detail.tsx:241` — preflight query | `enabled: brokerConnected` | BROKER_INDEPENDENT (dims 1–3) | **P0** | Remove broker guard; dims 4–10 skip gracefully when no broker |
+| BI-GATE-003 | `trade-plan-detail.tsx:1326` — execution section | `showExecution && brokerConnected` | BROKER_ENHANCED | **P1** | Show planning/lifecycle sections; hide order-submission UI only |
+| BI-GATE-004 | `live-contract-resolver.tsx:611` — contract query | `enabled: pkg.brokerConnected` | BROKER_ENHANCED | **P1** | Allow independent-mode fallback (Audit C); show NOT_CONNECTED state |
+| BI-GATE-005 | `live-contract-resolver.tsx:673` — render | `"broker_not_connected"` state | BROKER_ENHANCED | **P1** | Replace hard block with `"Connect broker for live contracts"` |
+| BI-GATE-006 | `workspace-simplified.tsx:444` — Execute tab | `isBrokerConnected` | BROKER_REQUIRED (execution) | **P2** | Planning intro visible; execution path stays broker-gated |
+| BI-GATE-007 | `workspace-sections.tsx:408` — InstaTrade state | `"no_broker"` | BROKER_REQUIRED | **P2** | `BROKER_REQUIRED_FOR_EXECUTION` label; no UX change needed |
+| BI-GATE-008 | `trade-structure-engine.tsx:55` — contract section | `connected = pkg.brokerConnected` | BROKER_ENHANCED | **P1** | Show strategy structure; gate contract data fetch only |
+| BI-GATE-009 | `action-card.tsx:183` — order prep CTA | `pkg.brokerConnected` | BROKER_REQUIRED ✓ | **P3** | No change |
+| BI-GATE-010 | `opportunity-research.tsx:1445` — InstaTrade CTA | `pkg.brokerConnected` | BROKER_REQUIRED ✓ | **P2** | Softer message: `"Requires broker connection"` |
+| BI-GATE-011 | `dashboard.tsx:2507` — portfolio section | `!brokerConnected → connect prompt` | BROKER_ENHANCED | **P1** | Fall back to manual/imported portfolio if available |
+| BI-GATE-012 | `dashboard.tsx:683` — MarketCommandBar | Status indicator | BROKER_ENHANCED | **P2** | Informational — no change needed |
+| BI-GATE-013 | `home-sections.tsx:231` — connection-lost banner | `connectionLost` | BROKER_ENHANCED ✓ | **P3** | No change — correct behavior |
+| BI-GATE-014 | `live-positions-panel.tsx:34` — positions | `isConnected` | BROKER_REQUIRED ✓ | **P3** | No change |
+| BI-GATE-015 | `OrderPreparationPanel.tsx:156` — no broker | `!brokerConnected` | BROKER_REQUIRED ✓ | **P3** | No change |
+| BI-GATE-016 | `home-v2.tsx:334`, `command-center.tsx:322` — OrderReviewDialog | `brokerConnected={isConnected}` | BROKER_REQUIRED ✓ | **P3** | No change |
+| BI-GATE-017 | `server/routes/internal-options.ts:165` — expirations | **409 NO_BROKER** | BROKER_ENHANCED (CON-002) | **P0** | Independent fallback when Audit C complete |
+| BI-GATE-018 | `server/routes/internal-options.ts:186` — chain | **409 NO_BROKER** | BROKER_ENHANCED (CON-002) | **P0** | Independent fallback when Audit C complete |
+| BI-GATE-019 | `server/routes/futures.ts:96,100` — futures | 400 broker required | BROKER_REQUIRED ✓ | **P3** | No change |
+| BI-GATE-020 | `execution-preflight-service.ts:440` — broker dim | BROKER_NOT_CONNECTED → overall FAIL | BROKER_REQUIRED (dims 4+) | **P0** | Only blocks dims 4–10; dims 1–3 independent |
+| BI-GATE-021 | `execution-preflight-service.ts:733` — `determineOverallStatus` | `UNAVAILABLE` when `!brokerConnected` | BROKER_INDEPENDENT masked | **P0** | `PASS_INDEPENDENT` when dims 1–3 pass, no broker |
+| BI-GATE-022 | `execution-preflight-service.ts:542` — position dim | `UNAVAILABLE` all plan types | BROKER_ENHANCED | **P1** | Equity: PASS without broker; options covered/protective: BROKER_ENHANCED |
+| BI-GATE-023 | `execution-preflight-service.ts:518` — buying power | `UNAVAILABLE` | BROKER_ENHANCED | **P1** | Accept user-entered budget (CON-004) |
+| BI-GATE-024 | `server/routes/dashboard.ts:56–101` — portfolio | Positions from broker only | BROKER_ENHANCED | **P1** | Fall back to stored portfolio when no broker |
+| BI-GATE-025 | `server/routes/opportunity-search.ts:462` — income | `brokerConnected` param | BROKER_ENHANCED | **P2** | Expected; lower priority |
 
 ---
 

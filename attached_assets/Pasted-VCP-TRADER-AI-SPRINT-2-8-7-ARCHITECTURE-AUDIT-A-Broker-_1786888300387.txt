@@ -1,0 +1,475 @@
+VCP TRADER AI — SPRINT 2.8.7 ARCHITECTURE AUDIT A
+Broker Dependency Gate-Site Inventory
+
+STATUS
+
+The Broker Independence Principle is now locked in:
+
+docs/operations/46-broker-independence-architecture.md
+
+No application code has been changed.
+
+DO NOT implement fixes in this task.
+
+This is an architecture/code audit only.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Perform a repository-wide inventory of every place VCP Trader AI currently:
+
+- requires a brokerage connection
+- checks brokerConnected / hasBrokerConnection
+- gates a feature because broker data is absent
+- returns FAIL/BLOCKED/UNAVAILABLE due to missing broker
+- fetches research/planning data directly from Tradier or TradeStation
+- assumes account/position/buying-power context exists
+- suppresses UI elements when broker is disconnected
+
+Every gate must be classified as:
+
+BROKER_INDEPENDENT
+BROKER_ENHANCED
+BROKER_REQUIRED
+
+Use the definitions in Doc 46.
+
+DO NOT CHANGE APPLICATION CODE.
+
+============================================================
+1. SEARCH THE ENTIRE REPOSITORY
+============================================================
+
+Search server/, client/, shared/, tests/, and relevant config for terms including:
+
+brokerConnected
+hasBrokerConnection
+brokerRequired
+requireBroker
+broker connection
+BROKER_EXECUTION_ENABLED
+BROKER_EXECUTION_MODE
+TRADIER
+TRADESTATION
+getBuyingPower
+getPositions
+getConnectionStatus
+accountCapabilities
+brokerProvider
+execution.available
+liveOptionsData
+brokerage
+broker/ping
+broker/account
+broker positions
+broker quote
+
+Also inspect semantic equivalents that may not use those exact names.
+
+============================================================
+2. INVENTORY EVERY GATE SITE
+============================================================
+
+For every meaningful broker-dependent call site, record:
+
+ID
+file
+line/function/component
+feature
+current condition
+current behavior when broker absent
+data required
+why broker is currently used
+whether broker is technically necessary
+recommended classification
+recommended future behavior
+
+Example:
+
+BI-GATE-001
+client/src/...
+ExecutionPreflightPanel
+brokerConnected === false
+renders BLOCKED
+Broker account
+BROKER_ENHANCED
+Independent preflight dimensions should still run; broker section should show OPTIONAL / NOT_CONNECTED.
+
+============================================================
+3. AUDIT BY PRODUCT SURFACE
+============================================================
+
+At minimum inspect:
+
+Dashboard
+Opportunity Intelligence
+All Ranked Opportunities
+Opportunity Workspace
+Market Research Hub
+Research Workspace
+Research Reports
+Research Goals
+Collections
+Research Monitor
+Sector Intelligence
+Theme Intelligence
+
+Trade Planning
+Trade Preferences
+Equity Planning
+Options Strategy Matching
+Options Contract Research
+Trade Risk & Scenario Analysis
+
+Trade Plan Workspace
+Trade Plan Lifecycle
+Research Review
+Trade Plan Monitoring
+
+Portfolio
+Portfolio Analytics
+Portfolio Intelligence
+manual/imported portfolio paths
+broker-synced portfolio paths
+
+Execution Preflight
+Order Preparation
+Equity Preview
+Options Preview
+Execution Readiness
+Final Order Review
+Order Confirmation
+Execution
+Execution status / fills
+
+============================================================
+4. AUDIT MARKET DATA SOURCES
+============================================================
+
+For every surface using:
+
+current price
+quote
+historical bars
+technical indicators
+market session
+option underlying price
+option chain
+positions
+buying power
+
+record the current provider.
+
+Classify whether the data is:
+
+MARKET DATA
+ACCOUNT DATA
+EXECUTION DATA
+
+This distinction is critical.
+
+MARKET DATA should generally NOT require a broker.
+
+ACCOUNT DATA may be BROKER_ENHANCED.
+
+EXECUTION DATA may legitimately be BROKER_REQUIRED.
+
+============================================================
+5. IDENTIFY BROKER-DEPENDENT RESEARCH DATA
+============================================================
+
+Find research/planning functionality that currently gets market information
+through:
+
+Tradier
+TradeStation
+broker adapter
+
+when the same conceptual data could come from:
+
+Twelve Data
+MCP
+stored deterministic research
+application DB
+user-entered assumptions
+
+Flag these as candidate dependencies for removal.
+
+============================================================
+6. CLIENT-SIDE HARD GATES
+============================================================
+
+Find places where React does things such as:
+
+if (!brokerConnected) return ...
+
+brokerConnected && <Feature />
+
+disabled={!brokerConnected}
+
+if (!hasBrokerConnection) hide section
+
+Classify each.
+
+Pay special attention to features that should remain usable without a broker:
+
+Trade Planning
+Trade Plan creation
+Risk Scenario Analysis
+Options Strategy Matching
+Portfolio Analysis
+Monitoring
+Research
+
+============================================================
+7. SERVER-SIDE HARD GATES
+============================================================
+
+Find endpoints returning:
+
+400
+401
+403
+409
+422
+503
+
+because the user lacks a broker connection.
+
+Determine whether each is:
+
+legitimate BROKER_REQUIRED behavior
+
+or
+
+an unnecessary broker gate.
+
+Do not change routes yet.
+
+============================================================
+8. EXECUTION PREFLIGHT SPECIAL AUDIT
+============================================================
+
+Execution Preflight currently contains 12 dimensions.
+
+Produce a dimension table:
+
+dimension
+data source
+broker required?
+independent alternative?
+recommended layer
+
+Separate into:
+
+INDEPENDENT PREFLIGHT
+
+and
+
+BROKER EXECUTION PREFLIGHT
+
+The expected direction is conceptually:
+
+INDEPENDENT
+
+Trade Plan
+Research Lifecycle
+Plan Freshness
+Market Data
+Structure Validation
+Risk Analysis where hypothetical inputs suffice
+
+BROKER ENHANCED / REQUIRED
+
+Broker Connection
+Broker Account
+Buying Power
+Actual Position Requirements
+Broker Permissions
+Execution Quote where broker-specific execution validation is required
+
+Do not assume this list is correct.
+Derive it from current implementation.
+
+============================================================
+9. OPTIONS RESEARCH SPECIAL AUDIT
+============================================================
+
+Trace:
+
+Options Strategy Matching
+Options Contract Research
+Risk & Scenario Analysis
+
+Determine exactly which fields currently require the broker.
+
+Separate:
+
+underlying-derived data
+actual options market observations
+derived options analytics
+broker/account information
+
+Do not redesign yet.
+
+============================================================
+10. PORTFOLIO SPECIAL AUDIT
+============================================================
+
+Determine which portfolio features require broker sync today.
+
+Identify whether equivalent functionality can operate using:
+
+manual holdings
+CSV import
+stored portfolio snapshots
+
+Broker sync should generally be an enhancement.
+
+Identify missing manual/import workflows if applicable.
+
+============================================================
+11. UI LANGUAGE AUDIT
+============================================================
+
+Find screens where no broker produces language such as:
+
+FAIL
+BLOCKED
+ERROR
+Unavailable
+
+even when brokerage is optional.
+
+Flag these for later UX redesign.
+
+Desired future semantic distinction:
+
+NOT_CONNECTED
+OPTIONAL
+CONNECT_TO_ENHANCE
+BROKER_REQUIRED_FOR_EXECUTION
+
+rather than treating broker absence as platform failure.
+
+Do not implement language changes yet.
+
+============================================================
+12. PRODUCE PRIORITY CATEGORIES
+============================================================
+
+Classify every issue:
+
+P0
+Unnecessary broker dependency blocking core research/planning.
+
+P1
+Broker dependency materially degrading brokerless UX.
+
+P2
+Feature works brokerless but can be improved/enriched.
+
+P3
+Correctly BROKER_REQUIRED.
+
+============================================================
+13. DOC 46 GATE-SITE MANIFEST
+============================================================
+
+Populate:
+
+docs/operations/46-broker-independence-architecture.md
+
+Section 6 Gate-Site Manifest.
+
+Include:
+
+ID
+surface
+file/module
+current gate
+classification
+future behavior
+priority
+
+Do not make application changes.
+
+============================================================
+14. IDENTIFY IMPLEMENTATION GROUPS
+============================================================
+
+Group findings into candidate implementation packages such as:
+
+A. Market Data Abstraction
+B. Brokerless Trade Planning
+C. Independent Execution Readiness
+D. Brokerless Options Research
+E. Manual/Imported Portfolio Context
+F. UX Graceful Degradation
+
+Do not create sprints yet.
+
+============================================================
+15. CONFLICT CHECK
+============================================================
+
+Compare findings against the current locked roadmap.
+
+Identify anything that would:
+
+- change execution safety
+- change research qualification
+- weaken broker submission gates
+- require schema migration
+- require new external API contracts
+
+Flag these explicitly.
+
+============================================================
+16. NO CODE CHANGES
+============================================================
+
+Mandatory:
+
+git diff --name-only HEAD
+
+must show only docs/ changes caused by this audit.
+
+No server/
+No client/
+No shared/
+No tests/
+No package changes.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Total broker gate sites found
+2. BROKER_INDEPENDENT count
+3. BROKER_ENHANCED count
+4. BROKER_REQUIRED count
+5. P0 count
+6. P1 count
+7. P2 count
+8. P3 count
+9. Top 10 unnecessary broker dependencies
+10. Execution Preflight dimension classification
+11. Options research broker dependencies
+12. Portfolio broker dependencies
+13. Market-data provider dependencies
+14. Client hard gates
+15. Server hard gates
+16. UI broker-absence issues
+17. Proposed implementation groups
+18. Schema implications
+19. External provider implications
+20. Doc 46 Gate-Site Manifest updated YES/NO
+21. Files changed
+22. Confirmation that application code changed = NO
+
+STOP AFTER THE AUDIT.
+DO NOT IMPLEMENT ANY FIX.

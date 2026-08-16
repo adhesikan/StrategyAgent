@@ -1,5 +1,28 @@
 # Sprint Change Log
 
+## Audit A — Broker Gate-Site Inventory (2026-08-16)
+**Status:** COMPLETE — No application code changed
+
+**Scope:** 25 broker gate sites across `server/`, `client/`, `shared/`
+
+**Findings:**
+- **4 P0** — Core research/planning blocked without broker: preflight dims 1–3 blocked; options chain 409; `determineOverallStatus` masking
+- **6 P1** — Materially degrading brokerless UX: execution section hidden; contract resolver disabled; position dim UNAVAILABLE for equity
+- **7 P2** — Works brokerless; UX improvable: InstaTrade framing; dashboard portfolio; income candidates
+- **8 P3** — Correctly BROKER_REQUIRED: live positions, order prep, futures, order review
+
+**Preflight split confirmed:** dims 1,2,3,11,12 = INDEPENDENT; dim 7,8,9,10 = BROKER_ENHANCED; dim 4,5,6 = BROKER_REQUIRED
+
+**Documents updated:**
+- `docs/operations/47-audit-a-broker-gate-inventory.md` — NEW (full audit report, 25 gate sites, completion report)
+- `docs/operations/46-broker-independence-architecture.md` §6 — Gate-Site Manifest populated (25 rows)
+- `docs/operations/15-known-issues-and-backlog.md` — BI-005 resolved; implementation groups A–F added
+- `docs/operations/README.md` — Doc 47 entry added
+
+**Application code changed: NO**
+
+---
+
 ## Architecture Principle — Broker-Independent-First (2026-08-16)
 **Status:** DOCUMENTED — no code changes
 

@@ -123,7 +123,7 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 | BI-002 | Audit all `brokerConnected` client gates; reclassify planning-level features as BROKER_INDEPENDENT | CON-003 | P1 |
 | BI-003 | Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback | CON-002 | P2 |
 | BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode | CON-004 | P2 |
-| BI-005 | Populate gate-site manifest in Doc 46 §6 (output of Audit A) | Audit | P1 |
+| ~~BI-005~~ | ~~Populate gate-site manifest in Doc 46 §6 (output of Audit A)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-16) |
 
 ---
 

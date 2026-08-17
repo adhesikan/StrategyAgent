@@ -1,14 +1,25 @@
 # Sprint Change Log
 
+## Doc 54 Amendment — Twelve Data Options Decision Closure (2026-08-17)
+**Status:** AMENDMENT — Twelve Data options confirmed NOT_AVAILABLE (vendor written confirmation). No application code changed.
+
+**What changed:** Twelve Data options capability reclassified from UNCLEAR_REQUIRES_VENDOR_CONFIRMATION → NOT_AVAILABLE across all 14 fields and all 8 licensing dimensions. §18B (Twelve Data vendor questions) closed — no further vendor inquiry required. Twelve Data eliminated from options provider candidate list. Remaining licensing gate: MarketData.app Commercial Use Addendum only.
+
+**Files updated:** `docs/operations/54-independent-options-market-data-research.md`, `docs/operations/17-sprint-change-log.md`, `docs/operations/15-known-issues-and-backlog.md`
+
+**App code changed:** NO
+
+---
+
 ## Doc 54 — Independent Options Market Data Research (2026-08-17)
-**Status:** RESEARCH COMPLETE — Licensing confirmation required before implementation
+**Status:** RESEARCH COMPLETE (see amendment above)
 
 **Scope:** Architecture decision research. No application code changed.
 
 **Deliverables (all 20 items):**
 1. Audit C compatibility confirmed — existing types and interfaces reuse verbatim
-2. Twelve Data options capability: ALL fields UNCLEAR_REQUIRES_VENDOR_CONFIRMATION (current integration is OHLCV-only)
-3. Twelve Data licensing: UNCLEAR — options data may be governed by OPRA (different from equity license)
+2. Twelve Data options capability: ALL fields **NOT_AVAILABLE** — vendor confirmed 2026-08-17 (Liam, Twelve Data: "We don't currently provide options data"). Equity/OHLCV/HV integration unchanged.
+3. Twelve Data licensing: **NOT_AVAILABLE** — moot; no options product exists. Equity license unaffected.
 4. MarketData.app capability: ALL required fields CONFIRMED (expirations, chain, OCC symbols, bid/ask, last, volume, OI, IV, Greeks)
 5. MarketData.app licensing: Self-service plans prohibit redistribution; Commercial Use Addendum required
 6. Other providers: Polygon.io (CONFIRMED, SaaS-ready); ThetaData (not suitable for SaaS V1 — Terminal required, retail plans prohibit redistribution); Intrinio (viable at scale)
@@ -23,7 +34,7 @@
 15. Caching: 5-min server TTL during market hours; OI = delayedByDesign
 16. Primary provider: **B. MARKETDATA_APP** — full API confirmed, Commercial Use Addendum pathway exists
 17. Backup provider: **Polygon.io** — established SaaS redistribution, strong OPRA engagement
-18. Vendor questions: complete email scripts for MarketData.app and Twelve Data
+18. Vendor questions: complete email script for MarketData.app (§18A); Twelve Data questions superseded by direct vendor confirmation (§18B closed)
 19. Risks: OPRA fee scaling, commercial term negotiation, ThetaData Terminal incompatibility
 20. Next sprint: **Sprint 2.8.7D** — after Commercial Use Addendum signed
 
@@ -251,7 +262,7 @@ independently of a brokerage connection wherever technically feasible.
 
 **Conflicts documented (require Sprint 2.8.7 resolution):**
 - CON-001: Execution Preflight hard-fails on broker disconnect for all 12 dims — Independent dims 1–3 should always evaluate
-- CON-002: Options Contract Research requires live broker chain — independent-mode fallback (Twelve Data) to be investigated
+- CON-002: Options Contract Research requires live broker chain — independent-mode fallback to be investigated (**Twelve Data eliminated 2026-08-17**: vendor confirmed no options product; MarketData.app or Polygon.io are the active candidates — see BI-007)
 - CON-003: `brokerConnected` client gates suppress planning-level features — should be graceful degradation, not hard block
 - CON-004: Risk guardrails buying-power check unavailable without broker — hypothetical budget should be accepted
 

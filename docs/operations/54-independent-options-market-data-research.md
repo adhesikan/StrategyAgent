@@ -2,7 +2,7 @@
 
 **Type:** Research / Architecture Decision Only  
 **Date:** 2026-08-17  
-**Status:** RESEARCH COMPLETE — Pending commercial vendor confirmation before implementation  
+**Status:** RESEARCH COMPLETE (AMENDED 2026-08-17) — Twelve Data options: NOT_AVAILABLE (vendor confirmed). Remaining gate: MarketData.app Commercial Use Addendum.  
 **Depends on:** [Doc 49 — Audit C](49-audit-c-broker-independent-options.md), [Doc 53 — Sprint 2.8.7C](53-sprint-2.8.7c-theoretical-options.md)  
 **Application code changed:** NO
 
@@ -83,53 +83,66 @@ anywhere in the codebase.
 
 ### 2.2 Twelve Data Options API — Field-by-Field Classification
 
-Twelve Data documents a derivatives/options feature set on their platform. However,
-given that (a) the current integration uses none of it and (b) the search results confirm
-their core equity license uses "venues that do not require additional licensing" — which
-typically means consolidated tape partners, not options OPRA feeds — the following
-assessment must be treated as **requiring vendor confirmation before use**:
+> **⚠ AMENDED 2026-08-17 — VENDOR CONFIRMATION RECEIVED**
+> Direct written confirmation was received from Liam at Twelve Data on 2026-08-17:
+> *"We don't currently provide options data, but we hope to add it in future.
+> Though there isn't currently a firm ETA."*
+>
+> This direct written statement supersedes all prior ambiguous or public documentation
+> references to options functionality on the Twelve Data platform. All fields below are
+> classified `NOT_AVAILABLE` on the basis of vendor confirmation, not inference.
 
-| Field | Classification | Notes |
+| Field | Classification | Source |
 |---|---|---|
-| Expirations list | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| Option chain (all strikes) | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| OCC contract symbol | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `bid` | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `ask` | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `last` | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `volume` | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `openInterest` | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `quoteTimestamp` | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `impliedVolatility` (provider) | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| `delta`, `gamma`, `theta`, `vega` | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
-| Delayed data | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Standard delay (15/20 min) unknown |
-| Real-time data | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | OPRA feed unknown |
-| Historical chains | `UNCLEAR_REQUIRES_VENDOR_CONFIRMATION` | Not found in existing integration |
+| Expirations list | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| Option chain (all strikes) | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| OCC contract symbol | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `bid` | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `ask` | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `last` | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `volume` | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `openInterest` | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `quoteTimestamp` | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `impliedVolatility` (provider) | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| `delta`, `gamma`, `theta`, `vega` | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| Delayed data | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| Real-time data | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
+| Historical chains | `NOT_AVAILABLE` | Vendor confirmed (Liam, Twelve Data, 2026-08-17) |
 
-**No field can be classified as CONFIRMED or NOT_AVAILABLE without vendor inquiry.**
+**All fields are classified NOT_AVAILABLE. This is a closed question — no further
+vendor inquiry regarding Twelve Data options capability is required or should be sent.**
 
 ### 2.3 Twelve Data — Licensing Assessment
 
+All licensing dimensions are moot following vendor confirmation that no options product
+exists. Recorded for completeness:
+
 | Dimension | Status |
 |---|---|
-| A. API technical availability for options | **UNCLEAR** — site mentions "data add-ons"; no options endpoint in current integration |
-| B. Internal commercial use | **UNCLEAR** — equity license uses venues avoiding additional licensing; options OPRA is different |
-| C. Display to authenticated VCP customers | **UNCLEAR** — current equity `TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED` flag would need separate options equivalent |
-| D. Redistribution rights | **UNCLEAR** — no mention of options redistribution in current licensing artifacts |
-| E. Delayed options-data rights | **UNCLEAR** |
-| F. Real-time options-data rights | **UNCLEAR** |
-| G. Exchange/OPRA requirements | **UNCLEAR** — equity data avoids exchange licensing; options data is OPRA-licensed |
-| H. User-level exchange entitlement | **UNCLEAR** |
+| A. API technical availability for options | **NOT_AVAILABLE** — vendor confirmed no options data (2026-08-17) |
+| B. Internal commercial use | **NOT_AVAILABLE** — product does not exist |
+| C. Display to authenticated VCP customers | **NOT_AVAILABLE** — product does not exist |
+| D. Redistribution rights | **NOT_AVAILABLE** — product does not exist |
+| E. Delayed options-data rights | **NOT_AVAILABLE** — product does not exist |
+| F. Real-time options-data rights | **NOT_AVAILABLE** — product does not exist |
+| G. Exchange/OPRA requirements | **NOT_AVAILABLE** — product does not exist |
+| H. User-level exchange entitlement | **NOT_AVAILABLE** — product does not exist |
 
-**Assessment: Twelve Data cannot be the primary independent options provider without
-explicit confirmation that their options tier exists, is commercially licensed for SaaS
-redistribution, and includes OPRA rights. These are not safe assumptions from the
-existing equity agreement.**
+**Assessment: Twelve Data is eliminated as an independent options data candidate.
+The existing equity/OHLCV/HV integration (Sprint 2.8.7C) is unaffected and continues
+unchanged.**
 
-### 2.4 Vendor Confirmation Required
+### 2.4 Vendor Confirmation Record
 
-Even if Twelve Data technically offers options data, the existing `TWELVE_DATA_LICENSE_MODE`
-configuration only gates equity display. A separate options licensing gate (`TWELVE_DATA_OPTIONS_DISPLAY_ENABLED`) would be required, and it must not default to `true`.
+| Field | Value |
+|---|---|
+| Confirmation date | 2026-08-17 |
+| Respondent | Liam (Twelve Data) |
+| Verbatim statement | *"We don't currently provide options data, but we hope to add it in future. Though there isn't currently a firm ETA."* |
+| Classification | `NOT_AVAILABLE` — permanent until Twelve Data notifies otherwise |
+| Supersedes | Any ambiguous public documentation references to Twelve Data options or derivatives functionality |
+| Impact on existing integration | **None** — OHLCV bars, real-time equity quote, ATR, and Black-Scholes HV pipeline all continue unchanged |
+| Re-evaluation trigger | Only if Twelve Data proactively notifies of an options product launch |
 
 ---
 
@@ -304,23 +317,23 @@ Smaller provider. Insufficient information on commercial redistribution terms.
 
 | Capability | Twelve Data | MarketData.app | Polygon.io | ThetaData |
 |---|---|---|---|---|
-| Options Chain API | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| Expirations endpoint | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| OCC symbol | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| Bid / Ask | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| Last | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| Volume | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| Open Interest | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| IV (provider-supplied) | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| Greeks (provider-supplied) | ❓ UNCLEAR | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
-| 15-min Delayed | ❓ UNCLEAR | ✅ Starter | ✅ Starter | ✅ All plans |
-| Real-time | ❓ UNCLEAR | ✅ Trader | ✅ Higher plans | ✅ All plans |
-| Historical chains | ❓ UNCLEAR | ✅ 8 years | ✅ Multi-year | ✅ 4-8+ years |
-| REST API (no daemon) | ✅ Yes | ✅ Yes | ✅ Yes | ❌ Terminal required |
-| Commercial redistribution | ❓ UNCLEAR | 🔶 Commercial Addendum req'd | ✅ SaaS-ready plans | 🔶 Separate commercial deal |
-| Self-service plan exists | ✅ Yes | ✅ Yes (equity) | ✅ Yes | ✅ Yes (retail only) |
-| Startup-friendly pricing | ✅ Existing | ✅ ($30-75/mo) | 🔶 Higher | 🔶 $40-80/mo retail |
-| Existing VCP integration | ✅ Yes (equity) | ❌ No | ❌ No | ❌ No |
+| Options Chain API | ❌ NOT_AVAILABLE (vendor confirmed 2026-08-17) | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| Expirations endpoint | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| OCC symbol | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| Bid / Ask | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| Last | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| Volume | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| Open Interest | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| IV (provider-supplied) | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| Greeks (provider-supplied) | ❌ NOT_AVAILABLE | ✅ CONFIRMED | ✅ CONFIRMED | ✅ CONFIRMED |
+| 15-min Delayed | ❌ NOT_AVAILABLE | ✅ Starter | ✅ Starter | ✅ All plans |
+| Real-time | ❌ NOT_AVAILABLE | ✅ Trader | ✅ Higher plans | ✅ All plans |
+| Historical chains | ❌ NOT_AVAILABLE | ✅ 8 years | ✅ Multi-year | ✅ 4-8+ years |
+| REST API (no daemon) | ✅ Yes (equity only) | ✅ Yes | ✅ Yes | ❌ Terminal required |
+| Commercial redistribution | ❌ NOT_AVAILABLE (options) | 🔶 Commercial Addendum req'd | ✅ SaaS-ready plans | 🔶 Separate commercial deal |
+| Self-service plan exists | ✅ Yes (equity only) | ✅ Yes (equity) | ✅ Yes | ✅ Yes (retail only) |
+| Startup-friendly pricing | ✅ Existing (equity only) | ✅ ($30-75/mo) | 🔶 Higher | 🔶 $40-80/mo retail |
+| Existing VCP integration | ✅ Yes (equity/OHLCV only) | ❌ No | ❌ No | ❌ No |
 
 ---
 
@@ -328,13 +341,13 @@ Smaller provider. Insufficient information on commercial redistribution terms.
 
 | Dimension | Twelve Data | MarketData.app | Polygon.io | ThetaData |
 |---|---|---|---|---|
-| **SaaS redistribution framework** | ❓ Unclear | 🔶 Commercial Addendum (exists) | ✅ Explicit SaaS plans | 🔶 Separate commercial required |
-| **OPRA — delayed display** | ❓ Unclear | ❓ Confirm under commercial | ✅ Handled via plan | ❓ OPRA fees on top |
-| **OPRA — real-time display** | ❓ Unclear | ❓ Confirm under commercial | 🔶 Higher plan + OPRA | ❌ OPRA fees significant |
-| **Non-display calculation rights** | ❓ Unclear | ❓ Confirm | ✅ Permitted | ✅ Permitted |
-| **Per-user entitlement** | ❓ Unclear | ❓ Confirm | Standard per OPRA | Standard per OPRA |
-| **Caching permitted** | ✅ Yes (equity) | ❓ Confirm duration | ✅ Allowed | ✅ Allowed |
-| **Attribution required** | ✅ Yes (equity) | ❓ Confirm | Usually yes | Usually yes |
+| **SaaS redistribution framework** | ❌ NOT_AVAILABLE (no options product) | 🔶 Commercial Addendum (exists) | ✅ Explicit SaaS plans | 🔶 Separate commercial required |
+| **OPRA — delayed display** | ❌ NOT_AVAILABLE | ❓ Confirm under commercial | ✅ Handled via plan | ❓ OPRA fees on top |
+| **OPRA — real-time display** | ❌ NOT_AVAILABLE | ❓ Confirm under commercial | 🔶 Higher plan + OPRA | ❌ OPRA fees significant |
+| **Non-display calculation rights** | ❌ NOT_AVAILABLE | ❓ Confirm | ✅ Permitted | ✅ Permitted |
+| **Per-user entitlement** | ❌ NOT_AVAILABLE | ❓ Confirm | Standard per OPRA | Standard per OPRA |
+| **Caching permitted** | ✅ Yes (equity only) | ❓ Confirm duration | ✅ Allowed | ✅ Allowed |
+| **Attribution required** | ✅ Yes (equity only) | ❓ Confirm | Usually yes | Usually yes |
 
 **Key OPRA fact (applies to all providers):**
 
@@ -851,8 +864,7 @@ plans cannot be used for a commercial product serving end users.
 3. **Better enterprise-scale story.** At 1,000+ users, Polygon.io's Business plan and
    established SLA/support may be preferable.
 
-4. **Per-asset-class plans.** Options can be licensed independently from equities —
-   potentially useful if Twelve Data equity license needs to remain separate.
+4. **Per-asset-class plans.** Options can be licensed independently from equities.
 
 5. **Same provider-neutral interface.** A Polygon.io adapter is a straightforward addition
    to the same `IndependentOptionsProvider` interface. No redesign required.
@@ -923,42 +935,20 @@ Please confirm in writing:
     our database for short periods (up to 24 hours)?
 ```
 
-### 18B. Twelve Data — Questions for Options Data Verification
+### 18B. Twelve Data — CLOSED (Vendor Confirmation Received)
 
-```
-Subject: Options API Availability and Commercial Licensing Inquiry
-
-We are existing Twelve Data customers using your equity OHLCV bar and real-time
-quote APIs. We are evaluating whether to extend our use to options data.
-
-Please confirm:
-
-1. TECHNICAL AVAILABILITY
-   Do you offer a U.S. listed equity options API? Specifically:
-   - GET /v1/options/expirations (or equivalent) for a given symbol
-   - GET /v1/options/chain (or equivalent) — full chain by expiration
-   - Fields: OCC symbol, strike, expiration, call/put, bid, ask, last, volume, OI, timestamp
-   - Optional: implied volatility, delta, gamma, theta, vega
-
-2. WHICH PLAN TIER includes options data?
-
-3. DATA DELAY: Is the options data real-time (OPRA feed) or delayed (15/20 min)?
-
-4. COMMERCIAL REDISTRIBUTION
-   Our existing equity agreement uses venues not requiring additional licensing.
-   For options data: does our plan permit display of bid/ask/OI/IV to our
-   authenticated SaaS end users?
-
-5. OPRA
-   Is your options data sourced from an OPRA feed? What are the OPRA obligations
-   for a commercial SaaS displaying options data to end users?
-
-6. EXISTING AGREEMENT
-   Does our current plan include options, or would we need a separate add-on?
-
-7. PRICING
-   What is the incremental cost for options data at our scale (100–5,000 users)?
-```
+> **No further questions should be sent to Twelve Data regarding options data.**
+>
+> Direct written confirmation was received from Liam at Twelve Data on 2026-08-17:
+> *"We don't currently provide options data, but we hope to add it in future.
+> Though there isn't currently a firm ETA."*
+>
+> This supersedes all prior ambiguous public documentation. Twelve Data is eliminated
+> from the options provider candidate list. The existing equity OHLCV / real-time quote /
+> ATR / HV pipeline (used by Sprint 2.8.7C) is unaffected.
+>
+> Re-evaluation is only warranted if Twelve Data proactively notifies of a new options
+> product launch. No monitoring action is required.
 
 ---
 
@@ -970,7 +960,7 @@ Please confirm:
 | OPRA fees are much higher than expected at scale | HIGH | MEDIUM | Delayed data reduces exposure; confirm before implementation |
 | Provider rate limits are hit at scale | MEDIUM | LOW | 5-min server-side cache; circuit breaker |
 | Provider outage disrupts research | MEDIUM | LOW | Level 2 (theoretical) fallback always available; never crashes page |
-| Twelve Data equity license doesn't cover options | MEDIUM | MEDIUM | Already flagged — separate options confirmation required |
+| ~~Twelve Data equity license doesn't cover options~~ | ~~MEDIUM~~ | ~~MEDIUM~~ | **CLOSED 2026-08-17** — vendor confirmed no options product exists; equity integration unaffected |
 | Delayed data (15-min) is stale during volatile moves | LOW | LOW | Research context only; users know data is delayed; execution uses broker |
 | OCC symbol format differences between providers | LOW | LOW | `IndependentOptionQuote` normalizes — adapter handles per-provider variations |
 | Provider changes pricing mid-integration | LOW | LOW | env var `INDEPENDENT_OPTIONS_PROVIDER=disabled` allows instant cutoff |
@@ -984,7 +974,7 @@ Please confirm:
 ### Pre-Sprint Prerequisites (must complete BEFORE sprint starts)
 
 1. **Sign MarketData.app Commercial Use Addendum** — or confirm Polygon.io as primary
-2. **Receive written answers to vendor questions in §18** — specifically on redistribution, OPRA, and caching
+2. **Receive written answers to MarketData.app questions in §18A** — specifically on redistribution, OPRA, and caching (Twelve Data is fully resolved — §18B closed)
 3. **Licensing gate env var set**: `MARKETDATA_APP_OPTIONS_ENABLED=false` defaults in place before any code is written
 
 ### Sprint Scope — "Sprint 2.8.7D: Observed Options Market Data"
@@ -1033,7 +1023,7 @@ research hierarchy. Level 2 (THEORETICAL_ONLY) and Level 3 (BROKER_ENHANCED) rem
 | Primary provider | **B. MARKETDATA_APP** |
 | Backup provider | **Polygon.io** |
 | Real-time or delayed? | **15-min delayed for research** |
-| Twelve Data for options? | **Not confirmed — send questions in §18B before evaluating** |
+| Twelve Data for options? | **NOT_AVAILABLE — vendor confirmed (Liam, Twelve Data, 2026-08-17). Equity/OHLCV/HV integration unchanged.** |
 | ThetaData? | **Not suitable for SaaS V1 display — possible future backtesting use** |
 | Implementation prerequisite | **Commercial Use Addendum signed + vendor questions answered** |
 | Next sprint | **Sprint 2.8.7D** (after licensing gate cleared) |

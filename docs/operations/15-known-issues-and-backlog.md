@@ -127,6 +127,7 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 | BI-008 | Build IV solver (Newton-Raphson) + Black-Scholes Greeks engine with dual-track provenance (`VCP_IV_MODEL` vs `MARKET_PROVIDER`) | Audit C Group C | P1 |
 | BI-009 | Build HV-10/20/30/60/90 rolling volatility engine from stored daily bars; expected-move range calculation | Audit C Group B | P1 |
 | BI-010 | Add `OwnershipConfirmationState` to contract research; surface portfolio-import path for covered call / protective put research | Audit C Group E | P1 |
+| BI-011 | Build formal `RealizedVolatilitySet` (HV10/20/30/60/90) + `TheoreticalStrikeGrid` from stored daily bars; enforce `TheoreticalOptionValue` incompatibility with execution types | Amendment C1 / Group B | P1 |
 | ~~BI-005~~ | ~~Populate gate-site manifest in Doc 46 §6 (output of Audit A)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-16) |
 | ~~BI-006~~ | ~~Design two-layer preflight architecture (Audit B)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-17) |
 

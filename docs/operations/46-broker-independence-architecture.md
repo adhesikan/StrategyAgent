@@ -158,6 +158,26 @@ as an independent-mode substitute for live buying power in risk guardrail evalua
 
 ---
 
+## 4c. Amendment C1 — Underlying-Only Theoretical Mode
+
+**INVARIANT C1 — THEORETICAL/MODELED OPTION VALUES ARE NEVER EXECUTION-GRADE DATA.**
+
+Theoretical values (`MODEL_CALL_VALUE`, `MODEL_PUT_VALUE`, and any Greek derived from `VCP_REALIZED_VOL_MODEL` or `VCP_IV_MODEL` when no market mid is observed) cannot satisfy:
+
+1. Execution Preflight dim-9 broker quote validation
+2. Order Preparation execution quote requirement
+3. Order Preview executable price validation
+4. Final Revalidation before submission
+5. Broker Submission price parameter
+
+Only execution-approved broker data (live quote, ≤ 60s freshness, from a connected and permissioned broker account) may satisfy those gates. A modeled premium is not upgraded to execution-grade by the presence of a broker connection.
+
+This invariant is structurally enforced at the TypeScript type level: `TheoreticalOptionValue` is incompatible with `NormalizedOptionContract` and `ExecutionQuote` by design.
+
+See Doc 49 §C1 for the full underlying-only theoretical mode design.
+
+---
+
 ## 4b. Audit C Findings — Broker-Independent Options
 
 [Doc 49 — Audit C](49-audit-c-broker-independent-options.md) provides the full options architecture. Key decisions:

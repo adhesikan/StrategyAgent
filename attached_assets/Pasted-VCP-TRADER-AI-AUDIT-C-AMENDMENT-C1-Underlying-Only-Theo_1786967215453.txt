@@ -1,0 +1,378 @@
+VCP TRADER AI — AUDIT C AMENDMENT C1
+Underlying-Only Theoretical Options Mode
+
+Audit C is COMPLETE.
+
+DO NOT rerun Audit C.
+DO NOT implement application code.
+
+Add a narrowly scoped architecture amendment to Audit C defining an explicit
+UNDERLYING_ONLY_THEORETICAL_MODE.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Formalize the ability to calculate theoretical call and put values using
+broker-independent underlying stock data even when NO actual options-market
+quote/chain is available.
+
+This mode must remain clearly separate from observed options-market data.
+
+============================================================
+1. INPUTS
+============================================================
+
+Design the theoretical pricing engine around:
+
+S = current underlying stock price
+K = hypothetical/selected strike
+T = time to expiration
+r = risk-free rate
+q = dividend yield
+sigma = volatility assumption
+optionType = CALL | PUT
+
+Primary underlying data source:
+
+Twelve Data or canonical broker-independent MarketDataService.
+
+Volatility may be calculated internally from historical underlying prices:
+
+HV10
+HV20
+HV30
+HV60
+HV90
+
+Define a canonical default volatility lookback for model calculations and
+allow the calculation metadata to identify the lookback used.
+
+Do not assume implied volatility when no actual option-market price exists.
+
+============================================================
+2. THEORETICAL PRICING
+============================================================
+
+Use the pricing architecture already approved in Audit C:
+
+dividend-adjusted Black-Scholes as Phase 1.
+
+Outputs:
+
+MODEL_CALL_VALUE
+MODEL_PUT_VALUE
+
+or equivalent canonical types.
+
+These are theoretical research values.
+
+They MUST NEVER be represented as:
+
+market price
+option quote
+bid
+ask
+last
+mark
+executable price
+
+============================================================
+3. MODEL GREEKS
+============================================================
+
+Using the same volatility assumption, calculate:
+
+MODEL_DELTA
+MODEL_GAMMA
+MODEL_THETA
+MODEL_VEGA
+MODEL_RHO
+
+Set provenance:
+
+greekSource = VCP_REALIZED_VOL_MODEL
+
+when historical/realized underlying volatility is used.
+
+This is distinct from:
+
+VCP_IV_MODEL
+MARKET_PROVIDER
+
+============================================================
+4. THEORETICAL STRIKE GRID
+============================================================
+
+Design support for a theoretical strike grid.
+
+Example:
+
+Underlying = 185
+
+Expiration = 30 DTE
+
+Strike
+Model Call Value
+Model Put Value
+Model Delta
+Model Theta
+
+Strikes may be generated around the underlying using a deterministic range.
+
+This is NOT an actual option chain.
+
+Canonical naming must explicitly distinguish:
+
+THEORETICAL_STRIKE_GRID
+
+from:
+
+OPTION_CHAIN
+
+Do not generate or fabricate OCC contract symbols.
+
+============================================================
+5. EXPIRATION HANDLING
+============================================================
+
+Without an independent options feed, actual listed expirations may not be known.
+
+Therefore distinguish:
+
+ACTUAL_LISTED_EXPIRATION
+
+from:
+
+HYPOTHETICAL_EXPIRATION / MODEL_DTE
+
+The model may calculate:
+
+7 DTE
+14 DTE
+30 DTE
+45 DTE
+60 DTE
+90 DTE
+
+for research purposes.
+
+Do not represent these as exchange-listed expirations unless independently
+confirmed.
+
+============================================================
+6. REALIZED VOLATILITY
+============================================================
+
+Formalize the underlying volatility engine from Audit C Group B.
+
+Calculate annualized realized/historical volatility from underlying returns.
+
+Design:
+
+HV10
+HV20
+HV30
+HV60
+HV90
+
+Record:
+
+lookback
+annualization assumption
+observation count
+asOf
+underlying data source
+
+No option-market data is required.
+
+============================================================
+7. MODEL QUALITY
+============================================================
+
+Use/extend Audit C quality states.
+
+At minimum evaluate:
+
+NORMAL
+LOW_CONFIDENCE
+SHORT_DTE_WARNING
+DEEP_ITM_OTM_WARNING
+INSUFFICIENT_HISTORY
+
+Do not return fabricated numeric values when required inputs are missing.
+
+Null is preferred.
+
+============================================================
+8. USER-FACING DISCLOSURE
+============================================================
+
+Design explicit disclosure such as:
+
+"Theoretical value based on the Black-Scholes model using historical volatility
+derived from underlying price data. This is not the current market price of an
+option contract."
+
+For Greeks:
+
+"Model Greek calculated using historical volatility, not market implied
+volatility."
+
+Keep disclosure concise in the UI with expanded methodology available.
+
+============================================================
+9. MODEL VS MARKET MODE
+============================================================
+
+When actual independent option observations later become available, preserve
+both values.
+
+Example canonical structure:
+
+theoretical:
+  value
+  volatilityInput
+  model
+  greeks
+
+market:
+  bid
+  ask
+  midpoint
+  volume
+  openInterest
+  impliedVolatility
+
+derivedComparison:
+  modelVsMarketDifference
+
+Do NOT replace theoretical values with market values.
+
+They answer different research questions.
+
+============================================================
+10. IV TRANSITION
+============================================================
+
+When an actual option market midpoint becomes available:
+
+Observed midpoint
+    ↓
+VCP IV solver
+    ↓
+VCP_IV_MODEL Greeks
+
+Therefore the system can compare:
+
+REALIZED_VOL_MODEL
+
+versus
+
+IMPLIED_VOL_MODEL
+
+Do not introduce recommendation-oriented conclusions.
+
+============================================================
+11. STRATEGY RESEARCH
+============================================================
+
+Determine which existing strategy-level research can consume theoretical
+values when no actual chain exists.
+
+IMPORTANT:
+
+Theoretical premiums must never be passed into components that assume
+market-observed executable contract prices.
+
+Define explicit type/provenance protection preventing:
+
+MODEL_VALUE → execution/order preparation.
+
+============================================================
+12. EXECUTION SAFETY INVARIANT
+============================================================
+
+Add a permanent invariant:
+
+THEORETICAL/MODELED OPTION VALUES ARE NEVER EXECUTION-GRADE DATA.
+
+They cannot satisfy:
+
+Execution Preflight broker quote validation
+Order Preparation execution quote
+Order Preview executable price validation
+Final Revalidation
+Broker Submission
+
+Only execution-approved broker data may satisfy those gates.
+
+============================================================
+13. TEST PLAN ADDITIONS
+============================================================
+
+Add tests for:
+
+- call theoretical value
+- put theoretical value
+- dividend-adjusted model
+- HV10/20/30/60/90
+- model Greeks
+- theoretical strike grid
+- hypothetical DTE
+- missing history
+- short DTE warning
+- deep ITM/OTM warning
+- provenance
+- MODEL_VALUE cannot enter execution quote path
+- model-vs-market values remain distinct
+
+No tests implemented yet.
+
+============================================================
+14. DOCUMENTATION
+============================================================
+
+Amend:
+
+docs/operations/49-audit-c-broker-independent-options.md
+
+Add:
+
+"Underlying-Only Theoretical Options Mode"
+
+Also update Doc 46/backlog/change log where appropriate.
+
+No new full audit document is necessary.
+
+============================================================
+15. NO APPLICATION CODE
+============================================================
+
+git diff --name-only HEAD
+
+must remain docs/ only.
+
+============================================================
+RETURN
+============================================================
+
+Report:
+
+1. Mode name
+2. Required inputs
+3. Default volatility methodology
+4. Theoretical pricing outputs
+5. Model Greek outputs
+6. Theoretical strike-grid design
+7. Hypothetical expiration design
+8. Provenance model
+9. Quality/warning model
+10. Model-vs-market architecture
+11. Strategy integration boundaries
+12. Execution safety invariant
+13. Test additions
+14. Docs changed
+15. Confirmation application code changed = NO
+
+STOP AFTER THE AMENDMENT.

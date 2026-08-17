@@ -1,5 +1,33 @@
 # Sprint Change Log
 
+## Amendment C1 — Underlying-Only Theoretical Options Mode (2026-08-17)
+**Status:** COMPLETE — No application code changed
+
+**Scope:** Narrowly amends Doc 49 (Audit C). Formalizes `UNDERLYING_ONLY_THEORETICAL_MODE` — theoretical option values from underlying stock data alone, with no options chain required.
+
+**Key decisions:**
+- Mode name: `UNDERLYING_ONLY_THEORETICAL_MODE`; position 3 in the 4-level provider fallback hierarchy
+- Default volatility lookback: `HV30` (records which lookback was used in all metadata)
+- Outputs: `MODEL_CALL_VALUE`, `MODEL_PUT_VALUE` — never "price", "bid", "ask", "mark", "quote"
+- Provenance: `greekSource = "VCP_REALIZED_VOL_MODEL"` (distinct from `VCP_IV_MODEL` and `MARKET_PROVIDER`)
+- Canonical DTE scenarios: 7, 14, 30, 45, 60, 90 — always labeled "N DTE (hypothetical)"
+- `ACTUAL_LISTED_EXPIRATION` vs `HYPOTHETICAL_EXPIRATION` — never conflate
+- `TheoreticalStrikeGrid` is explicitly NOT called an option chain; no OCC symbols generated
+- Model-vs-market: both preserved independently; `derivedComparison` populated only when both present
+- Invariant C1 (permanent): theoretical values cannot satisfy any execution gate (Preflight, Order Prep, Preview, Revalidation, Submission)
+- Type-level protection: `TheoreticalOptionValue` structurally incompatible with `NormalizedOptionContract` and `ExecutionQuote`
+- 16 test cases added to Suite 11 (`theoretical-options-mode.test.ts`)
+
+**Documents updated:**
+- `docs/operations/49-audit-c-broker-independent-options.md` — Amendment C1 appended
+- `docs/operations/46-broker-independence-architecture.md` — Invariant C1 + §4c added
+- `docs/operations/15-known-issues-and-backlog.md` — BI-011 added
+- `docs/operations/17-sprint-change-log.md` — this entry
+
+**Application code changed: NO**
+
+---
+
 ## Audit C — Broker-Independent Options Data & Analytics (2026-08-17)
 **Status:** COMPLETE — No application code changed
 

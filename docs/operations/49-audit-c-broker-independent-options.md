@@ -1128,3 +1128,410 @@ The following must be preserved through all implementation:
 | `docs/operations/17-sprint-change-log.md` | Audit C entry |
 
 **Application code changed: NO**
+
+---
+
+## Amendment C1 — Underlying-Only Theoretical Options Mode
+
+**Date:** 2026-08-17  
+**Status:** COMPLETE — No application code changed
+
+This amendment formalizes a mode that was implied by Audit C §3 and §6 but not given a canonical name or complete design. It is distinct from the independent-provider path (Groups A, D) and from the broker-connected path.
+
+---
+
+### C1.1 Mode Name and Position in the Provider Hierarchy
+
+```
+UNDERLYING_ONLY_THEORETICAL_MODE
+```
+
+Position in the provider fallback hierarchy (amends §20):
+
+```
+1. Primary independent options provider   → OPTION_MARKET_OBSERVED data
+2. Broker provider (if connected)         → OPTION_MARKET_OBSERVED data (live, execution-grade)
+3. UNDERLYING_ONLY_THEORETICAL_MODE       → no chain; theoretical values from stock data only
+4. No data at all                         → null; no fabrication
+```
+
+This mode activates when no option chain is available from any source. It uses only:
+- Stored daily OHLCV bars (Twelve Data, already in DB)
+- User-selected or model-generated hypothetical parameters (strike, DTE)
+
+It does NOT activate when an actual chain exists — market-observed data always takes precedence.
+
+---
+
+### C1.2 Required Inputs
+
+```typescript
+interface TheoreticalPricingInputs {
+  // Underlying — from Twelve Data stored bars or real-time quote
+  S:              number;             // Current underlying price (end-of-day reference)
+  underlyingSource: "twelve_data_daily" | "twelve_data_realtime" | "broker_quote";
+
+  // Contract parameters — user-selected or model-generated; NOT from a live chain
+  K:              number;             // Strike price (hypothetical)
+  T:              number;             // Time to expiration in years (DTE / 252)
+  expirationMode: "ACTUAL_LISTED_EXPIRATION" | "HYPOTHETICAL_EXPIRATION";
+  dteLabel:       string;             // e.g. "30 DTE (hypothetical)" or "2026-09-19 (listed)"
+
+  optionType:     "CALL" | "PUT";
+
+  // Volatility — from internal HV engine; NEVER assumed to be market IV
+  sigma:          number;             // Annualized volatility (e.g. 0.28 for 28%)
+  sigmaSource:    "HV10" | "HV20" | "HV30" | "HV60" | "HV90";
+  sigmaLookback:  number;             // Number of trading days used in calculation
+  sigmaAsOf:      string;             // ISO 8601 — date of most recent bar used
+
+  // Model parameters
+  r:              number;             // Risk-free rate (approximated; see §6.2 of Audit C)
+  rSource:        "HARDCODED_APPROX"; // Only valid value in Phase 1
+  q:              number;             // Continuous dividend yield (0.0 if unavailable)
+  qSource:        "STORED_FUNDAMENTAL" | "ASSUMED_ZERO";
+}
+```
+
+**Canonical default volatility lookback:** `HV30` (30-day realized volatility). This is the default when no user preference is expressed. The metadata always records which lookback was used.
+
+**Do not assume implied volatility when no actual option-market price exists.** `sigma` must come from the underlying return series, never from a missing/absent market IV.
+
+---
+
+### C1.3 Theoretical Pricing Outputs
+
+```typescript
+interface TheoreticalOptionValue {
+  // Canonical output labels — NEVER "price", "bid", "ask", "mark", "last", "quote"
+  MODEL_CALL_VALUE:   number | null;   // BS call value (if optionType = CALL or grid mode)
+  MODEL_PUT_VALUE:    number | null;   // BS put value (if optionType = PUT or grid mode)
+
+  model:              "BLACK_SCHOLES_CONTINUOUS_DIVIDEND";
+  volatilityInput:    number;          // sigma used
+  volatilitySource:   string;          // "HV30" etc.
+  quality:            TheoreticalQuality;
+
+  // Mandatory user-facing disclosure (see §C1.8)
+  disclosure:         string;
+
+  // Provenance
+  provenance:         TheoreticalProvenance;
+}
+```
+
+**These values MUST NEVER be represented as:**
+- market price, option quote, bid, ask, last, mark, executable price
+- mid / midpoint (reserved for observed bid+ask)
+- Any label suggesting these are obtainable in the market
+
+**Required UI label pattern:** "Theoretical Value (Black-Scholes / HV30 model)" — not "Price" or "Value."
+
+---
+
+### C1.4 Model Greek Outputs
+
+```typescript
+interface TheoreticalGreeks {
+  MODEL_DELTA:   number | null;
+  MODEL_GAMMA:   number | null;
+  MODEL_THETA:   number | null;   // Per-day, labeled "per calendar day"
+  MODEL_VEGA:    number | null;   // Per 1-point IV change
+  MODEL_RHO:     number | null;
+
+  greekSource:   "VCP_REALIZED_VOL_MODEL";  // Always this value in underlying-only mode
+  quality:       TheoreticalQuality;
+}
+```
+
+`greekSource = "VCP_REALIZED_VOL_MODEL"` is the canonical identifier for Greeks derived from historical/realized volatility of the underlying — distinct from `"VCP_IV_MODEL"` (Greek from a market-observed mid, IV-solved) and `"MARKET_PROVIDER"` (Greek from a provider chain).
+
+**Required UI label:** "Model Greek (historical volatility) — not market-observed."
+
+---
+
+### C1.5 Theoretical Strike Grid
+
+A theoretical strike grid is a research artifact generated entirely from underlying data and model calculation. It is NOT an option chain.
+
+```typescript
+interface TheoreticalStrikeGrid {
+  mode:              "UNDERLYING_ONLY_THEORETICAL_MODE";
+  underlying:        string;         // Symbol
+  underlyingPrice:   number;         // S used
+  dteScenario:       number;         // e.g. 30
+  expirationMode:    "HYPOTHETICAL_EXPIRATION";
+  dteLabel:          string;         // "30 DTE (hypothetical)"
+  volatilityInput:   number;
+  volatilitySource:  string;
+  generatedAt:       string;         // ISO 8601
+
+  // Canonical name — must NOT be called "chain"
+  rows: TheoreticalStrikeRow[];
+}
+
+interface TheoreticalStrikeRow {
+  strike:            number;         // Hypothetical — not OCC symbol, not listed
+  moneyness:         "ITM" | "ATM" | "OTM";
+  strikePctFromUnderlying: number;   // (K − S) / S × 100
+
+  call: {
+    MODEL_CALL_VALUE:  number | null;
+    MODEL_DELTA:       number | null;
+    MODEL_THETA:       number | null;
+    quality:           TheoreticalQuality;
+  };
+
+  put: {
+    MODEL_PUT_VALUE:   number | null;
+    MODEL_DELTA:       number | null;
+    MODEL_THETA:       number | null;
+    quality:           TheoreticalQuality;
+  };
+}
+```
+
+**Strike generation:** Deterministic range around underlying price. Example: 5 strikes above and below ATM in increments of one standard deviation unit (`S × HV30 × √(T/12)`) or a fixed-dollar step. Never generate OCC contract symbols — these are hypothetical strike levels only.
+
+**Required header label:** "Theoretical Strike Grid — NOT an option chain. Values are Black-Scholes model estimates using historical volatility. No actual contracts are represented."
+
+---
+
+### C1.6 Expiration Handling
+
+```typescript
+type ExpirationMode =
+  | "ACTUAL_LISTED_EXPIRATION"   // From an independent provider or broker chain — confirmed
+  | "HYPOTHETICAL_EXPIRATION";   // Model DTE; no exchange listing confirmed
+
+// Canonical hypothetical DTE scenarios for underlying-only research
+const HYPOTHETICAL_DTE_SCENARIOS = [7, 14, 30, 45, 60, 90] as const;
+type HypotheticalDte = typeof HYPOTHETICAL_DTE_SCENARIOS[number];
+```
+
+**Display rules:**
+- `ACTUAL_LISTED_EXPIRATION`: show date (e.g. "2026-09-19")
+- `HYPOTHETICAL_EXPIRATION`: always show as "N DTE (hypothetical)" — NEVER as a date
+
+Actual listed expirations require confirmation from an independent provider or broker. The theoretical mode never claims to know which dates are listed.
+
+---
+
+### C1.7 Realized Volatility Engine (Formalizes Group B)
+
+```typescript
+interface RealizedVolatilityResult {
+  lookback:              10 | 20 | 30 | 60 | 90;   // Trading days
+  annualizationFactor:   252;                        // Always 252 trading days
+  observationCount:      number;                     // Actual bar count used (may be < lookback if history limited)
+  hv:                    number | null;              // Annualized σ; null if insufficient history
+  quality:               TheoreticalQuality;
+  asOf:                  string;                     // ISO 8601 date of most recent bar
+  underlyingDataSource:  "twelve_data_daily";
+}
+
+// The five canonical lookbacks
+interface RealizedVolatilitySet {
+  HV10:  RealizedVolatilityResult;
+  HV20:  RealizedVolatilityResult;
+  HV30:  RealizedVolatilityResult;
+  HV60:  RealizedVolatilityResult;
+  HV90:  RealizedVolatilityResult;
+}
+```
+
+**Formula:** `σ = std(log(Pt / Pt-1)) × √252`
+
+All five lookbacks are calculated from the same stored bar series. No option-market data required.
+
+---
+
+### C1.8 Quality / Warning States
+
+```typescript
+type TheoreticalQuality =
+  | "NORMAL"                  // All inputs valid; model applies cleanly
+  | "LOW_CONFIDENCE"          // Usable but interpret cautiously — see note field
+  | "SHORT_DTE_WARNING"       // DTE < 7; theta instability, model may be unreliable
+  | "DEEP_ITM_OTM_WARNING"    // |K − S| / S > 0.50; BS numerics degrade
+  | "INSUFFICIENT_HISTORY"    // Fewer bars available than lookback requires (observation < lookback)
+  | "UNAVAILABLE";            // Required input null or invalid; null output
+
+// Compound quality: worst of multiple signals
+function worstQuality(a: TheoreticalQuality, b: TheoreticalQuality): TheoreticalQuality { /* ... */ }
+```
+
+**Null is preferred over fabricated values.** When quality = `UNAVAILABLE`, all numeric outputs are null.
+
+---
+
+### C1.9 User-Facing Disclosures
+
+**Theoretical value disclosure (short form — always shown inline):**
+> "Theoretical value based on the Black-Scholes model using historical volatility derived from underlying price data. This is not the current market price of an option contract."
+
+**Model Greek disclosure (short form):**
+> "Model Greek calculated using historical volatility, not market implied volatility."
+
+**Strike grid header (always shown):**
+> "Theoretical Strike Grid — NOT an option chain. Values are Black-Scholes model estimates using historical volatility. No actual contracts are represented."
+
+**Hypothetical expiration disclosure:**
+> "Expiration date is hypothetical (N DTE). Actual listed expirations may differ."
+
+UI pattern: short disclosure inline; expandable "Methodology" section for full detail (lookback, annualization assumption, observation count, model used, rate assumption).
+
+---
+
+### C1.10 Model-vs-Market Architecture
+
+When actual market-observed chain data later becomes available for the same symbol, both values are preserved. They answer different research questions and must not be conflated.
+
+```typescript
+interface OptionsResearchValue {
+  // Set A: Underlying-only theoretical (always available when underlying data exists)
+  theoretical: {
+    MODEL_CALL_VALUE:   number | null;
+    MODEL_PUT_VALUE:    number | null;
+    volatilityInput:    number;         // HV used as sigma
+    model:              string;
+    greeks:             TheoreticalGreeks;
+    quality:            TheoreticalQuality;
+  } | null;
+
+  // Set B: Market-observed (available only when chain data present)
+  market: {
+    bid:              number | null;
+    ask:              number | null;
+    midpoint:         number | null;    // (bid + ask) / 2 — NEVER a model value
+    volume:           number | null;
+    openInterest:     number | null;
+    impliedVolatility: number | null;   // Provider or VCP-solved
+    greeks:           GreeksResult;     // From §8 dual-track provenance
+  } | null;
+
+  // Set C: Derived comparison (populated only when both A and B are non-null)
+  derivedComparison: {
+    modelVsMarketDifference: number | null;  // theoretical mid − market mid
+    ivVsHvSpread:            number | null;  // market IV − HV30
+    note: string;
+  } | null;
+}
+```
+
+**Rules:**
+- `theoretical` values are never replaced by `market` values — they remain available for comparison
+- `market.midpoint` is always bid+ask observed — never a BS value
+- `derivedComparison` is populated only when both A and B are present
+- No recommendation-oriented conclusions from the comparison
+
+---
+
+### C1.11 IV Transition (Realized → Implied → Model Greeks)
+
+```
+When actual option market midpoint is observed:
+
+  Observed midpoint (market.bid, market.ask)
+        ↓
+  VCP IV solver (Newton-Raphson — §7 of Audit C)
+        ↓
+  Solved IV → greekSource = VCP_IV_MODEL
+        ↓
+  Black-Scholes Greeks using solved IV
+
+Comparison now available:
+  REALIZED_VOL_MODEL  (greekSource = VCP_REALIZED_VOL_MODEL, sigma = HV30)
+  vs
+  IMPLIED_VOL_MODEL   (greekSource = VCP_IV_MODEL, sigma = solved IV from market mid)
+```
+
+No recommendation-oriented conclusions from this comparison. Label: "HV vs IV comparison — research context only."
+
+---
+
+### C1.12 Strategy Research Integration Boundaries
+
+**Strategies that CAN consume theoretical values (underlying-only mode):**
+
+| Use Case | Allowed |
+|---|---|
+| Display theoretical call/put premium range in Strategy Matching educational panel | ✓ With disclosure |
+| Show expected move from HV in research overview | ✓ Already in §3.3 of Audit C |
+| Populate theoretical strike grid for research exploration | ✓ `UNDERLYING_ONLY_THEORETICAL_MODE` clearly labeled |
+| Scenario P/L in Trade Risk & Scenario Analysis | ✓ ONLY if user explicitly acknowledges these are hypothetical premiums |
+
+**Theoretical values MUST NOT be passed to these components:**
+
+| Component | Reason |
+|---|---|
+| Order Preparation Engine | Requires market-observed execution quote |
+| Order Preview (equity or options) | `executable` flag must be `false`; theoretical mid cannot satisfy price validation |
+| Execution Preflight dim-9 (Quote Validation) | Must be `PLANNING_MODE` or broker-live only |
+| Final Revalidation before submission | Broker quote mandatory |
+| Broker Submission | Not execution-grade |
+
+**Type-level protection:** The `TheoreticalOptionValue` type must NOT satisfy any interface that accepts `NormalizedOptionContract` or `ExecutionQuote`. These are structurally incompatible by design — TypeScript structural typing must enforce the boundary, not just runtime checks.
+
+---
+
+### C1.13 Execution Safety Invariant (Permanent)
+
+```
+INVARIANT C1 — THEORETICAL/MODELED OPTION VALUES ARE NEVER EXECUTION-GRADE DATA.
+
+Theoretical values (MODEL_CALL_VALUE, MODEL_PUT_VALUE, and any Greek
+derived from VCP_REALIZED_VOL_MODEL or VCP_IV_MODEL when no market
+mid is observed) CANNOT satisfy:
+
+  1. Execution Preflight dim-9 broker quote validation
+  2. Order Preparation execution quote requirement
+  3. Order Preview executable price validation
+  4. Final Revalidation before submission
+  5. Broker Submission price parameter
+
+Only execution-approved broker data (live quote, ≤ 60s freshness,
+from a connected and permissioned broker account) may satisfy those gates.
+
+This invariant applies to ALL modes including broker-connected mode.
+A modeled premium is not upgraded to execution-grade by the presence
+of a broker connection.
+```
+
+---
+
+### C1.14 Additional Test Cases (Amends §27)
+
+These extend the 10 suites defined in §27. Added to Suite 3 (BS Greeks) and a new Suite 11:
+
+**Suite 11: Underlying-Only Theoretical Mode** (`theoretical-options-mode.test.ts`)
+
+- [ ] Call theoretical value: known BS inputs → known output
+- [ ] Put theoretical value: put-call parity check
+- [ ] Dividend-adjusted model: non-zero q reduces call value / increases put value
+- [ ] HV10/20/30/60/90 from known OHLC sequence → correct annualized σ
+- [ ] Default lookback is HV30 when no preference supplied
+- [ ] Model Greeks: delta 0 < call_delta < 1; put_delta < 0
+- [ ] Theoretical strike grid: ATM row exists; ITM/OTM moneyness correct
+- [ ] Hypothetical DTE: `expirationMode = "HYPOTHETICAL_EXPIRATION"`; date never returned
+- [ ] Missing history (< lookback bars): `INSUFFICIENT_HISTORY` quality; HV = null
+- [ ] Short DTE (DTE = 3): `SHORT_DTE_WARNING` on output
+- [ ] Deep OTM (K = 3× S): `DEEP_ITM_OTM_WARNING` on output; null value acceptable
+- [ ] Provenance: `greekSource = "VCP_REALIZED_VOL_MODEL"` always set
+- [ ] `MODEL_CALL_VALUE` is rejected by `NormalizedOptionContract` assignment (type test)
+- [ ] `TheoreticalOptionValue` cannot flow into Order Preparation input (type test)
+- [ ] Model-vs-market: both values preserved; `derivedComparison` populated only when both present
+- [ ] Zero-fill forbidden: when quality = `UNAVAILABLE`, all numeric outputs are null
+
+---
+
+### C1.15 Documentation Changes (Amendment C1)
+
+| File | Change |
+|---|---|
+| `docs/operations/49-audit-c-broker-independent-options.md` | **AMENDED** — this section appended |
+| `docs/operations/46-broker-independence-architecture.md` | Invariant C1 added to §6 invariants |
+| `docs/operations/15-known-issues-and-backlog.md` | BI-011 added (Group B formal spec) |
+| `docs/operations/17-sprint-change-log.md` | Amendment C1 entry |
+
+**Application code changed: NO**

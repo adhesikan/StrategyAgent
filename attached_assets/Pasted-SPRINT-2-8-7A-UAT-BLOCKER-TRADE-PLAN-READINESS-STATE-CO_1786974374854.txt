@@ -1,0 +1,113 @@
+SPRINT 2.8.7A UAT BLOCKER — TRADE PLAN READINESS STATE CONSISTENCY
+
+Do not start Sprint 2.8.7B.
+Do not change execution safety gates.
+Treat this strictly as a Sprint 2.8.7A UAT bug fix.
+
+PRODUCTION UAT RESULT
+
+Broker is disconnected.
+
+NVDA Trade Plan currently shows:
+
+Plan header:
+- Status: Research Complete
+- Badge: Requires Review
+- Message: Research score changed by 19.0 points since plan creation
+
+Trade Plan Readiness after explicitly clicking "Check Plan Readiness":
+- Overall UI label: Review Required
+- Trade Plan: PASS
+- Research Lifecycle: PASS
+- Plan Freshness: PASS
+- Risk Analysis: UNAVAILABLE
+- Planning Constraints: PASS
+
+Direct Execution correctly shows:
+- Brokerage not connected
+- Connect Broker — Optional
+
+The broker-independence portion of Sprint 2.8.7A appears to work, but the readiness state is internally inconsistent.
+
+INVESTIGATE BEFORE MAKING CHANGES.
+
+1. Trace the exact source of:
+   a. header "Requires Review"
+   b. Trade Plan Readiness "Review Required"
+   c. Research Lifecycle PASS
+   d. tradePlanReadiness.status
+
+2. Capture/log the API result returned immediately after
+   "Check Plan Readiness", including:
+   - overallStatus
+   - tradePlanReadiness.status
+   - tradePlanReadiness.label
+   - all tradePlanReadiness.dimensions
+   - lifecycle state
+   - blockers
+   - warnings
+   - limitations
+   - executionAvailable
+
+3. Determine whether:
+   - the header badge is using stale persisted planHealth/lifecycle data;
+   - the readiness summary is derived from an older overallStatus;
+   - computeTradePlanReadiness() is producing REQUIRES_REVIEW despite
+     all relevant dimensions being PASS;
+   - UNAVAILABLE Risk Analysis is incorrectly mapped to
+     REQUIRES_REVIEW;
+   - different lifecycle sources are being used by the header and
+     readiness panel;
+   - React Query cache keys are inconsistent.
+
+4. Establish the canonical semantics:
+
+   If Research Lifecycle = PASS and Plan Freshness = PASS, the UI must
+   not claim that research review is required unless another dimension
+   explicitly has REQUIRES_REVIEW.
+
+   UNAVAILABLE Risk Analysis must NOT be translated into
+   "Review Required."
+
+   If missing Risk Analysis prevents full plan readiness, use an
+   accurate state/label such as incomplete/not assessed according to
+   the existing canonical status vocabulary. Do not invent a new
+   status without documenting why it is required.
+
+5. Check whether the plan-level "Requires Review" badge should clear
+   after lifecycle review/current-state evaluation. Header and
+   readiness panel must use compatible canonical lifecycle state.
+
+6. Add regression tests reproducing this exact state:
+   Trade Plan PASS
+   Research Lifecycle PASS
+   Plan Freshness PASS
+   Risk Analysis UNAVAILABLE
+   Planning Constraints PASS
+   broker disconnected
+
+   Assert that the result is NOT incorrectly labeled
+   "Review Required" unless a dimension actually requires review.
+
+7. Also test:
+   - lifecycle REQUIRES_REVIEW -> Review Required
+   - lifecycle PASS -> no Review Required label
+   - risk UNAVAILABLE + lifecycle PASS
+   - risk PASS + lifecycle PASS
+   - broker disconnected does not affect research-review state
+   - broker reconnect does not alter Trade Plan Readiness semantics
+
+8. Preserve Sprint 2.8.7A invariants:
+   - brokerless TPR can operate
+   - brokerless overallStatus never PASS
+   - brokerless executionAvailable always false
+   - no Prepare for Execution without broker
+   - order preparation/submission gates unchanged
+
+Report root cause and proposed fix BEFORE implementation if the fix
+requires changing readiness semantics or status vocabulary.
+
+If it is simply a stale-state/cache/UI derivation bug, fix it, run the
+targeted tests and full regression suite, and report the changes.
+
+STOP after this UAT blocker is resolved.

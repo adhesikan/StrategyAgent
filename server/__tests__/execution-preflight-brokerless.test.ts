@@ -373,13 +373,18 @@ describe("Suite 4 — Equity Independent Mode", () => {
     expect(result.tradePlanReadiness!.status).toBe("FAIL");
   });
 
-  it("equity plan: missing risk snapshot → TPR REQUIRES_REVIEW (UNAVAILABLE dim)", async () => {
+  it("equity plan: missing risk snapshot → TPR UNAVAILABLE (not REQUIRES_REVIEW)", async () => {
+    // UAT blocker fix: UNAVAILABLE risk dim must roll up to UNAVAILABLE overall,
+    // NOT to REQUIRES_REVIEW. "Review Required" is only for dims that explicitly
+    // require human review action.
     const plan = makePlan({ riskSnapshot: null });
     const deps = makeDeps(plan, makeLifecycle("CURRENT"), false);
     const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
 
     expect(result.riskValidation.status).toBe("UNAVAILABLE");
-    expect(result.tradePlanReadiness!.status).toBe("REQUIRES_REVIEW");
+    expect(result.tradePlanReadiness!.status).toBe("UNAVAILABLE");
+    expect(result.tradePlanReadiness!.label).toBe("Not Fully Assessed");
+    expect(result.tradePlanReadiness!.label).not.toBe("Review Required");
   });
 });
 
@@ -683,6 +688,164 @@ describe("Suite 10 — Planning Constraint Dimension", () => {
     const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
 
     expect(result.tradePlanReadiness!.dimensions.planningConstraints.status).toBe("UNAVAILABLE");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUITE 12: UAT BLOCKER REGRESSION — UNAVAILABLE ≠ REQUIRES_REVIEW
+//
+// Reproduces the exact UAT failure: Risk Analysis = UNAVAILABLE was incorrectly
+// rolling up to "Review Required" overall TPR label even when no dimension
+// explicitly required human review.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Suite 12 — UAT Regression: UNAVAILABLE must not produce 'Review Required'", () => {
+  // Exact UAT scenario:
+  // Trade Plan PASS, Research Lifecycle PASS, Plan Freshness PASS,
+  // Risk Analysis UNAVAILABLE, Planning Constraints PASS, broker disconnected
+  it("exact UAT state: risk UNAVAILABLE + lifecycle PASS + broker disconnected → NOT 'Review Required'", async () => {
+    const plan = makePlan({ riskSnapshot: null }); // risk UNAVAILABLE
+    const deps = makeDeps(plan, makeLifecycle("CURRENT"), false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const tpr = result.tradePlanReadiness!;
+
+    // All dims per the UAT observation
+    expect(tpr.dimensions.tradePlan.status).toBe("PASS");
+    expect(tpr.dimensions.lifecycle.status).toBe("PASS");
+    expect(tpr.dimensions.freshness.status).toBe("PASS");
+    expect(tpr.dimensions.risk.status).toBe("UNAVAILABLE");
+    expect(tpr.dimensions.planningConstraints.status).toBe("PASS");
+
+    // Overall must be UNAVAILABLE, never REQUIRES_REVIEW
+    expect(tpr.status).toBe("UNAVAILABLE");
+    expect(tpr.status).not.toBe("REQUIRES_REVIEW");
+
+    // Label must be "Not Fully Assessed" — never "Review Required"
+    expect(tpr.label).toBe("Not Fully Assessed");
+    expect(tpr.label).not.toBe("Review Required");
+
+    // Execution still correctly unavailable (broker disconnected)
+    expect(result.executionAvailable).toBe(false);
+    expect(result.overallStatus).not.toBe("PASS");
+  });
+
+  // UAT item 7a: lifecycle REQUIRES_REVIEW → TPR overall REQUIRES_REVIEW → "Review Required"
+  it("lifecycle REQUIRES_REVIEW → TPR 'Review Required' (legitimate use of the label)", async () => {
+    const plan = makePlan({ riskSnapshot: null }); // risk also UNAVAILABLE
+    const deps = makeDeps(plan, makeLifecycle("REQUIRES_REVIEW"), false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const tpr = result.tradePlanReadiness!;
+    expect(tpr.dimensions.lifecycle.status).toBe("REQUIRES_REVIEW");
+    expect(tpr.status).toBe("REQUIRES_REVIEW");
+    expect(tpr.label).toBe("Review Required");
+  });
+
+  // UAT item 7b: lifecycle PASS (no dims REQUIRES_REVIEW) → NO "Review Required" label
+  it("lifecycle PASS + all other dims PASS → label is 'Plan Ready', not 'Review Required'", async () => {
+    const deps = makeDeps(makePlan(), makeLifecycle("CURRENT"), false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const tpr = result.tradePlanReadiness!;
+    expect(tpr.status).toBe("PASS");
+    expect(tpr.label).toBe("Plan Ready");
+    expect(tpr.label).not.toBe("Review Required");
+  });
+
+  // UAT item 7c: risk UNAVAILABLE + lifecycle PASS → UNAVAILABLE (not REQUIRES_REVIEW)
+  it("risk UNAVAILABLE + lifecycle PASS → TPR UNAVAILABLE", async () => {
+    const plan = makePlan({ riskSnapshot: null });
+    const deps = makeDeps(plan, makeLifecycle("CURRENT"), false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const tpr = result.tradePlanReadiness!;
+    expect(tpr.dimensions.risk.status).toBe("UNAVAILABLE");
+    expect(tpr.dimensions.lifecycle.status).toBe("PASS");
+    expect(tpr.status).toBe("UNAVAILABLE");
+    expect(tpr.status).not.toBe("REQUIRES_REVIEW");
+  });
+
+  // UAT item 7d: risk PASS + lifecycle PASS → TPR PASS
+  it("risk PASS + lifecycle PASS → TPR PASS", async () => {
+    const deps = makeDeps(makePlan(), makeLifecycle("CURRENT"), false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const tpr = result.tradePlanReadiness!;
+    expect(tpr.dimensions.risk.status).toBe("PASS");
+    expect(tpr.status).toBe("PASS");
+    expect(tpr.label).toBe("Plan Ready");
+  });
+
+  // UAT item 7e: broker disconnected does NOT affect research-review state
+  it("broker disconnect does not affect TPR lifecycle dim or overall research-review state", async () => {
+    const withBroker    = makeDeps(makePlan(), makeLifecycle("CURRENT"), true);
+    const withoutBroker = makeDeps(makePlan(), makeLifecycle("CURRENT"), false);
+
+    const [r1, r2] = await Promise.all([
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withBroker),
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withoutBroker),
+    ]);
+
+    // TPR lifecycle dim identical regardless of broker
+    expect(r1.tradePlanReadiness!.dimensions.lifecycle.status).toBe("PASS");
+    expect(r2.tradePlanReadiness!.dimensions.lifecycle.status).toBe("PASS");
+    // TPR status identical
+    expect(r1.tradePlanReadiness!.status).toBe("PASS");
+    expect(r2.tradePlanReadiness!.status).toBe("PASS");
+    // Only overall and executionAvailable differ
+    expect(r1.overallStatus).toBe("PASS");
+    expect(r2.overallStatus).not.toBe("PASS");
+  });
+
+  // UAT item 7f: broker reconnect does NOT alter Trade Plan Readiness semantics
+  it("broker reconnect does not change TPR dimensions or status", async () => {
+    const withoutBroker = makeDeps(makePlan(), makeLifecycle("CURRENT"), false);
+    const withBroker    = makeDeps(makePlan(), makeLifecycle("CURRENT"), true);
+
+    const [r1, r2] = await Promise.all([
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withoutBroker),
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withBroker),
+    ]);
+
+    // TPR is identical
+    const tpr1 = r1.tradePlanReadiness!;
+    const tpr2 = r2.tradePlanReadiness!;
+    expect(tpr1.status).toBe(tpr2.status);
+    expect(tpr1.label).toBe(tpr2.label);
+    expect(tpr1.dimensions.tradePlan.status).toBe(tpr2.dimensions.tradePlan.status);
+    expect(tpr1.dimensions.lifecycle.status).toBe(tpr2.dimensions.lifecycle.status);
+    expect(tpr1.dimensions.risk.status).toBe(tpr2.dimensions.risk.status);
+  });
+
+  // REQUIRES_REVIEW takes priority over UNAVAILABLE when both are present
+  it("REQUIRES_REVIEW dim takes priority over UNAVAILABLE dim in rollup", async () => {
+    // lifecycle = REQUIRES_REVIEW, risk = UNAVAILABLE (no snapshot)
+    const plan = makePlan({ riskSnapshot: null });
+    const deps = makeDeps(plan, makeLifecycle("REQUIRES_REVIEW"), false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const tpr = result.tradePlanReadiness!;
+    expect(tpr.dimensions.lifecycle.status).toBe("REQUIRES_REVIEW");
+    expect(tpr.dimensions.risk.status).toBe("UNAVAILABLE");
+    // REQUIRES_REVIEW wins over UNAVAILABLE
+    expect(tpr.status).toBe("REQUIRES_REVIEW");
+    expect(tpr.label).toBe("Review Required");
+  });
+
+  // FAIL takes priority over both REQUIRES_REVIEW and UNAVAILABLE
+  it("FAIL dim takes priority over REQUIRES_REVIEW and UNAVAILABLE in rollup", async () => {
+    // lifecycle = THESIS_INVALIDATED (FAIL), risk = no snapshot (UNAVAILABLE)
+    const plan = makePlan({ riskSnapshot: null });
+    const lifecycle: StoredLifecycleResult = {
+      planId: "plan-123", lifecycleState: "THESIS_INVALIDATED", evaluatedAt: NOW,
+    };
+    const deps = makeDeps(plan, lifecycle, false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const tpr = result.tradePlanReadiness!;
+    expect(tpr.status).toBe("FAIL");
+    expect(tpr.label).toBe("Blocked");
   });
 });
 

@@ -193,9 +193,19 @@ export interface ConfirmationRequirements {
  * PASS here NEVER authorizes order preparation or broker submission.
  */
 export interface TradePlanReadiness {
-  /** "PASS" | "FAIL" | "REQUIRES_REVIEW" */
-  status: "PASS" | "FAIL" | "REQUIRES_REVIEW";
-  /** Display headline: "Plan Ready" | "Review Required" | "Blocked" */
+  /** "PASS" | "FAIL" | "REQUIRES_REVIEW" | "UNAVAILABLE"
+   *
+   * - PASS           – all dims clear; plan is ready for execution readiness check
+   * - REQUIRES_REVIEW – at least one dim explicitly requires human review
+   * - UNAVAILABLE    – no dim requires review, but one or more dims could not be
+   *                    evaluated (e.g. risk analysis not yet run); plan is incomplete
+   * - FAIL           – a hard blocker prevents execution (e.g. thesis invalidated)
+   *
+   * UNAVAILABLE is intentionally lower-severity than REQUIRES_REVIEW.
+   * UNAVAILABLE must never be used to label a state as "Review Required".
+   */
+  status: "PASS" | "FAIL" | "REQUIRES_REVIEW" | "UNAVAILABLE";
+  /** Display headline: "Plan Ready" | "Review Required" | "Not Fully Assessed" | "Blocked" */
   label: string;
   /** Broker-independent dimensions: trade plan, lifecycle, freshness, risk, constraints */
   dimensions: {

@@ -867,15 +867,21 @@ function computeTradePlanReadiness(
 ): TradePlanReadiness {
   const dims = [tradePlanDim, lifecycleDim, freshnessDim, riskDim, constraintDim];
 
+  // Priority: FAIL > REQUIRES_REVIEW > UNAVAILABLE > PASS
+  // UNAVAILABLE means a dim could not be evaluated (e.g. risk analysis not yet run).
+  // It must NOT be promoted to REQUIRES_REVIEW — that label implies human review is
+  // needed, which is inaccurate when data is simply absent.
   let status: TradePlanReadiness["status"] = "PASS";
   for (const d of dims) {
     if (d.status === "FAIL") { status = "FAIL"; break; }
-    if (d.status === "REQUIRES_REVIEW" || d.status === "UNAVAILABLE") { status = "REQUIRES_REVIEW"; }
+    if (d.status === "REQUIRES_REVIEW") { status = "REQUIRES_REVIEW"; }
+    if (d.status === "UNAVAILABLE" && status === "PASS") { status = "UNAVAILABLE"; }
   }
 
-  const label = status === "PASS" ? "Plan Ready"
-    : status === "FAIL" ? "Blocked"
-    : "Review Required";
+  const label = status === "PASS"           ? "Plan Ready"
+    : status === "FAIL"                     ? "Blocked"
+    : status === "REQUIRES_REVIEW"          ? "Review Required"
+    : /* UNAVAILABLE */                       "Not Fully Assessed";
 
   return {
     status,

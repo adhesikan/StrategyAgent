@@ -101,14 +101,17 @@ function PlanHealthBadge({ health }: { health: TradePlanHealth }) {
 function tprStatusIcon(status: string) {
   if (status === "PASS") return <CheckCircle className="h-4 w-4 text-green-500" />;
   if (status === "FAIL") return <AlertCircle className="h-4 w-4 text-red-500" />;
-  return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+  if (status === "REQUIRES_REVIEW") return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+  // UNAVAILABLE — muted, not alarming; data simply not assessed yet
+  return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
 }
 
 function TradePlanReadinessPanel({ tpr }: { tpr: TradePlanReadiness }) {
   const headlineColor =
-    tpr.status === "PASS" ? "text-green-600 dark:text-green-400" :
-    tpr.status === "FAIL" ? "text-red-600 dark:text-red-400" :
-    "text-yellow-600 dark:text-yellow-400";
+    tpr.status === "PASS"           ? "text-green-600 dark:text-green-400" :
+    tpr.status === "FAIL"           ? "text-red-600 dark:text-red-400" :
+    tpr.status === "REQUIRES_REVIEW"? "text-yellow-600 dark:text-yellow-400" :
+    /* UNAVAILABLE */                 "text-muted-foreground";
   const dims = [
     { key: "tradePlan",         dim: tpr.dimensions.tradePlan },
     { key: "lifecycle",         dim: tpr.dimensions.lifecycle },

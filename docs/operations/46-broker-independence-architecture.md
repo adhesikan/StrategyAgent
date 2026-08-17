@@ -205,12 +205,13 @@ See Doc 49 §C1 for the full underlying-only theoretical mode design.
 [Doc 49 — Audit C](49-audit-c-broker-independent-options.md) provides the full options architecture. Key decisions:
 
 - **Options Strategy Matching and Trade Risk & Scenario Analysis are already BROKER_INDEPENDENT.** No changes needed.
-- **Twelve Data does not currently provide options data.** OHLCV bars only. Licensing verification required before any independent options integration.
+- **Twelve Data does not provide options data** — confirmed in writing by vendor (Liam, Twelve Data, 2026-08-17). OHLCV bars, real-time equity quote, ATR, and HV engine continue unchanged.
 - **Minimum external dependency:** `expiration, strike, type, bid, ask, volume, openInterest, quoteTimestamp` — all IV and Greeks are derivable internally via Newton-Raphson IV solver + Black-Scholes.
 - **POP / probability of profit remains permanently off** (`probabilityMetricsEnabled: false` literal type). N(d2) flagged for compliance review before any surfacing.
 - **Ownership model:** `OWNERSHIP_CONFIRMED_BROKER` | `OWNERSHIP_CONFIRMED_PORTFOLIO` | `OWNERSHIP_NOT_CONFIRMED` — research unlocked with disclosure; execution blocked without broker confirmation.
-- **7 implementation groups (A–G)** — Group A (provider interface) requires licensing gate first.
-- **Long options + all vertical spreads + all non-ownership strategies:** fully researchable brokerless once an independent chain is available.
+- **7 implementation groups (A–G)** — Group A (provider interface) requires licensing gate first. **V1 BOUNDARY: Groups A–G are deferred beyond V1.** Group B (HV engine) was implemented in Sprint 2.8.7C as part of the theoretical-only mode.
+- **V1 brokerless options capability is COMPLETE as of Sprint 2.8.7C:** theoretical values, HV10–90, model Greeks, hypothetical strike grids, and scenario analysis. All outputs are THEORETICAL_ONLY.
+- **Independent observed-options chain (Level 1) is deferred post-V1.** Long options + all vertical spreads + all non-ownership strategies become fully researchable brokerless when an independent provider is integrated in a future sprint. The `IndependentOptionsProvider` interface (Audit C §11) is preserved as future architecture.
 
 ## 4a. Audit B Findings — Preflight Layer Design
 

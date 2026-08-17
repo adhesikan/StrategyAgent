@@ -123,7 +123,7 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 | ~~BI-002~~ | ~~Remove `enabled: brokerConnected` from preflight query; two-section UI~~ | ~~CON-001~~ | ✅ RESOLVED (Sprint 2.8.7A) |
 | ~~BI-003~~ | ~~Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback (Audit C)~~ | ~~CON-002~~ | **CLOSED 2026-08-17** — Twelve Data confirmed no options product; evaluate MarketData.app or Polygon.io instead (see BI-007) |
 | BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode (CON-004) | CON-004 | P2 |
-| BI-007 | **Licensing gate** — obtain MarketData.app Commercial Use Addendum (primary) or confirm Polygon.io SaaS terms (backup) before Sprint 2.8.7D; Twelve Data eliminated (vendor confirmed no options product 2026-08-17) | Audit C prerequisite | **P0** |
+| BI-007 | **[DEFERRED POST-V1]** Independent observed-options provider integration — obtain MarketData.app Commercial Use Addendum (primary) or confirm Polygon.io SaaS terms (backup) before Sprint 2.8.7D; Twelve Data eliminated (vendor confirmed no options product 2026-08-17); not a blocker for any current sprint | Audit C prerequisite | DEFERRED |
 | BI-008 | Build IV solver (Newton-Raphson) + Black-Scholes Greeks engine — BSM base built (Sprint 2.8.7C); IV solver deferred (TH-003) | Audit C Group C | Partial (TH-003) |
 | ~~BI-009~~ | ~~Build HV-10/20/30/60/90 rolling volatility engine from stored daily bars~~ | Audit C Group B | ✅ RESOLVED (Sprint 2.8.7C) |
 | BI-010 | Add `OwnershipConfirmationState` to contract research; surface portfolio-import path for covered call / protective put research | Audit C Group E | P1 |

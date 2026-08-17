@@ -1,5 +1,29 @@
 # Sprint Change Log
 
+## V1 Options Scope Closure — Product Decision (2026-08-17)
+**Status:** DOCUMENTATION ALIGNMENT ONLY — No application code changed.
+
+**Decision:** VCP Trader AI V1 will NOT integrate an independent observed-options market-data provider.
+
+**V1 brokerless options architecture (final):**
+- Twelve Data: underlying equity quote, OHLCV/history
+- VCP Trader AI: HV10–90, Black-Scholes theoretical call/put, model Greeks, hypothetical strike grids, DTE scenarios, options strategy research, scenario/risk analysis — all THEORETICAL_ONLY
+- Broker connected (Tradier / TradeStation): actual expirations, option contracts, bid/ask, last, volume, OI, market IV, live Greeks, execution, account context, buying power, positions
+
+**Deferred beyond V1:** MarketData.app, Polygon.io, and all other OPRA providers.
+Reasons: V1 already has meaningful brokerless options research; contract data is most valuable closer to execution (already served by broker connection); avoiding OPRA redistribution complexity, additional commercial licensing, and unnecessary API/provider complexity.
+
+**Preserved:** `IndependentOptionsProvider` interface (Audit C §11), all Groups A–G design work — retained as future architecture, not deleted.
+
+**Invariant C1 permanent:** THEORETICAL_ONLY data can NEVER satisfy execution quote validation, order preparation, order preview, final revalidation, or broker submission.
+
+**Documents updated:** Doc 54 (scope closure + provider reclassification), Doc 46 (V1 boundary explicit), Doc 53 (V1 completion statement), Doc 15 (BI-007 deferred), Doc 17 (this entry).
+
+**MarketData.app a current blocker?** NO  
+**Application code changed:** NO
+
+---
+
 ## Doc 54 Amendment — Twelve Data Options Decision Closure (2026-08-17)
 **Status:** AMENDMENT — Twelve Data options confirmed NOT_AVAILABLE (vendor written confirmation). No application code changed.
 

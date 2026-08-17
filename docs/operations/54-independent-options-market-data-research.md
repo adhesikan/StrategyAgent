@@ -2,17 +2,24 @@
 
 **Type:** Research / Architecture Decision Only  
 **Date:** 2026-08-17  
-**Status:** RESEARCH COMPLETE (AMENDED 2026-08-17) — Twelve Data options: NOT_AVAILABLE (vendor confirmed). Remaining gate: MarketData.app Commercial Use Addendum.  
+**Status:** RESEARCH COMPLETE (AMENDED 2026-08-17) — Twelve Data options: NOT_AVAILABLE (vendor confirmed). Independent observed-options provider integration DEFERRED beyond V1.  
 **Depends on:** [Doc 49 — Audit C](49-audit-c-broker-independent-options.md), [Doc 53 — Sprint 2.8.7C](53-sprint-2.8.7c-theoretical-options.md)  
 **Application code changed:** NO
 
 ---
 
-> **⚠ IMPLEMENTATION GATE**  
-> No provider integration code may be written until the vendor's commercial licensing
-> agreement is signed and the required email questions (§18) are answered in writing.
-> Architecture in this document is provider-neutral by design (§11). Integration code
-> is a separate sprint after licensing is confirmed.
+> **📌 V1 SCOPE CLOSURE — 2026-08-17**  
+> VCP Trader AI V1 will NOT integrate an independent observed-options market-data provider.
+> MarketData.app and Polygon.io are recorded as future candidates only — they are NOT
+> current roadmap blockers and NO vendor outreach or licensing action is required.
+>
+> The provider-neutral architecture (§11 `IndependentOptionsProvider` interface, Audit C
+> Groups A–G) is preserved as future architecture and must NOT be deleted.
+>
+> **V1 brokerless options capability is complete as of Sprint 2.8.7C** (theoretical
+> values, HV10–90, model Greeks, strike grids, scenario analysis — all THEORETICAL_ONLY).
+> Actual contract data (bid/ask, IV, OI, Greeks) is provided by broker connections
+> (Tradier / TradeStation) for connected users. No independent provider bridge is required.
 
 ---
 
@@ -820,11 +827,16 @@ does the commercial plan include OPRA, or is it separately billed?
 
 ---
 
-## 16. Recommended Primary Provider
+## 16. Future Primary Provider Candidate (Post-V1)
 
-### **B. MARKETDATA_APP**
+### **B. MARKETDATA_APP — FUTURE CANDIDATE — NOT CURRENT ROADMAP BLOCKER**
 
-**Rationale:**
+> **V1 SCOPE CLOSURE:** Independent observed-options provider integration is DEFERRED
+> beyond V1. MarketData.app is recorded here as the leading future candidate only.
+> No commercial licensing action, vendor outreach, or integration code is required
+> for the current roadmap.
+
+**Why it is the leading future candidate:**
 
 1. **Full options capability confirmed.** All required fields (OCC symbol, expirations,
    bid/ask, last, volume, OI, IV, Greeks) are documented and confirmed in public API docs.
@@ -844,16 +856,21 @@ does the commercial plan include OPRA, or is it separately billed?
 
 6. **Strong API documentation** with filtering, SDK support, and clear field definitions.
 
-**Prerequisite for implementation:** Commercial Use Addendum must be signed. Self-service
-plans cannot be used for a commercial product serving end users.
+**When this becomes relevant:** After V1 launches and observed contract data for brokerless
+users is identified as a high-value V2 capability. Commercial Use Addendum negotiation is
+the first step at that point.
 
 ---
 
-## 17. Recommended Backup Provider
+## 17. Future Backup Provider Candidate (Post-V1)
 
-### **Polygon.io**
+### **Polygon.io — FUTURE BACKUP CANDIDATE — NOT CURRENT ROADMAP BLOCKER**
 
-**Rationale:**
+> **V1 SCOPE CLOSURE:** Independent observed-options provider integration is DEFERRED
+> beyond V1. Polygon.io is recorded here as the leading future backup candidate only.
+> No licensing action, outreach, or integration code is required for the current roadmap.
+
+**Why it is the leading future backup candidate:**
 
 1. **Established fintech SaaS redistribution track record.** Polygon.io is widely used
    in commercial trading applications for exactly this use case.
@@ -869,14 +886,18 @@ plans cannot be used for a commercial product serving end users.
 5. **Same provider-neutral interface.** A Polygon.io adapter is a straightforward addition
    to the same `IndependentOptionsProvider` interface. No redesign required.
 
-**Use Polygon if:** MarketData.app's commercial terms are not acceptable, pricing is higher
-than expected, or you want a single provider for both equities and options at scale.
+**Use Polygon if (post-V1):** MarketData.app's commercial terms are not acceptable, pricing
+is higher than expected, or you want a single provider for both equities and options at scale.
 
 ---
 
-## 18. Required Vendor Questions / Email
+## 18. Vendor Questions (Archived — Post-V1 Reference)
 
-### 18A. MarketData.app — Questions for Commercial Use Addendum
+> **V1 SCOPE CLOSURE:** These vendor questions are NOT to be sent during V1.
+> Independent observed-options provider integration is deferred. The email scripts
+> below are archived here for future reference when the V1 scope boundary is revisited.
+
+### 18A. MarketData.app — Questions for Commercial Use Addendum (Post-V1 Reference)
 
 ```
 Subject: Commercial Use Addendum — SaaS Options Data Display (VCP Trader AI)
@@ -971,13 +992,31 @@ Please confirm in writing:
 
 ## 20. Recommended Next Implementation Sprint
 
-### Pre-Sprint Prerequisites (must complete BEFORE sprint starts)
+### V1 Scope Closure — 2026-08-17
+
+**Independent observed-options provider integration is DEFERRED beyond V1.**
+
+V1 brokerless options capability is complete as of Sprint 2.8.7C:
+- HV10/HV20/HV30/HV60/HV90 engine
+- Black-Scholes theoretical call/put values
+- Model Greeks (delta, gamma, theta, vega, rho)
+- Hypothetical strike grids and DTE scenarios
+- Options strategy research and scenario/risk analysis
+- All outputs permanently labeled THEORETICAL_ONLY
+
+Actual listed contract data (expirations, bid/ask, OI, market IV, execution Greeks)
+is provided by connected broker (Tradier / TradeStation) for broker-connected users.
+No independent provider bridge is required for V1.
+
+### Post-V1 Prerequisites (archived — not current roadmap)
+
+When the scope boundary is revisited post-V1:
 
 1. **Sign MarketData.app Commercial Use Addendum** — or confirm Polygon.io as primary
 2. **Receive written answers to MarketData.app questions in §18A** — specifically on redistribution, OPRA, and caching (Twelve Data is fully resolved — §18B closed)
 3. **Licensing gate env var set**: `MARKETDATA_APP_OPTIONS_ENABLED=false` defaults in place before any code is written
 
-### Sprint Scope — "Sprint 2.8.7D: Observed Options Market Data"
+### Sprint 2.8.7D Scope (archived — not current roadmap)
 
 **Objective:** Add Level 1 (OPTION_MARKET_OBSERVED) to the existing three-level options
 research hierarchy. Level 2 (THEORETICAL_ONLY) and Level 3 (BROKER_ENHANCED) remain unchanged.
@@ -1020,13 +1059,16 @@ research hierarchy. Level 2 (THEORETICAL_ONLY) and Level 3 (BROKER_ENHANCED) rem
 
 | Decision | Answer |
 |---|---|
-| Primary provider | **B. MARKETDATA_APP** |
-| Backup provider | **Polygon.io** |
-| Real-time or delayed? | **15-min delayed for research** |
+| V1 independent provider integration? | **DEFERRED beyond V1 — not current roadmap** |
+| Future primary provider candidate | **B. MARKETDATA_APP — future candidate only; NOT a current blocker** |
+| Future backup provider candidate | **Polygon.io — future backup candidate only; NOT a current blocker** |
+| Real-time or delayed? | **15-min delayed recommended when revisited post-V1** |
 | Twelve Data for options? | **NOT_AVAILABLE — vendor confirmed (Liam, Twelve Data, 2026-08-17). Equity/OHLCV/HV integration unchanged.** |
-| ThetaData? | **Not suitable for SaaS V1 display — possible future backtesting use** |
-| Implementation prerequisite | **Commercial Use Addendum signed + vendor questions answered** |
-| Next sprint | **Sprint 2.8.7D** (after licensing gate cleared) |
-| Architecture change required? | **No — reuse Audit C interface and types verbatim** |
+| ThetaData? | **Not suitable for SaaS redistribution — possible future backtesting use** |
+| MarketData.app a current blocker? | **NO** |
+| Implementation prerequisite | **Post-V1: Commercial Use Addendum signed + vendor questions answered (§18A)** |
+| V1 brokerless options capability? | **COMPLETE — Sprint 2.8.7C (theoretical values, HV10–90, model Greeks, strike grids)** |
+| Next sprint for this work | **Post-V1 Sprint 2.8.7D** (after licensing gate cleared; Audit C architecture preserved) |
+| Architecture change required? | **No — reuse Audit C interface and types verbatim when the time comes** |
 | Execution path affected? | **No — execution remains broker-only; unchanged** |
 | Theoretical mode (2.8.7C) affected? | **No — remains as Level 2 fallback; unchanged** |

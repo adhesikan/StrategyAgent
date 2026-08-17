@@ -1,0 +1,167 @@
+VCP TRADER AI — V1 OPTIONS SCOPE CLOSURE
+Documentation alignment only.
+
+DO NOT CHANGE APPLICATION CODE.
+DO NOT contact vendors.
+DO NOT start Sprint 2.8.7D.
+
+We have made a final V1 product decision:
+
+VCP Trader AI will NOT integrate an independent observed-options
+market-data provider in V1.
+
+Therefore MarketData.app commercial licensing is NOT a blocker or
+prerequisite for the current roadmap.
+
+============================================================
+FINAL V1 OPTIONS ARCHITECTURE
+============================================================
+
+BROKERLESS:
+
+Twelve Data:
+- underlying equity quote
+- OHLCV/history
+
+VCP Trader AI:
+- HV10/HV20/HV30/HV60/HV90
+- Black-Scholes theoretical call/put values
+- model Greeks
+- hypothetical strike grids
+- hypothetical DTE scenarios
+- options strategy research
+- scenario/risk analysis
+
+All modeled options outputs remain:
+THEORETICAL_ONLY
+
+BROKER CONNECTED:
+
+Tradier / TradeStation provide:
+- actual listed expirations
+- actual option contracts
+- bid/ask/last
+- volume
+- open interest
+- market IV
+- market/live Greeks where available
+- execution-grade quotes
+- account context
+- buying power
+- positions
+- order preparation
+- execution
+
+Theoretical research remains visible even when a broker is connected.
+
+============================================================
+SCOPE DECISION
+============================================================
+
+Independent observed-options providers such as:
+
+- MarketData.app
+- Polygon/Massive
+- other OPRA providers
+
+are DEFERRED beyond V1.
+
+Do not delete the Audit C provider-neutral architecture.
+
+Do not delete IndependentOptionsProvider design work.
+
+Preserve it as future architecture.
+
+Reason for deferral:
+
+- V1 already has meaningful brokerless options research
+- actual contract data becomes valuable primarily closer to execution
+- broker connections already provide that data
+- avoid OPRA redistribution complexity
+- avoid additional commercial licensing
+- avoid additional provider cost
+- avoid unnecessary API/cache/provider complexity
+- prioritize higher-value broker-independence work
+
+============================================================
+DOCUMENTATION CORRECTIONS
+============================================================
+
+Update Doc 54 so it no longer says:
+
+"Remaining gate: MarketData.app Commercial Use Addendum"
+
+Replace with:
+
+"Independent observed-options provider integration DEFERRED beyond V1."
+
+MarketData.app should be recorded as:
+
+FUTURE CANDIDATE — NOT CURRENT ROADMAP BLOCKER
+
+Polygon/Massive:
+
+FUTURE BACKUP CANDIDATE — NOT CURRENT ROADMAP BLOCKER
+
+Update Doc 15:
+
+BI-007 / independent observed options provider work should be DEFERRED.
+
+It must not block another sprint.
+
+Update Doc 17/change log with this product decision.
+
+Update Doc 46 broker-independence architecture if necessary to make the
+V1 boundary explicit.
+
+Update Doc 53 if necessary to state that Sprint 2.8.7C represents the
+completed V1 brokerless options-research capability.
+
+============================================================
+PERMANENT SAFETY INVARIANT
+============================================================
+
+Preserve Invariant C1:
+
+THEORETICAL_ONLY data can NEVER satisfy:
+
+- execution quote validation
+- order preparation
+- order preview executable pricing
+- final revalidation
+- broker submission
+
+============================================================
+NEXT ROADMAP ITEM
+============================================================
+
+After documentation is aligned, inspect the existing approved
+Sprint 2.8.7 broker-independence backlog.
+
+Identify the next unfinished implementation item.
+
+Priority should be given to existing broker-independent planning work,
+especially:
+
+hypothetical/user-defined planning capital and risk constraints
+
+if that remains an approved unfinished backlog item.
+
+Do not invent a new sprint if an existing roadmap item already covers it.
+
+============================================================
+RETURN
+============================================================
+
+Report:
+
+1. Final V1 brokerless options scope
+2. Final broker-connected options scope
+3. Items deferred beyond V1
+4. Doc 54 changes
+5. Doc 15 changes
+6. Doc 17 changes
+7. Doc 46/53 changes if applicable
+8. Whether MarketData.app remains a blocker: NO
+9. Next existing roadmap item
+10. Application code changed: NO

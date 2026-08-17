@@ -1,0 +1,53 @@
+Broker-Independent Options Scope Decision — V1
+
+Architecture/documentation task only. Do not change application code.
+
+We are closing the V1 broker-independent options-market-data scope.
+
+Final product decision:
+
+VCP Trader AI will NOT integrate a separate independent options-market-data provider for V1.
+
+Brokerless options research will use the capabilities already implemented in Sprint 2.8.7C:
+
+Twelve Data underlying equity price/history
+HV10/HV20/HV30/HV60/HV90
+Black-Scholes theoretical call/put values
+model Greeks
+hypothetical strike grids
+hypothetical DTE scenarios
+strategy matching
+scenario/risk research
+
+Actual listed option-market information remains broker-enhanced/required:
+
+actual expirations
+actual contracts/OCC symbols
+bid/ask/last
+volume
+open interest
+market implied volatility
+market/live Greeks
+execution-grade option quotes
+
+Preserve Invariant C1: theoretical values can never satisfy execution quote validation, order preparation, final revalidation or broker submission.
+
+Theoretical research must remain available when a broker IS connected so theoretical/model values may coexist with observed market values.
+
+Update the roadmap/backlog so the proposed independent options-provider integration Sprint 2.8.7D is DEFERRED, not deleted. Record the reason as V1 scope simplification, licensing/OPRA complexity, cost and unnecessary provider dependency.
+
+Preserve the IndependentOptionsProvider architecture/design for possible future implementation. Do not remove existing abstractions or Audit C design work.
+
+Twelve Data remains the broker-independent underlying equity-data provider. Tradier/TradeStation broker data remains the source for actual options contracts and execution-grade market data.
+
+Identify the next roadmap item after this decision. Give priority to remaining broker-independence work, particularly hypothetical/user-defined planning capital and risk constraints if that is already present in the approved backlog.
+
+Update relevant operations docs, backlog and sprint change log only.
+
+At completion report:
+
+final V1 brokerless options scope,
+what was deferred,
+what remains broker-required,
+next approved roadmap item,
+confirmation that application code changed: NO.

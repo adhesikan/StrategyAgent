@@ -1,5 +1,7 @@
 # Doc 48 — Audit B: Execution Preflight Independent Layer Design
 
+> **Audit D Reference:** [Doc 50 — Audit D](50-audit-d-brokerless-ux.md) §7, §9, and §23 (Group D) specify the UX implementation of the two-layer design defined in this document. The `NOT_CONNECTED` state for the Broker Execution Readiness layer uses neutral gray styling — not error/red. "Plan Ready" is the headline state when Trade Plan Readiness = PASS regardless of broker status.
+
 **Sprint 2.8.7 Architecture Audit — Read-Only**  
 **Date:** 2026-08-17  
 **Status:** COMPLETE — No application code changed  

@@ -257,6 +257,18 @@ Not sprints — candidate work packages for sequencing in Sprint 2.8.7+.
 
 ---
 
+## 9c. Audit D Reference
+
+**[Doc 50 — Audit D: Brokerless UX, Onboarding & Graceful Degradation](50-audit-d-brokerless-ux.md)** is the final UX audit in the Sprint 2.8.7 series.
+
+Cross-referencing Audit A gate IDs to Audit D findings:
+- **BI-GATE-017, BI-GATE-018** (options scanner / options chain 409) — addressed by Audit D Group E + Audit C Group D
+- **BI-GATE-021** (workspace broker risk card) — Audit D Group E (reframe as data-provider limitation)
+- **BI-GATE-001, BI-GATE-002** (preflight disabled) — Audit D Group D (two-section layout per Audit B)
+- Options scanner gate — identified in Audit D as P0 misclassification; no Audit A gate ID assigned (client-side only)
+
+---
+
 ## 9b. Audit C Reference
 
 **[Doc 49 — Audit C: Broker-Independent Options](49-audit-c-broker-independent-options.md)** designs the full independent options data architecture:

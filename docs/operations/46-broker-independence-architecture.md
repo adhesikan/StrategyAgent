@@ -158,6 +158,28 @@ as an independent-mode substitute for live buying power in risk guardrail evalua
 
 ---
 
+## 4d. Audit D — Brokerless UX & Onboarding
+
+[Doc 50 — Audit D](50-audit-d-brokerless-ux.md) completes the Sprint 2.8.7 audit series with a full UX/product architecture design. Key decisions:
+
+**Three P0 UX misclassifications corrected:**
+1. Options scanner (`options-scanner.tsx`) hard-blocked on broker — scan uses stored data; broker not required
+2. Workspace risk card lists four gaps as broker-caused; most are data-provider limitations
+3. Trade Plan execution section — Audit B two-layer split must be applied (Plan Readiness vs Direct Execution)
+
+**Canonical product journey:** FIND → RESEARCH → PLAN → MONITOR → [EXECUTE — optional]. All four pre-execution stages are fully broker-independent.
+
+**Broker CTA rules:**
+- Research/planning context: secondary, labeled "optional"
+- Execution intent explicitly requested: primary (broker is now genuinely required)
+- Never shown as the dashboard primary CTA for users who have not expressed execution intent
+
+**Correct blockers remain untouched:** Order Preparation, Order Preview, trade ticket submit, Broker Submission, Final Confirmation — all preserved.
+
+**Error/limitation taxonomy:** `ERROR | BLOCKER | LIMITATION | ENHANCEMENT_AVAILABLE | INFORMATION`. Broker absence during research = `ENHANCEMENT_AVAILABLE`. Broker absence during execution = `BLOCKER`.
+
+**Implementation groups A–I** with a screen-by-screen change manifest and 17-item end-to-end acceptance criteria.
+
 ## 4c. Amendment C1 — Underlying-Only Theoretical Mode
 
 **INVARIANT C1 — THEORETICAL/MODELED OPTION VALUES ARE NEVER EXECUTION-GRADE DATA.**

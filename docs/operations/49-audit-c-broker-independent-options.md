@@ -1,5 +1,9 @@
 # Doc 49 — Audit C: Broker-Independent Options Data & Analytics
 
+> **Audit D Reference:** [Doc 50 — Audit D](50-audit-d-brokerless-ux.md) §8, §9, §11, §12, and §23 (Group E) specify the UX implementation of the three-mode options design (Mode A: independent chain / Mode B: theoretical / Mode C: broker-connected) defined in this document and Amendment C1.
+
+
+
 **Sprint 2.8.7 Architecture Audit — Read-Only**  
 **Date:** 2026-08-17  
 **Status:** COMPLETE — No application code changed  

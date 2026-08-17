@@ -128,6 +128,15 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 | BI-009 | Build HV-10/20/30/60/90 rolling volatility engine from stored daily bars; expected-move range calculation | Audit C Group B | P1 |
 | BI-010 | Add `OwnershipConfirmationState` to contract research; surface portfolio-import path for covered call / protective put research | Audit C Group E | P1 |
 | BI-011 | Build formal `RealizedVolatilitySet` (HV10/20/30/60/90) + `TheoreticalStrikeGrid` from stored daily bars; enforce `TheoreticalOptionValue` incompatibility with execution types | Amendment C1 / Group B | P1 |
+| BI-012 | **P0** Options scanner (`options-scanner.tsx:420`) hard-blocks on no broker — scan results come from stored data; remove broker gate | Audit D Group B | **P0** |
+| BI-013 | **P0** Workspace "No Broker Connected" risk card (`workspace-sections.tsx:1257`) misattributes data-provider limitations as broker requirements; reframe | Audit D Group E | **P0** |
+| BI-014 | **P0** Trade Plan Workspace: redesign execution section as two-section layout (Plan Readiness + Direct Execution neutral); apply Audit B | Audit D Group D | **P0** |
+| BI-015 | Onboarding wizard: move broker connection to contextual step 5 (optional); introduce 5-step guided journey | Audit D Group A | P1 |
+| BI-016 | Dashboard Portfolio Intelligence empty state: add three equal-weight paths (Manual / Import / Broker) | Audit D Group B+F | P1 |
+| BI-017 | Smart Panel (`smart-panel.tsx:125`): replace broker CTA as primary with context-aware research CTA | Audit D Group B | P1 |
+| BI-018 | Strategy scanner: replace "illustrative examples" framing with `END_OF_DAY` data label | Audit D Group B | P1 |
+| BI-019 | Action card (`action-card.tsx:183`): restore primary CTA for research; broker CTA secondary | Audit D Group E | P1 |
+| BI-020 | Build `ProvBadge` global data-provenance component; fix silent degradation in `news.tsx` | Audit D Group G | P2 |
 | ~~BI-005~~ | ~~Populate gate-site manifest in Doc 46 §6 (output of Audit A)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-16) |
 | ~~BI-006~~ | ~~Design two-layer preflight architecture (Audit B)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-17) |
 

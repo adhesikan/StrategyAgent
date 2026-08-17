@@ -1,0 +1,946 @@
+VCP TRADER AI — SPRINT 2.8.7 ARCHITECTURE AUDIT D
+Brokerless UX, Onboarding & Graceful Degradation
+
+STATUS
+
+Audit A — Broker Gate Inventory: COMPLETE
+Audit B — Preflight Layering: COMPLETE
+Audit C — Broker-Independent Options: COMPLETE
+Audit C1 — Underlying-Only Theoretical Options Mode: COMPLETE
+
+DO NOT IMPLEMENT APPLICATION CODE.
+
+This is the final UX/product architecture audit before Sprint 2.8.7
+implementation planning.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Redesign the VCP Trader AI user experience around this product principle:
+
+A brokerage connection is OPTIONAL for research and planning.
+
+Users should be able to:
+
+Find opportunities
+→ Research
+→ Build a Trade Plan
+→ Analyze risk/scenarios
+→ Monitor the plan
+
+without connecting a broker.
+
+Broker connection should become relevant primarily when the user wants:
+
+account-aware information
+or
+direct execution.
+
+The application must not feel incomplete, broken, blocked, or degraded merely
+because the user has not connected a broker.
+
+============================================================
+1. AUDIT THE CURRENT USER JOURNEY
+============================================================
+
+Trace the complete current user journey for a brand-new user with NO broker:
+
+Login
+Dashboard
+Opportunity discovery
+Opportunity Workspace
+Research
+Trade Planning
+Trade Plan
+Lifecycle monitoring
+Risk/scenario analysis
+Options research
+Portfolio
+Execution Preflight
+
+Document every point where the user currently encounters:
+
+Connect Broker
+FAIL
+BLOCKED
+UNAVAILABLE
+disabled buttons
+hidden sections
+empty panels
+broker-specific terminology
+
+Use Audit A gate IDs where applicable.
+
+Do not change anything.
+
+============================================================
+2. DEFINE THE PRIMARY BROKERLESS JOURNEY
+============================================================
+
+Design the canonical beginner journey:
+
+FIND
+→ RESEARCH
+→ PLAN
+→ MONITOR
+→ EXECUTE (optional)
+
+The first four stages must not require a broker.
+
+Define what each stage means.
+
+FIND
+
+Discover research candidates and opportunities.
+
+RESEARCH
+
+Understand:
+technical structure
+fundamental/institutional context
+risk
+catalysts
+evidence
+limitations
+
+PLAN
+
+Create a Trade Plan:
+expression
+entry framework
+risk framework
+position assumptions
+scenario analysis
+monitoring conditions
+
+MONITOR
+
+Track:
+research lifecycle
+material changes
+plan freshness
+thesis state
+market movement
+
+EXECUTE — OPTIONAL
+
+Connect supported broker
+→ account-aware preflight
+→ order preparation
+→ preview
+→ explicit confirmation
+→ submission
+
+============================================================
+3. ONBOARDING
+============================================================
+
+Audit current onboarding.
+
+Design onboarding that does NOT ask the user to connect a broker as a required
+early step.
+
+Preferred sequence:
+
+Welcome to VCP Trader AI
+
+What would you like to do?
+
+[Find Opportunities]
+[Research a Stock]
+[Build a Trade Plan]
+[Review My Portfolio]
+
+Broker connection should be offered later as optional enhancement.
+
+Design where broker connection should first naturally appear.
+
+============================================================
+4. BROKER CONNECTION POSITIONING
+============================================================
+
+Replace conceptual messaging:
+
+"Connect broker to continue"
+
+with context-aware messaging such as:
+
+"Connect a supported broker if you'd like account-aware execution checks and
+direct order submission."
+
+Broker CTA should normally be secondary/optional until execution intent exists.
+
+Define:
+
+when broker CTA appears
+where it appears
+when it becomes primary
+when it remains secondary
+when it should not appear at all
+
+============================================================
+5. DASHBOARD
+============================================================
+
+Design the dashboard for a user with no broker.
+
+The dashboard should still feel complete.
+
+Potential sections:
+
+Market Signals
+Research Opportunities
+Trade Plans
+Research Monitoring
+Portfolio — if manually entered/imported
+Recent Research
+Watchlists/Collections
+
+Do not make "Connect Broker" the dominant empty-state card.
+
+If portfolio data is absent, offer:
+
+Add Holdings
+Import Portfolio
+Connect Broker
+
+as equivalent paths where appropriate.
+
+============================================================
+6. OPPORTUNITY WORKSPACE
+============================================================
+
+Audit all broker assumptions.
+
+A user should be able to:
+
+open candidate
+view research
+review evidence
+understand risk
+open Trade Planning
+
+without broker.
+
+Design brokerless state.
+
+============================================================
+7. TRADE PLANNING
+============================================================
+
+This is critical.
+
+Design the Trade Planning experience so that broker absence is irrelevant.
+
+For equity plans, support brokerless:
+
+current/reference market data
+entry framework
+risk/invalidation
+scenario analysis
+hypothetical quantity
+hypothetical allocation
+estimated notional
+Trade Plan save
+
+For options:
+
+strategy matching
+theoretical options mode
+contract research when independent chain available
+risk/scenario analysis
+capital requirement calculations
+Trade Plan save
+
+Do not display execution-specific broker warnings during ordinary planning.
+
+============================================================
+8. TRADE PLAN WORKSPACE
+============================================================
+
+Design brokerless Trade Plan Workspace.
+
+Primary status:
+
+TRADE PLAN READINESS
+
+Examples:
+
+Research Current
+Plan Current
+Risk Framework Available
+Planning Constraints Available
+Market Data Current
+
+Then:
+
+PLAN READY
+
+Separate optional section:
+
+DIRECT EXECUTION
+
+Brokerage not connected.
+
+"Connect a supported broker to enable account-aware execution checks and direct
+order submission."
+
+Do not present this as a failure.
+
+============================================================
+9. PREFLIGHT UX
+============================================================
+
+Apply Audit B.
+
+Design two sections:
+
+TRADE PLAN READINESS
+
+BROKER EXECUTION READINESS
+
+No broker:
+
+Trade Plan Readiness can PASS.
+
+Broker Execution Readiness:
+
+NOT CONNECTED
+
+Neutral styling.
+
+Do NOT show:
+
+red X
+FAIL
+platform error
+
+for optional broker absence.
+
+When execution intent is explicit, clearly state:
+
+Broker connection required for direct execution.
+
+============================================================
+10. OPTIONS UX — THREE RESEARCH MODES
+============================================================
+
+Design clear UX for:
+
+MODE A — INDEPENDENT OPTION MARKET DATA AVAILABLE
+
+Show:
+
+actual expirations
+actual strikes
+bid/ask
+volume
+OI
+market-derived IV
+provider/VCP Greeks
+Contract Research
+
+MODE B — UNDERLYING_ONLY_THEORETICAL_MODE
+
+Show:
+
+Theoretical Options Research
+
+HV10/20/30/60/90
+hypothetical DTE
+theoretical strike grid
+MODEL_CALL_VALUE
+MODEL_PUT_VALUE
+MODEL Greeks
+
+Prominent but concise label:
+
+"Theoretical values — not live option quotes."
+
+Never visually imitate an actual option chain.
+
+MODE C — BROKER CONNECTED
+
+Keep independent research.
+
+Add:
+
+broker execution quote
+positions
+buying power
+permissions
+execution validation
+
+Broker connection should enrich, not replace, research.
+
+============================================================
+11. THEORETICAL OPTIONS LANGUAGE
+============================================================
+
+Design novice-friendly language.
+
+Avoid presenting:
+
+MODEL_DELTA
+
+without explanation.
+
+Possible display:
+
+Delta
+0.42
+Model estimate based on historical volatility
+
+Expandable:
+
+Methodology:
+Black-Scholes
+Volatility input:
+30-day historical volatility
+
+For model price:
+
+Theoretical Value
+$X.XX
+
+"Model estimate — not the current option market price."
+
+Design concise disclosure patterns.
+
+============================================================
+12. OPTIONS MARKET DATA ABSENT
+============================================================
+
+Current product may say:
+
+Connect Broker
+
+Redesign.
+
+If actual option chain unavailable but theoretical mode available:
+
+"Live option contract data isn't currently available. You can still explore
+theoretical option values and strategy scenarios using the underlying stock."
+
+CTA:
+
+Explore Theoretical Options
+
+NOT:
+
+Connect Broker to continue.
+
+Broker may appear separately as an execution/data enhancement.
+
+============================================================
+13. PORTFOLIO UX
+============================================================
+
+Design three equivalent portfolio-entry methods:
+
+Manual Holdings
+Import CSV/XLSX
+Connect Broker
+
+Do not privilege broker connection as the only "real" portfolio.
+
+Show provenance:
+
+Manual
+Imported
+Broker Synced
+
+Broker-synced holdings may carry higher execution-confirmation confidence.
+
+Research intelligence should work across all three.
+
+============================================================
+14. RISK ANALYSIS
+============================================================
+
+Without broker:
+
+allow user-entered:
+
+hypothetical account size
+trade allocation
+max planned capital
+quantity
+risk budget
+
+Clearly label:
+
+Planning Assumption
+
+With broker:
+
+optionally enrich with:
+
+actual buying power
+actual holdings
+account constraints
+
+Do not overwrite user planning assumptions silently.
+
+============================================================
+15. BROKERLESS POSITION SIZING
+============================================================
+
+Design position-sizing UX based on hypothetical capital.
+
+Example:
+
+Planning Capital
+$25,000
+
+Maximum Planned Allocation
+5%
+
+Calculated Planning Amount
+$1,250
+
+This is planning analysis.
+
+Actual buying power remains execution-specific.
+
+============================================================
+16. MANUAL PORTFOLIO OWNERSHIP
+============================================================
+
+For covered call / protective put / collar:
+
+Imported/manual portfolio may establish:
+
+OWNERSHIP_CONFIRMED_PORTFOLIO
+
+Display:
+
+"Portfolio data indicates 100 shares."
+
+Do not say:
+
+"Broker verified."
+
+Execution still requires broker confirmation.
+
+============================================================
+17. DATA SOURCE DISCLOSURE
+============================================================
+
+Design a consistent data-source badge system.
+
+Examples:
+
+Twelve Data
+Market Data
+
+VCP Model
+Historical Volatility
+
+Independent Options Feed
+Delayed 15m
+
+Tradier
+Execution Data
+
+Imported Portfolio
+User Supplied
+
+Avoid overwhelming novice users.
+
+Use concise badge + expandable details.
+
+============================================================
+18. DATA QUALITY / FRESHNESS UX
+============================================================
+
+Design understandable states:
+
+LIVE
+DELAYED
+END_OF_DAY
+MODELED
+STALE
+UNAVAILABLE
+
+Do not use red/error treatment for legitimate:
+
+MODELED
+END_OF_DAY
+DELAYED
+
+unless the context requires live execution data.
+
+============================================================
+19. ERROR VS LIMITATION
+============================================================
+
+Create UX taxonomy:
+
+ERROR
+Something failed unexpectedly.
+
+BLOCKER
+User cannot complete the intended action.
+
+LIMITATION
+Feature is available with reduced data/capability.
+
+ENHANCEMENT_AVAILABLE
+Optional connection/data can enrich the result.
+
+INFORMATION
+Neutral context.
+
+Broker absence during research = ENHANCEMENT_AVAILABLE.
+
+Broker absence during direct execution = BLOCKER.
+
+============================================================
+20. CALL-TO-ACTION HIERARCHY
+============================================================
+
+Design CTA priority by context.
+
+Research screen:
+
+PRIMARY:
+Continue Research / Build Trade Plan
+
+SECONDARY:
+Connect Broker — Optional
+
+Trade Plan:
+
+PRIMARY:
+Review Plan / Monitor Plan
+
+SECONDARY:
+Connect Broker for Direct Execution
+
+Execution intent:
+
+PRIMARY:
+Connect Broker
+
+because broker is now genuinely required.
+
+============================================================
+21. NOVICE USER GUIDANCE
+============================================================
+
+Design an optional guided journey:
+
+Step 1
+Find an Opportunity
+
+Step 2
+Review the Research
+
+Step 3
+Build Your Trade Plan
+
+Step 4
+Review Risk & Scenarios
+
+Step 5
+Monitor or Execute
+
+At Step 5:
+
+Monitor
+requires no broker
+
+Execute Directly
+requires supported broker
+
+The guide must never imply that direct execution is required.
+
+============================================================
+22. TERMINOLOGY
+============================================================
+
+Audit potentially intimidating or confusing terminology.
+
+Examples:
+
+Execution Preflight
+Lifecycle
+Structure Validation
+Planning Constraints
+Position Requirements
+Research Lifecycle
+
+Recommend novice-facing labels while preserving canonical internal terminology.
+
+Potential:
+
+Execution Preflight
+→ Execution Checks
+
+Research Lifecycle
+→ Research Status
+
+Planning Constraints
+→ Plan Limits
+
+Do not change code.
+
+============================================================
+23. EMPTY STATES
+============================================================
+
+Design brokerless empty states for:
+
+portfolio
+options chain
+broker execution
+positions
+buying power
+permissions
+
+Every empty state should answer:
+
+What is this?
+Why isn't data available?
+Can I continue without it?
+What can I do next?
+
+============================================================
+24. MOBILE / RESPONSIVE UX
+============================================================
+
+Audit whether the two-layer readiness and research modes can work on narrow
+screens.
+
+Avoid side-by-side-only assumptions.
+
+Recommend stacking order.
+
+============================================================
+25. ACCESSIBILITY
+============================================================
+
+Do not communicate status by color alone.
+
+Every state must have:
+
+text label
+icon where appropriate
+accessible semantics
+
+============================================================
+26. MARKETING ALIGNMENT
+============================================================
+
+Design product language consistent with:
+
+"Start researching immediately — no brokerage connection required."
+
+Potential positioning:
+
+Find opportunities.
+Research the evidence.
+Build a Trade Plan.
+Monitor what changes.
+Connect a broker only when you want direct execution.
+
+Do not introduce investment-advice language.
+
+============================================================
+27. FEATURE DISCOVERY
+============================================================
+
+Ensure brokerless users can discover:
+
+Trade Planning
+Options Strategy Matching
+Theoretical Options Research
+Risk Analysis
+Portfolio Import
+Monitoring
+
+Do not hide them behind broker-connected navigation states.
+
+============================================================
+28. ANALYTICS EVENTS
+============================================================
+
+Design future analytics events for measuring brokerless adoption.
+
+Examples:
+
+brokerless_opportunity_opened
+brokerless_trade_plan_created
+theoretical_options_opened
+portfolio_import_selected
+broker_connect_cta_seen
+broker_connect_started
+execution_intent_selected
+
+Do not implement tracking.
+
+Avoid sensitive account/financial payloads.
+
+============================================================
+29. FAILURE / UX MATRIX
+============================================================
+
+Create scenarios for:
+
+new user/no broker
+returning user/no broker
+user with manual portfolio
+user with imported portfolio
+user with independent option feed
+user with theoretical-only options mode
+broker-connected user
+broker disconnected
+broker unsupported
+market data delayed
+market data unavailable
+execution requested without broker
+
+For each:
+
+primary message
+status
+primary CTA
+secondary CTA
+available functionality
+
+============================================================
+30. SCREEN-BY-SCREEN CHANGE MANIFEST
+============================================================
+
+Produce a concrete manifest:
+
+screen/component
+current broker-dependent behavior
+future behavior
+copy change
+CTA change
+priority
+implementation group
+
+This will become the implementation checklist.
+
+============================================================
+31. IMPLEMENTATION GROUPS
+============================================================
+
+Group UX work into candidate packages:
+
+A. Navigation & Onboarding
+B. Dashboard Brokerless Experience
+C. Trade Planning
+D. Trade Plan Readiness
+E. Options Research Modes
+F. Portfolio Entry
+G. Data Provenance
+H. Guided Journey
+I. Broker Execution Transition
+
+Do not create separate sprints yet.
+
+============================================================
+32. ACCEPTANCE CRITERIA
+============================================================
+
+Define end-to-end acceptance criteria.
+
+At minimum:
+
+A brand-new user with NO broker can:
+
+1. log in
+2. discover an opportunity
+3. open research
+4. build a Trade Plan
+5. save it
+6. refresh and reopen it
+7. review risk/scenario information
+8. run Trade Plan Readiness
+9. monitor the plan
+10. perform equity research using broker-independent market data
+11. perform options strategy research
+12. use theoretical options mode when actual chain unavailable
+13. import/manual-enter portfolio data
+14. never encounter a false broker-required blocker before requesting execution
+
+Then:
+
+15. user selects direct execution
+16. broker connection requirement becomes explicit
+17. execution remains impossible without broker
+
+============================================================
+33. DOCUMENTATION
+============================================================
+
+Create:
+
+docs/operations/50-audit-d-brokerless-ux.md
+
+Update:
+
+Doc 46
+Doc 47
+Doc 48
+Doc 49
+Known Issues/backlog
+README
+Sprint change log
+
+============================================================
+34. NO APPLICATION CODE
+============================================================
+
+Mandatory:
+
+git diff --name-only HEAD
+
+must show docs/ only.
+
+No server/
+No client/
+No shared/
+No tests/
+No package changes.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Current brokerless journey findings
+2. Final brokerless user journey
+3. Onboarding design
+4. Dashboard design
+5. Trade Planning design
+6. Trade Plan Workspace design
+7. Preflight UX
+8. Options three-mode UX
+9. Theoretical options UX
+10. Portfolio UX
+11. Risk/position sizing UX
+12. Data provenance UX
+13. Error/limitation taxonomy
+14. CTA hierarchy
+15. Guided novice journey
+16. Terminology changes
+17. Empty-state design
+18. Marketing alignment
+19. Analytics event design
+20. Failure/UX matrix
+21. Screen-by-screen manifest
+22. Implementation groups
+23. End-to-end acceptance criteria
+24. Docs updated
+25. Files changed
+26. Confirmation application code changed = NO
+
+STOP AFTER AUDIT D.
+DO NOT IMPLEMENT.

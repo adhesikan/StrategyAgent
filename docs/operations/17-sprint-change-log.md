@@ -1,5 +1,35 @@
 # Sprint Change Log
 
+## Audit D — Brokerless UX, Onboarding & Graceful Degradation (2026-08-17)
+**Status:** COMPLETE — No application code changed
+
+**Key findings:**
+- Full gate inventory: 22 surfaces audited; 3 are critical misclassifications (P0)
+- **P0 misclassifications:** options scanner hard-blocks on broker (scan is stored-data based); workspace risk card misattributes data-provider gaps as broker gaps; Trade Plan execution section framing needs Audit B two-layer split
+- **CORRECT blockers preserved:** Order Preparation, Order Preview, trade ticket submit, Broker Submission — all remain hard-gated
+- Canonical journey: FIND→RESEARCH→PLAN→MONITOR — all 4 stages work without broker; EXECUTE is the only broker-required stage
+- Onboarding redesigned: broker removed as early required step; introduced at contextual step 5 as one of two equal paths
+- Broker CTA becomes PRIMARY only when user explicitly enters execution flow
+- Three-mode options UX: Mode A (independent chain), Mode B (theoretical), Mode C (broker-connected)
+- Three-path portfolio entry: Manual / Import / Broker Sync — all equal weight
+- Error/limitation taxonomy: ERROR / BLOCKER / LIMITATION / ENHANCEMENT_AVAILABLE / INFORMATION
+- Broker absence during research = ENHANCEMENT_AVAILABLE (neutral); during execution = BLOCKER (amber/red)
+- 9 implementation groups (A–I); screen-by-screen manifest (16 rows); 17-item acceptance criteria
+- 9 new backlog items BI-012 through BI-020; 3 are P0
+
+**Documents updated:**
+- `docs/operations/50-audit-d-brokerless-ux.md` — NEW (54KB, full design)
+- `docs/operations/46-broker-independence-architecture.md` — §4d Audit D summary added
+- `docs/operations/47-audit-a-broker-gate-inventory.md` — §9c Audit D reference added
+- `docs/operations/48-audit-b-preflight-layering.md` — Audit D reference added
+- `docs/operations/49-audit-c-broker-independent-options.md` — Audit D reference added
+- `docs/operations/15-known-issues-and-backlog.md` — BI-012 through BI-020 added
+- `docs/operations/README.md` — Doc 50 entry added
+
+**Application code changed: NO**
+
+---
+
 ## Amendment C1 — Underlying-Only Theoretical Options Mode (2026-08-17)
 **Status:** COMPLETE — No application code changed
 

@@ -1,0 +1,800 @@
+VCP TRADER AI — SPRINT 2.8.7 ARCHITECTURE AUDIT C
+Broker-Independent Options Data & Analytics
+
+STATUS
+
+Audit A — Broker Gate Inventory: COMPLETE
+Audit B — Preflight Layering: COMPLETE
+
+DO NOT IMPLEMENT APPLICATION CODE IN THIS TASK.
+
+This is an architecture/data-source audit only.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Design the maximum broker-independent options research capability for VCP Trader AI.
+
+The product goal is:
+
+Users should be able to perform as much options research, strategy analysis,
+contract research, scenario analysis, and Trade Plan creation as technically
+possible WITHOUT connecting a brokerage account.
+
+Brokerage should primarily add:
+
+- account-specific permissions
+- buying power
+- actual positions
+- execution validation
+- order submission
+- order status/fills
+
+Options research itself should not be broker-gated wherever an independent
+market-data source or deterministic calculation can provide the required inputs.
+
+============================================================
+1. AUDIT EXISTING OPTIONS ARCHITECTURE
+============================================================
+
+Inspect all current options-related types/services/routes/components.
+
+At minimum:
+
+shared/options-strategy-types.ts
+shared/contract-research-types.ts
+shared/trade-risk-scenario types
+server/services/options-strategy-matching-service.ts
+server/services/contract-research-service.ts
+server/services/trade-risk-scenario-service.ts
+server/routes/trade-planning.ts
+internal-options routes/services
+client OptionsStrategyPanel
+ContractResearchPanel
+RiskAnalysisPanel
+Options Order Preview
+Execution Preflight options dimensions
+
+Report:
+
+- every external data field currently required
+- current provider for each field
+- which fields come from broker
+- which are calculated internally
+- which are stored/cached
+- which are merely displayed vs used in deterministic gating
+
+============================================================
+2. BUILD A CANONICAL OPTIONS DATA TAXONOMY
+============================================================
+
+Classify every options-related metric into:
+
+A. UNDERLYING-DERIVED
+B. OPTION-MARKET-OBSERVED
+C. VCP-DERIVED
+D. ACCOUNT/BROKER-SPECIFIC
+
+This classification is foundational.
+
+============================================================
+3. UNDERLYING-DERIVED METRICS
+============================================================
+
+Determine what VCP Trader AI can calculate using only:
+
+- underlying stock quote
+- OHLC history
+- trading calendar
+- dividends if available
+- risk-free rate if available
+
+Potential metrics to evaluate:
+
+historical volatility
+realized volatility
+rolling volatility 10/20/30/60/90d
+ATR
+support/resistance
+EMA structure
+trend
+VCP characteristics
+expected underlying price range
+expected move approximation
+probability underlying finishes above strike
+probability underlying finishes below strike
+probability of touch
+scenario distribution
+model option value
+model Greeks using assumed/model volatility
+delta
+gamma
+theta
+vega
+rho
+
+For every derived metric report:
+
+- required inputs
+- formula/model family
+- assumptions
+- confidence/limitations
+- whether it can be used in production research
+- required user-facing label
+
+Important:
+
+Modeled Greeks must never be presented as market-observed Greeks.
+
+Use labels such as:
+
+MODEL_DELTA
+MODEL_GAMMA
+MODEL_THETA
+
+or equivalent canonical terminology.
+
+============================================================
+4. OPTION-MARKET-OBSERVED DATA
+============================================================
+
+Determine the minimum actual options-market dataset VCP Trader AI needs
+from an independent provider.
+
+Evaluate fields such as:
+
+underlying symbol
+OCC contract symbol
+expiration
+strike
+call/put
+bid
+ask
+last
+mark/mid
+volume
+open interest
+quote timestamp
+trade timestamp
+implied volatility
+provider Greeks
+
+Determine which fields are truly required and which can be derived.
+
+Goal:
+
+MINIMIZE the external options data requirement.
+
+============================================================
+5. VCP-DERIVED FROM BASIC OPTIONS DATA
+============================================================
+
+Determine what VCP Trader AI can calculate internally if an independent provider
+gives only:
+
+expiration
+strike
+call/put
+bid
+ask
+last
+volume
+open interest
+
+plus underlying data.
+
+Evaluate whether VCP can calculate:
+
+midpoint
+spread %
+liquidity tier
+implied volatility
+delta
+gamma
+theta
+vega
+rho
+breakeven
+max profit/loss
+multi-leg debit/credit
+spread economics
+scenario P/L
+expected move
+probability estimates
+contract quality
+strategy-family analytics
+
+Identify which existing deterministic engines already perform these calculations
+or can be extended safely.
+
+Do not create duplicate architecture in the design.
+
+============================================================
+6. BLACK-SCHOLES / BINOMIAL / MODEL CHOICE
+============================================================
+
+Audit whether VCP Trader AI already contains option-pricing functions.
+
+Determine recommended model architecture for:
+
+European-style theoretical calculations
+American equity options
+dividend-paying stocks
+short-dated options
+deep ITM/OTM cases
+
+Do not over-engineer.
+
+Determine:
+
+- baseline model
+- fallback model
+- assumptions
+- limitations
+
+If Black-Scholes is used for research approximation, label accordingly.
+
+Do NOT present theoretical prices as executable market prices.
+
+============================================================
+7. IMPLIED VOLATILITY ENGINE
+============================================================
+
+Design internal IV calculation from observed option premium.
+
+Inputs conceptually:
+
+underlying price
+strike
+expiration
+risk-free rate
+dividend yield
+option price
+
+Determine:
+
+- numerical solver approach
+- convergence handling
+- invalid premium handling
+- bid/ask midpoint vs last-price policy
+- zero-bid handling
+- stale quote handling
+- missing dividend/rate fallback
+
+Define output quality states such as:
+
+CALCULATED
+LOW_CONFIDENCE
+UNAVAILABLE
+
+Do not implement.
+
+============================================================
+8. GREEKS ENGINE
+============================================================
+
+Determine whether VCP should calculate Greeks internally even when the external
+provider supplies them.
+
+Potential architecture:
+
+providerGreeks
+calculatedGreeks
+greekSource
+
+Possible provenance:
+
+MARKET_PROVIDER
+VCP_IV_MODEL
+VCP_REALIZED_VOL_MODEL
+
+Define precedence rules.
+
+Do not silently mix modeled and provider Greeks.
+
+============================================================
+9. PROBABILITY METRICS
+============================================================
+
+IMPORTANT EXISTING SAFETY RULE:
+
+Sprint 2.7.4 permanently disabled probability metrics in Trade Risk & Scenario Analysis.
+
+Audit exactly which probability outputs are currently prohibited and why.
+
+Do NOT reintroduce prohibited:
+
+POP
+probability of profit
+recommendation-oriented probability labels
+
+Determine whether neutral statistical research such as:
+
+modeled distribution
+probability underlying above/below reference level
+
+is allowed elsewhere under current compliance rules.
+
+If unclear, flag for compliance review rather than implementing.
+
+============================================================
+10. TWELVE DATA OPTIONS CAPABILITY
+============================================================
+
+Audit the current Twelve Data integration in this repository.
+
+Determine whether current account/plan/API exposes any options endpoints.
+
+Do NOT assume.
+
+Search:
+
+existing Twelve Data wrapper
+environment variables
+API clients
+entitlement handling
+documentation references in repository
+
+If external verification is required, flag exact questions that must be checked:
+
+- option chains?
+- expiration endpoint?
+- bid/ask?
+- last?
+- volume?
+- open interest?
+- IV?
+- Greeks?
+- real-time vs delayed?
+- historical options?
+- redistribution/commercial license?
+- rate limits?
+
+Do not implement external calls yet.
+
+============================================================
+11. INDEPENDENT OPTIONS PROVIDER INTERFACE
+============================================================
+
+Design a provider-neutral interface.
+
+Conceptual functions:
+
+getOptionExpirations(symbol)
+getOptionChain(symbol, expiration)
+getOptionQuote(contract)
+getOptionContractHistory(contract) — optional
+
+Define canonical normalized structures.
+
+No Tradier-specific fields should leak into:
+
+Options Strategy Matching
+Contract Research
+Risk & Scenario Analysis
+
+============================================================
+12. DATA PROVENANCE
+============================================================
+
+Every options value displayed should know its source.
+
+Design provenance fields:
+
+provider
+observedAt
+retrievedAt
+marketSession
+delayedBy
+quality
+calculationMethod
+derivedFrom
+
+Examples:
+
+Bid/Ask
+Source: Independent options feed
+Observed: 10:32:14 ET
+
+IV
+Source: VCP calculated from midpoint
+
+Delta
+Source: VCP model
+Volatility input: calculated IV
+
+or:
+
+Delta
+Source: provider
+
+============================================================
+13. FRESHNESS MODEL
+============================================================
+
+Design freshness thresholds separately for:
+
+underlying quote
+option bid/ask
+last trade
+volume
+open interest
+IV
+Greeks
+
+Open interest may legitimately be daily.
+
+Do not mark OI stale using quote-level thresholds.
+
+Define delayedByDesign where appropriate.
+
+============================================================
+14. OPTIONS CONTRACT RESEARCH INDEPENDENT MODE
+============================================================
+
+Redesign conceptually how Sprint 2.7.3 Contract Research should behave without broker.
+
+Potential flow:
+
+Independent options feed
+→ expirations
+→ chain
+→ VCP liquidity filtering
+→ VCP moneyness filtering
+→ VCP event filtering
+→ candidate structures
+→ VCP IV/Greeks if needed
+→ contract research result
+
+Broker account is NOT required.
+
+Broker becomes relevant later for:
+
+permissions
+positions
+buying power
+execution validation
+
+============================================================
+15. COVERED CALL / PROTECTIVE PUT OWNERSHIP
+============================================================
+
+Important distinction:
+
+Researching a covered-call structure does not necessarily require broker positions.
+
+Broker-independent mode could say:
+
+"Requires 100 shares per contract for execution."
+
+If user manually declares holdings/portfolio data, ownership can be evaluated
+against that stored portfolio context.
+
+Broker sync can confirm actual ownership.
+
+Define states:
+
+OWNERSHIP_CONFIRMED_BROKER
+OWNERSHIP_CONFIRMED_PORTFOLIO
+OWNERSHIP_NOT_CONFIRMED
+
+Do not permit brokerless research to silently become naked-call execution.
+
+============================================================
+16. CASH-SECURED PUT
+============================================================
+
+Broker-independent research can calculate:
+
+cash obligation
+strike × 100 × contracts
+premium-adjusted effective entry
+scenario risk
+
+Actual available cash/buying power requires broker/account or manually supplied
+hypothetical allocation.
+
+Define research vs execution distinction.
+
+============================================================
+17. LONG OPTIONS
+============================================================
+
+Determine full broker-independent capabilities for:
+
+long call
+long put
+
+Likely near-complete research without broker if an independent chain exists.
+
+Document required external fields.
+
+============================================================
+18. VERTICAL SPREADS
+============================================================
+
+Determine what is required independently for:
+
+bull call spread
+bear put spread
+bull put spread
+bear call spread
+
+VCP should be able to calculate:
+
+net debit/credit
+width
+max gain
+max loss
+breakeven
+scenario P/L
+
+from market-observed leg prices.
+
+Broker permission still execution-only.
+
+============================================================
+19. NEUTRAL / COMPLEX OPTIONS
+============================================================
+
+Audit:
+
+iron condor
+iron butterfly
+calendar
+diagonal
+straddle
+strangle
+collar
+protective structures
+other 17 canonical strategy families
+
+Determine:
+
+which can be fully researched brokerless
+which require portfolio ownership context
+which require data not available from minimal feed
+
+Do not expand strategy scope beyond existing registry.
+
+============================================================
+20. OPTIONS DATA FALLBACK HIERARCHY
+============================================================
+
+Design conceptual provider hierarchy.
+
+Example:
+
+Primary independent options provider
+→ secondary independent provider
+→ broker provider if connected
+→ no contract-level data
+
+Do not silently substitute modeled option premiums for actual observed contract
+prices where a feature requires market observations.
+
+If actual option quote unavailable:
+
+contract research should degrade clearly.
+
+============================================================
+21. NO-BROKER UX
+============================================================
+
+Design options UX when no broker connected.
+
+Preferred:
+
+Options Research Available
+
+rather than:
+
+Connect Broker
+
+If independent chain exists:
+
+show full contract research.
+
+If independent chain unavailable:
+
+show strategy-level/model research and explain:
+
+"Live contract market data is not currently available."
+
+Do not imply broker is required unless execution is requested.
+
+============================================================
+22. BROKER-CONNECTED UX
+============================================================
+
+When broker exists, broker data may enrich:
+
+positions
+permissions
+buying power
+execution quote
+account validation
+
+Do not replace good independent research data unnecessarily.
+
+Define provider precedence.
+
+============================================================
+23. LICENSING / REDISTRIBUTION REQUIREMENTS
+============================================================
+
+Create a clear checklist for any external options provider:
+
+commercial use
+display rights
+redistribution
+derived data rights
+real-time rights
+delayed-data rights
+historical storage
+caching
+retention
+per-user display
+API rate limits
+
+This must be resolved before production use.
+
+============================================================
+24. MINIMUM INDEPENDENT OPTIONS FEED SPEC
+============================================================
+
+Produce a final minimum required specification.
+
+Example fields:
+
+symbol
+contractSymbol
+expiration
+strike
+type
+bid
+ask
+last
+volume
+openInterest
+quoteTimestamp
+
+Then clearly identify optional fields:
+
+provider IV
+provider Greeks
+tradeTimestamp
+
+Goal:
+
+buy raw observations, calculate intelligence ourselves.
+
+============================================================
+25. IMPLEMENTATION GROUPS
+============================================================
+
+Propose implementation packages, not sprints yet.
+
+Possible groups:
+
+A. Independent Options Provider Interface
+B. Underlying Volatility / Modeling Engine
+C. Internal IV + Greeks Engine
+D. Brokerless Contract Research
+E. Ownership / Capital Context
+F. Options Data Provenance & Freshness
+G. UI Brokerless Options Experience
+
+============================================================
+26. SAFETY / COMPLIANCE
+============================================================
+
+Preserve:
+
+no "best contract"
+no "recommended"
+no POP
+no automatic strategy selection
+no broker execution without broker gates
+covered call ownership requirement for execution
+cash requirements for CSP execution
+
+Modeled values must be labeled.
+
+============================================================
+27. TEST PLAN
+============================================================
+
+Design tests for:
+
+- underlying-only model calculations
+- IV solver
+- Greek calculations
+- null/missing inputs
+- stale quotes
+- zero bid
+- crossed market
+- wide spread
+- delayed OI
+- provider-vs-derived provenance
+- long option research brokerless
+- vertical spread research brokerless
+- covered call ownership unconfirmed
+- CSP capital calculation
+- no broker does not block research
+- no market observations does not fabricate contract prices
+- broker connection enriches without changing research semantics
+- execution still broker-gated
+
+No tests changed yet.
+
+============================================================
+28. DOCUMENTATION
+============================================================
+
+Create:
+
+docs/operations/49-audit-c-broker-independent-options.md
+
+Update:
+
+Doc 46
+Doc 47
+Doc 48
+Known Issues / backlog
+README
+Sprint change log
+
+============================================================
+29. NO APPLICATION CODE CHANGES
+============================================================
+
+Mandatory:
+
+git diff --name-only HEAD
+
+must show docs/ only.
+
+No server/
+No client/
+No shared/
+No tests/
+No package changes.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Existing options data architecture
+2. Underlying-derived metrics
+3. Option-market-observed minimum fields
+4. VCP-derived metrics
+5. Pricing-model recommendation
+6. IV engine design
+7. Greeks design
+8. Probability/compliance findings
+9. Current Twelve Data options capability findings
+10. Independent provider interface
+11. Provenance model
+12. Freshness model
+13. Contract Research independent mode
+14. Covered call ownership model
+15. CSP brokerless research model
+16. Long-options brokerless model
+17. Vertical-spread brokerless model
+18. Complex-options findings
+19. Provider fallback hierarchy
+20. Minimum options-feed specification
+21. Licensing requirements
+22. Implementation groups
+23. Safety/compliance invariants
+24. Test plan
+25. Docs updated
+26. Files changed
+27. Confirmation application code changed = NO
+
+STOP AFTER AUDIT C.
+DO NOT IMPLEMENT.

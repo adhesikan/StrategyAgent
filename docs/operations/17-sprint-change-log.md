@@ -1,5 +1,31 @@
 # Sprint Change Log
 
+## Audit C — Broker-Independent Options Data & Analytics (2026-08-17)
+**Status:** COMPLETE — No application code changed
+
+**Key findings:**
+- Options Strategy Matching + Trade Risk & Scenario Analysis are already BROKER_INDEPENDENT ✓
+- Twelve Data integration covers equity OHLCV only — **no options endpoints currently integrated**
+- Licensing verification required before any independent options provider can be used
+- IV solver (Newton-Raphson) + Black-Scholes Greeks engine must be built (neither exists today)
+- Minimum feed: `expiration, strike, type, bid, ask, volume, openInterest, quoteTimestamp` — all Greeks derivable internally
+- `probabilityMetricsEnabled: false` is a literal type — cannot override — POP remains permanently off
+- 7 implementation groups: A (Provider Interface), B (Volatility Engine), C (IV+Greeks Engine), D (Brokerless Contract Research), E (Ownership/Capital), F (Provenance/Freshness), G (UI)
+- `OWNERSHIP_CONFIRMED_BROKER` / `OWNERSHIP_CONFIRMED_PORTFOLIO` / `OWNERSHIP_NOT_CONFIRMED` ownership model
+- Long calls/puts + all 4 vertical spreads + all 9 non-ownership-requiring strategies: fully researchable brokerless
+- Covered call / protective put / collar: researchable with portfolio import; broker required for execution
+
+**Documents updated:**
+- `docs/operations/49-audit-c-broker-independent-options.md` — NEW (52KB, full design)
+- `docs/operations/46-broker-independence-architecture.md` — §4b Audit C summary added
+- `docs/operations/47-audit-a-broker-gate-inventory.md` — Audit C reference added
+- `docs/operations/15-known-issues-and-backlog.md` — BI-003 / BI-007 through BI-010 added
+- `docs/operations/README.md` — Doc 49 entry added
+
+**Application code changed: NO**
+
+---
+
 ## Audit B — Execution Preflight Layer Design (2026-08-17)
 **Status:** COMPLETE — No application code changed
 

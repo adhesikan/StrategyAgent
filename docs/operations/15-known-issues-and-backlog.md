@@ -123,6 +123,10 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 | BI-002 | Remove `enabled: brokerConnected` from preflight query (`trade-plan-detail.tsx:241`); update `ExecutionPreflightPanel` for two-section UI | CON-001 | P0 |
 | BI-003 | Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback (Audit C) | CON-002 | P2 |
 | BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode (CON-004) | CON-004 | P2 |
+| BI-007 | **Licensing gate** — verify Twelve Data options API plan + redistribution rights before any options integration; evaluate Polygon.io as fallback | Audit C prerequisite | **P0** |
+| BI-008 | Build IV solver (Newton-Raphson) + Black-Scholes Greeks engine with dual-track provenance (`VCP_IV_MODEL` vs `MARKET_PROVIDER`) | Audit C Group C | P1 |
+| BI-009 | Build HV-10/20/30/60/90 rolling volatility engine from stored daily bars; expected-move range calculation | Audit C Group B | P1 |
+| BI-010 | Add `OwnershipConfirmationState` to contract research; surface portfolio-import path for covered call / protective put research | Audit C Group E | P1 |
 | ~~BI-005~~ | ~~Populate gate-site manifest in Doc 46 §6 (output of Audit A)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-16) |
 | ~~BI-006~~ | ~~Design two-layer preflight architecture (Audit B)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-17) |
 

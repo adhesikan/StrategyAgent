@@ -158,6 +158,18 @@ as an independent-mode substitute for live buying power in risk guardrail evalua
 
 ---
 
+## 4b. Audit C Findings — Broker-Independent Options
+
+[Doc 49 — Audit C](49-audit-c-broker-independent-options.md) provides the full options architecture. Key decisions:
+
+- **Options Strategy Matching and Trade Risk & Scenario Analysis are already BROKER_INDEPENDENT.** No changes needed.
+- **Twelve Data does not currently provide options data.** OHLCV bars only. Licensing verification required before any independent options integration.
+- **Minimum external dependency:** `expiration, strike, type, bid, ask, volume, openInterest, quoteTimestamp` — all IV and Greeks are derivable internally via Newton-Raphson IV solver + Black-Scholes.
+- **POP / probability of profit remains permanently off** (`probabilityMetricsEnabled: false` literal type). N(d2) flagged for compliance review before any surfacing.
+- **Ownership model:** `OWNERSHIP_CONFIRMED_BROKER` | `OWNERSHIP_CONFIRMED_PORTFOLIO` | `OWNERSHIP_NOT_CONFIRMED` — research unlocked with disclosure; execution blocked without broker confirmation.
+- **7 implementation groups (A–G)** — Group A (provider interface) requires licensing gate first.
+- **Long options + all vertical spreads + all non-ownership strategies:** fully researchable brokerless once an independent chain is available.
+
 ## 4a. Audit B Findings — Preflight Layer Design
 
 [Doc 48 — Audit B](48-audit-b-preflight-layering.md) provides the full architecture. Key decisions:

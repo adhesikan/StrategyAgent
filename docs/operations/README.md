@@ -37,6 +37,7 @@
 | [46](46-broker-independence-architecture.md) | Broker Independence Architecture | Principle, feature classification, conflicts, gate-site manifest |
 | [47](47-audit-a-broker-gate-inventory.md) | Audit A — Broker Gate Inventory | Full gate-site inventory (25 sites), preflight dim split, implementation groups |
 | [48](48-audit-b-preflight-layering.md) | Audit B — Preflight Layer Design | TRADE_PLAN_READINESS vs BROKER_EXECUTION_READINESS architecture, API contract, failure matrix |
+| [49](49-audit-c-broker-independent-options.md) | Audit C — Broker-Independent Options | Taxonomy, IV engine, Greeks design, provider interface, minimum feed spec, implementation groups |
 | [manifest](system-manifest.yaml) | System Manifest | Machine-readable service/job/flag catalog |
 
 ---

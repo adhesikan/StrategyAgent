@@ -257,6 +257,23 @@ Not sprints — candidate work packages for sequencing in Sprint 2.8.7+.
 
 ---
 
+## 9b. Audit C Reference
+
+**[Doc 49 — Audit C: Broker-Independent Options](49-audit-c-broker-independent-options.md)** designs the full independent options data architecture:
+
+- Options data taxonomy (Underlying-Derived / Option-Market-Observed / VCP-Derived / Account-Specific)
+- IV solver (Newton-Raphson) and Black-Scholes Greeks engine design
+- Minimum independent options feed specification
+- `IndependentOptionsProvider` interface (provider-neutral)
+- Ownership confirmation model for covered call / protective put
+- Twelve Data options capability audit: **no options endpoints currently integrated**
+- 7 implementation groups (A–G) with sequencing and prerequisites
+- 10 test suites covering IV solver, Greeks, provenance, ownership, compliance invariants
+
+BI-GATE-017 and BI-GATE-018 (409 NO_BROKER on options chain) are addressed by Audit C Group D, gated on Group A (licensing verification first).
+
+---
+
 ## 9a. Audit B Reference
 
 **[Doc 48 — Audit B: Execution Preflight Layer Design](48-audit-b-preflight-layering.md)** provides the complete implementation design for the two-layer preflight split:

@@ -119,11 +119,12 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 
 | ID | Item | Type | Priority |
 |----|------|------|----------|
-| BI-001 | Execution Preflight split: Independent Layer (dims 1–3) vs Broker Layer (dims 4–12) | CON-001 | P1 |
-| BI-002 | Audit all `brokerConnected` client gates; reclassify planning-level features as BROKER_INDEPENDENT | CON-003 | P1 |
-| BI-003 | Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback | CON-002 | P2 |
-| BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode | CON-004 | P2 |
+| BI-001 | Implement two-layer preflight split per [Doc 48](48-audit-b-preflight-layering.md): add `tradePlanReadiness` + `brokerExecutionReadiness` to preflight result; fix `determineOverallStatus`; add new `ValidationStatus` values | CON-001 | P0 |
+| BI-002 | Remove `enabled: brokerConnected` from preflight query (`trade-plan-detail.tsx:241`); update `ExecutionPreflightPanel` for two-section UI | CON-001 | P0 |
+| BI-003 | Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback (Audit C) | CON-002 | P2 |
+| BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode (CON-004) | CON-004 | P2 |
 | ~~BI-005~~ | ~~Populate gate-site manifest in Doc 46 §6 (output of Audit A)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-16) |
+| ~~BI-006~~ | ~~Design two-layer preflight architecture (Audit B)~~ | ~~Audit~~ | ✅ COMPLETE (2026-08-17) |
 
 ---
 

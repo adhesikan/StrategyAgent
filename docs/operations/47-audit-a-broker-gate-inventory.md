@@ -257,6 +257,20 @@ Not sprints — candidate work packages for sequencing in Sprint 2.8.7+.
 
 ---
 
+## 9a. Audit B Reference
+
+**[Doc 48 — Audit B: Execution Preflight Layer Design](48-audit-b-preflight-layering.md)** provides the complete implementation design for the two-layer preflight split:
+
+- Final `TradePlanReadinessStatus` + `BrokerExecutionReadinessStatus` type definitions
+- Full API response shape proposal (additive, backward-compatible)
+- Failure matrix for 12 scenarios (A through L)
+- 8-suite test plan
+- Platform health and compliance implications
+
+The gate-site findings in §2 above (particularly BI-GATE-001, -002, -020, -021) are addressed by the Audit B implementation design.
+
+---
+
 ## 10. Completion Report
 
 1. **Total broker gate sites found:** 25

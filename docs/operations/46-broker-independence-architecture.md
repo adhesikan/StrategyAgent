@@ -158,6 +158,19 @@ as an independent-mode substitute for live buying power in risk guardrail evalua
 
 ---
 
+## 4a. Audit B Findings — Preflight Layer Design
+
+[Doc 48 — Audit B](48-audit-b-preflight-layering.md) provides the full architecture. Key decisions:
+
+- **Two canonical layers:** `TRADE_PLAN_READINESS` (dims 1,2,3,11,12 — always evaluates) and `BROKER_EXECUTION_READINESS` (dims 4–10 — evaluates only when broker connected)
+- **`overallStatus = "PASS"` semantics unchanged** — only emitted when both layers pass; order-preparation and all downstream gates are preserved exactly
+- **New per-dimension statuses:** `NOT_CONNECTED`, `NOT_APPLICABLE`, `NOT_CONFIRMED`, `PLANNING_MODE`
+- **Equity dim 8 (Position Requirements):** `NOT_APPLICABLE` for simple long equity (no existing position needed)
+- **Options dims 9/10 without broker:** `NOT_CONFIRMED` — plan not invalidated; contract not yet verified
+- **Order Preparation remains BROKER_REQUIRED** — no brokerless order-prep path; existing Sprint 2.8.1 gate unchanged
+- **No DB schema migration required** for Phase 1 — new fields are additive in `result_json`
+- **Test plan:** 8 required suites covering all failure matrix scenarios, broker transitions, and backward compatibility
+
 ## 5. Proposed Next Architecture Audit (Sprint 2.8.7)
 
 Before starting Sprint 2.8.7 implementation, the following audit tasks must be completed:

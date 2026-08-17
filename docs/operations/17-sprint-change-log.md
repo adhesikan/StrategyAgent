@@ -1,5 +1,31 @@
 # Sprint Change Log
 
+## Audit B — Execution Preflight Layer Design (2026-08-17)
+**Status:** COMPLETE — No application code changed
+
+**Design produced:** Two-layer preflight architecture separating TRADE_PLAN_READINESS (always evaluates) from BROKER_EXECUTION_READINESS (evaluates when broker connected).
+
+**Key decisions:**
+- `overallStatus` = `"PASS"` semantics unchanged — only emitted when both layers pass; order-preparation gate preserved
+- New top-level fields `tradePlanReadiness`, `brokerExecutionReadiness`, `executionAvailable` are additive (no breaking change)
+- New `ValidationStatus` values: `NOT_CONNECTED`, `NOT_APPLICABLE`, `NOT_CONFIRMED`, `PLANNING_MODE`
+- `PASS_INDEPENDENT` rejected — two-layer model makes it unnecessary; avoids backward compatibility risk
+- Equity dim 8 (Position Requirements) = NOT_APPLICABLE for simple long (not UNAVAILABLE)
+- Options dims 9/10 without broker = NOT_CONFIRMED (not FAIL — plan not invalidated, contract not verified)
+- Order Preparation remains BROKER_REQUIRED; no brokerless order-prep path
+- No DB schema migration required for Phase 1
+
+**Documents updated:**
+- `docs/operations/48-audit-b-preflight-layering.md` — NEW (full design: types, API contract, failure matrix, test plan)
+- `docs/operations/46-broker-independence-architecture.md` — Audit B reference added
+- `docs/operations/47-audit-a-broker-gate-inventory.md` — Audit B reference added
+- `docs/operations/15-known-issues-and-backlog.md` — Implementation groups A/B scoping updated
+- `docs/operations/README.md` — Doc 48 entry added
+
+**Application code changed: NO**
+
+---
+
 ## Audit A — Broker Gate-Site Inventory (2026-08-16)
 **Status:** COMPLETE — No application code changed
 

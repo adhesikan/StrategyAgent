@@ -1,0 +1,646 @@
+VCP TRADER AI — SPRINT 2.8.7 ARCHITECTURE AUDIT B
+Execution Preflight Independent Layer vs Broker Layer
+
+STATUS
+
+Audit A is complete.
+
+25 broker gate sites were found.
+
+Critical findings include:
+
+- ExecutionPreflightPanel disabled when !brokerConnected
+- Trade Plan detail preflight query enabled only when brokerConnected
+- determineOverallStatus() returns UNAVAILABLE when broker is absent
+- several independent dimensions are hidden/masked
+- broker absence is currently treated as a failure even when only execution-specific
+  capabilities are unavailable
+
+DO NOT IMPLEMENT CODE IN THIS TASK.
+
+This is a design/audit task only.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Redesign the 12-dimension Execution Preflight architecture into two explicit
+layers:
+
+A. TRADE PLAN READINESS / INDEPENDENT PREFLIGHT
+
+B. BROKER EXECUTION READINESS
+
+The goal is:
+
+A user WITHOUT a brokerage connection should still be able to run meaningful
+preflight checks on a saved Trade Plan.
+
+Broker absence must NOT cause broker-independent planning/readiness dimensions
+to disappear or be reported as platform failure.
+
+However:
+
+Broker-independent readiness must NEVER authorize broker submission.
+
+Actual broker submission must still require every broker/execution-specific
+safety gate.
+
+============================================================
+1. AUDIT CURRENT PREFLIGHT TYPE SYSTEM
+============================================================
+
+Inspect all canonical types/constants for:
+
+ExecutionPreflight
+PreflightDimension
+overallStatus
+dimension status
+blockers
+warnings
+readiness states
+execution readiness
+order preparation gates
+
+Report:
+
+- current status enums
+- current overallStatus values
+- where determineOverallStatus() lives
+- client assumptions about those values
+- downstream services relying on PASS
+- order preparation conditions
+- execution submission conditions
+
+Do not change anything.
+
+============================================================
+2. CONFIRM 12 DIMENSION CONTRACT
+============================================================
+
+Audit the current implementation of all 12 dimensions:
+
+1. Trade Plan
+2. Research Lifecycle
+3. Plan Freshness
+4. Broker Connection
+5. Broker Account
+6. Broker Permissions
+7. Buying Power
+8. Position Requirements
+9. Quote Validation
+10. Structure Validation
+11. Risk Analysis
+12. Planning Constraints
+
+For each report:
+
+- current status logic
+- dependencies
+- whether broker/account is truly required
+- whether independent fallback exists today
+- whether independent fallback could be added
+- whether the dimension is planning-readiness or execution-readiness
+
+============================================================
+3. DEFINE TWO LAYERS
+============================================================
+
+Design canonical layer names.
+
+Preferred conceptual direction:
+
+TRADE_PLAN_READINESS
+
+and
+
+BROKER_EXECUTION_READINESS
+
+But inspect existing naming conventions before locking terms.
+
+TRADE PLAN READINESS should answer:
+
+"Is this saved research/planning artifact internally ready and current?"
+
+BROKER EXECUTION READINESS should answer:
+
+"Can this specific plan be prepared for execution using the connected
+broker/account right now?"
+
+These are different questions and must not share one ambiguous overall result.
+
+============================================================
+4. CLASSIFY EACH DIMENSION
+============================================================
+
+Create final canonical classification.
+
+Expected direction from Audit A:
+
+INDEPENDENT:
+
+1 Trade Plan
+2 Research Lifecycle
+3 Plan Freshness
+11 Risk Analysis
+12 Planning Constraints
+
+BROKER_REQUIRED / BROKER_ENHANCED:
+
+4 Broker Connection
+5 Broker Account
+6 Broker Permissions
+7 Buying Power
+8 Position Requirements
+9 Quote Validation
+10 Structure Validation
+
+BUT challenge this.
+
+Specifically evaluate:
+
+- equity Position Requirements
+- quote validation using Twelve Data
+- structure validation derived from independent quote
+- hypothetical buying-power/budget constraints
+- stored riskSnapshot availability
+
+A dimension may have:
+
+Independent Mode
+and
+Broker-Enhanced Mode
+
+Do not force one static classification if the correct architecture is mode-aware.
+
+============================================================
+5. DEFINE INDEPENDENT MODE
+============================================================
+
+Design behavior for:
+
+brokerConnected = false
+
+The user should still be able to run Trade Plan Readiness.
+
+Example conceptual result:
+
+Trade Plan                  PASS
+Research Lifecycle          PASS
+Plan Freshness              PASS
+Risk Analysis               PASS
+Planning Constraints        PASS
+
+Broker Connection           NOT_CONNECTED
+Broker Account              NOT_APPLICABLE
+Broker Permissions          NOT_APPLICABLE
+Buying Power                NOT_AVAILABLE_WITHOUT_BROKER
+Position Requirements       INDEPENDENT_PASS or NOT_APPLICABLE
+Quote Validation            TWELVE_DATA_PASS where supported
+Structure Validation        INDEPENDENT_PASS where supported
+
+Determine actual canonical semantics.
+
+Do not implement.
+
+============================================================
+6. STATUS VOCABULARY
+============================================================
+
+Audit whether current statuses:
+
+PASS
+FAIL
+UNAVAILABLE
+REQUIRES_REVIEW
+
+are sufficient.
+
+Design better broker-independent vocabulary.
+
+Possible values to evaluate:
+
+PASS
+FAIL
+REQUIRES_REVIEW
+WARNING
+NOT_CONNECTED
+NOT_APPLICABLE
+CONNECT_TO_ENHANCE
+BROKER_REQUIRED
+UNAVAILABLE
+
+Avoid unnecessary proliferation.
+
+Do not create statuses just for UI convenience if reason codes suffice.
+
+============================================================
+7. OVERALL STATUS DESIGN
+============================================================
+
+Audit A proposed:
+
+PASS_INDEPENDENT
+
+versus:
+
+BROKER_REQUIRED_FOR_EXECUTION
+
+Design the final overall model.
+
+Avoid one overloaded overallStatus if possible.
+
+Preferred conceptual structure:
+
+tradePlanReadiness:
+    PASS | REQUIRES_REVIEW | BLOCKED
+
+brokerExecutionReadiness:
+    READY | NOT_CONNECTED | REQUIRES_REVIEW | BLOCKED
+
+or equivalent.
+
+Then optionally derive a display status.
+
+CRITICAL:
+
+Trade Plan Readiness PASS must NOT imply broker execution authorization.
+
+============================================================
+8. DOWNSTREAM SAFETY CONTRACT
+============================================================
+
+Trace all downstream services consuming preflight:
+
+Order Preparation
+Equity Preview
+Options Preview
+Execution Readiness
+Final Order Review
+Order Confirmation
+Execution Submission
+
+Identify exactly what each currently checks.
+
+Determine which canonical field must gate:
+
+ORDER PREPARATION
+
+and which must gate:
+
+BROKER SUBMISSION.
+
+The future architecture must make it impossible for:
+
+Trade Plan Readiness = PASS
+
+to satisfy the broker execution gate accidentally.
+
+============================================================
+9. ORDER PREPARATION WITHOUT BROKER
+============================================================
+
+Evaluate whether some form of order preparation can exist without a broker.
+
+Potential architecture:
+
+BROKERLESS PLAN PREVIEW
+
+Symbol
+expression
+hypothetical quantity
+limit-price framework
+estimated notional
+risk scenarios
+
+versus:
+
+BROKER ORDER PREPARATION
+
+actual broker account
+broker capabilities
+broker quote
+buying power
+execution-specific fields
+
+Do not implement.
+
+Determine what should remain planning functionality and what must stay broker-required.
+
+============================================================
+10. EQUITY-SPECIFIC MODE
+============================================================
+
+For EQUITY plans, determine how much of dimensions 7–10 can operate without a broker:
+
+Buying Power:
+user hypothetical allocation/budget?
+
+Position Requirements:
+likely NOT_APPLICABLE / PASS for simple long equity?
+
+Quote:
+Twelve Data?
+
+Structure:
+simple equity structure derived independently?
+
+Document exact design.
+
+============================================================
+11. OPTIONS-SPECIFIC MODE
+============================================================
+
+For OPTIONS plans, determine how much of dimensions 7–10 depends on:
+
+actual chain
+option quote
+open interest
+broker permissions
+existing position ownership
+cash requirements
+
+Audit only.
+
+Audit C will handle the external options-feed design.
+
+============================================================
+12. USER EXPERIENCE
+============================================================
+
+Design the brokerless Preflight UI.
+
+Do NOT show broker absence as a red failure on a research/planning screen.
+
+Conceptual experience:
+
+TRADE PLAN READINESS
+✓ Research current
+✓ Plan current
+✓ Risk framework available
+✓ Planning constraints available
+
+Plan Ready
+
+BROKER EXECUTION
+Brokerage not connected
+
+Connect a supported broker if you want account-aware execution checks and direct
+order submission.
+
+[Connect Broker — Optional]
+
+If some execution-related independent data can be checked without a broker,
+show that separately.
+
+============================================================
+13. BROKER-CONNECTED EXPERIENCE
+============================================================
+
+When broker is connected:
+
+Trade Plan Readiness
+and
+Broker Execution Readiness
+
+both evaluate.
+
+If both pass:
+
+Prepare for Execution
+
+becomes available.
+
+Preserve current safety gates.
+
+============================================================
+14. BROKER DISCONNECTION AFTER PLAN CREATION
+============================================================
+
+Design behavior when:
+
+user created a Trade Plan while broker was connected
+
+then disconnects broker.
+
+The Trade Plan must remain usable.
+
+Research lifecycle/monitoring must continue.
+
+Only broker-specific execution capabilities should degrade.
+
+============================================================
+15. BROKER CONNECTION AFTER PLAN CREATION
+============================================================
+
+Design behavior when:
+
+user creates a plan brokerless
+
+then later connects Tradier/TradeStation.
+
+The existing Trade Plan should immediately gain broker execution readiness
+capability.
+
+No Trade Plan recreation.
+
+============================================================
+16. DATA MODEL IMPACT
+============================================================
+
+Determine whether the split requires:
+
+schema changes
+new stored readiness fields
+new enums
+new API payload fields
+
+Prefer computed state over duplicated persisted state where appropriate.
+
+Do not implement.
+
+============================================================
+17. API CONTRACT
+============================================================
+
+Design the future response shape for:
+
+POST/GET preflight
+
+Potential concept:
+
+{
+  tradePlanReadiness: {...},
+  brokerExecutionReadiness: {...},
+  dimensions: [...],
+  executionAvailable: boolean,
+  brokerConnected: boolean,
+  limitations: [...]
+}
+
+Use existing canonical API style.
+
+Do not finalize fields that are unnecessary.
+
+============================================================
+18. BACKWARD COMPATIBILITY
+============================================================
+
+Identify every existing client/server/test depending on:
+
+overallStatus === "PASS"
+
+or equivalent.
+
+List compatibility risks.
+
+Propose a migration strategy so existing execution safety does not regress.
+
+============================================================
+19. PLATFORM HEALTH
+============================================================
+
+Design how Platform Health should report:
+
+independent preflight
+broker execution readiness
+
+Broker disconnected should not make the entire Trade Planning subsystem unhealthy.
+
+============================================================
+20. COMPLIANCE / LANGUAGE
+============================================================
+
+Preserve research-first terminology.
+
+Do not introduce:
+
+recommended
+best trade
+suitable
+approved
+ready to trade
+
+Prefer:
+
+Trade Plan Ready
+Execution Preconditions Passed
+Broker Connection Required for Execution
+
+Review existing forbidden vocabulary.
+
+============================================================
+21. FAILURE MATRIX
+============================================================
+
+Create a scenario matrix for:
+
+A. no broker + independent plan PASS
+B. no broker + lifecycle review required
+C. no broker + stale research
+D. broker connected + all pass
+E. broker connected + quote stale
+F. broker connected + buying power insufficient
+G. broker disconnected after prior successful preflight
+H. broker reconnects
+I. equity simple long
+J. covered call requiring ownership
+K. cash-secured put requiring cash/account data
+L. multi-leg options
+
+For each report:
+
+Trade Plan Readiness
+Broker Execution Readiness
+user-visible status
+allowed next action
+
+============================================================
+22. TEST PLAN
+============================================================
+
+Design permanent tests required for implementation.
+
+At minimum:
+
+- brokerless independent preflight
+- brokerless lifecycle failure
+- brokerless risk/planning checks
+- no broker does not produce generic FAIL
+- Trade Plan Readiness PASS never authorizes execution
+- order preparation execution path still requires broker layer
+- broker connection immediately enriches same plan
+- broker disconnect degrades only execution layer
+- equity plan behavior
+- covered call ownership behavior
+- CSP buying-power behavior
+- options behavior
+- backward compatibility
+
+No tests changed yet.
+
+============================================================
+23. DOCUMENTATION
+============================================================
+
+Create:
+
+docs/operations/48-audit-b-preflight-layering.md
+
+Update:
+
+Doc 46
+Doc 47 references if needed
+Known Issues / backlog
+README
+Sprint change log
+
+Populate the final proposed preflight architecture.
+
+============================================================
+24. NO CODE CHANGES
+============================================================
+
+Mandatory:
+
+git diff --name-only HEAD
+
+must show docs/ only.
+
+No server/
+No client/
+No shared/
+No tests/
+No package changes.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Current preflight status model
+2. Final layer names
+3. Dimension classification
+4. Independent-mode behavior
+5. Broker-connected behavior
+6. Proposed status vocabulary
+7. Proposed overall readiness model
+8. Exact order-preparation gate
+9. Exact broker-submission gate
+10. Equity-specific design
+11. Options-specific design
+12. Brokerless UI design
+13. Broker-connected UI design
+14. API response proposal
+15. Schema impact
+16. Backward compatibility risks
+17. Platform Health implications
+18. Failure matrix summary
+19. Test plan
+20. Docs updated
+21. Files changed
+22. Confirmation application code changed = NO
+
+STOP AFTER AUDIT B.
+DO NOT IMPLEMENT.

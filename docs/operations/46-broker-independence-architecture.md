@@ -323,13 +323,11 @@ The Broker Independence Principle does NOT change:
 
 ## 8. Implementation Sequencing
 
-1. **Now (this document):** Principle recorded. No code changes.
-2. **Sprint 2.8.7 (Audit):** Complete Audits A–D above. Produce gate-site manifest (section 6).
-   Update this document with findings.
-3. **Sprint 2.8.7 (Implementation):** Resolve CON-001 (preflight split). Resolve CON-003 (gate
-   site audit). CON-002 and CON-004 may be deferred to 2.8.8 depending on scope.
-4. **Sprint 2.8.8+:** Options chain independent mode (CON-002), buying-power hypothetical
-   substitution (CON-004).
+1. **Principle recorded** (this document). No code changes.
+2. **Sprint 2.8.7 (Audit):** Audits A–D complete. Gate-site manifest in section 6.
+3. **Sprint 2.8.7A (COMPLETE):** CON-001 resolved — two-layer preflight split (`TradePlanReadiness` + `BrokerExecutionReadiness`); BI-001/002/014 RESOLVED. Production UAT: **PASS**.
+4. **Sprint 2.8.7B (COMPLETE):** Equity planning quote enrichment — `PlanningQuoteData`, `getPlanningQuote?` dep, `buildPlanningModeQuoteDimension`. Quote Validation PLANNING_MODE dim now shows Twelve Data price/session/freshness for brokerless EQUITY plans. See [Doc 52](52-sprint-2.8.7b-brokerless-equity-market-data.md).
+5. **Next:** Options chain independent mode (CON-002 — Audit C/C1), buying-power hypothetical substitution (CON-004), remaining Audit D UX items (BI-012/013/015–020).
 
 ---
 

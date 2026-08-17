@@ -119,8 +119,8 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 
 | ID | Item | Type | Priority |
 |----|------|------|----------|
-| BI-001 | Implement two-layer preflight split per [Doc 48](48-audit-b-preflight-layering.md): add `tradePlanReadiness` + `brokerExecutionReadiness` to preflight result; fix `determineOverallStatus`; add new `ValidationStatus` values | CON-001 | P0 |
-| BI-002 | Remove `enabled: brokerConnected` from preflight query (`trade-plan-detail.tsx:241`); update `ExecutionPreflightPanel` for two-section UI | CON-001 | P0 |
+| ~~BI-001~~ | ~~Implement two-layer preflight split — `tradePlanReadiness` + `brokerExecutionReadiness`; new `ValidationStatus` values~~ | ~~CON-001~~ | ✅ RESOLVED (Sprint 2.8.7A) |
+| ~~BI-002~~ | ~~Remove `enabled: brokerConnected` from preflight query; two-section UI~~ | ~~CON-001~~ | ✅ RESOLVED (Sprint 2.8.7A) |
 | BI-003 | Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback (Audit C) | CON-002 | P2 |
 | BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode (CON-004) | CON-004 | P2 |
 | BI-007 | **Licensing gate** — verify Twelve Data options API plan + redistribution rights before any options integration; evaluate Polygon.io as fallback | Audit C prerequisite | **P0** |
@@ -130,7 +130,7 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 | BI-011 | Build formal `RealizedVolatilitySet` (HV10/20/30/60/90) + `TheoreticalStrikeGrid` from stored daily bars; enforce `TheoreticalOptionValue` incompatibility with execution types | Amendment C1 / Group B | P1 |
 | BI-012 | **P0** Options scanner (`options-scanner.tsx:420`) hard-blocks on no broker — scan results come from stored data; remove broker gate | Audit D Group B | **P0** |
 | BI-013 | **P0** Workspace "No Broker Connected" risk card (`workspace-sections.tsx:1257`) misattributes data-provider limitations as broker requirements; reframe | Audit D Group E | **P0** |
-| BI-014 | **P0** Trade Plan Workspace: redesign execution section as two-section layout (Plan Readiness + Direct Execution neutral); apply Audit B | Audit D Group D | **P0** |
+| ~~BI-014~~ | ~~Trade Plan Workspace: two-section execution layout (Plan Readiness + Direct Execution neutral)~~ | ~~Audit D Group D~~ | ✅ RESOLVED (Sprint 2.8.7A) |
 | BI-015 | Onboarding wizard: move broker connection to contextual step 5 (optional); introduce 5-step guided journey | Audit D Group A | P1 |
 | BI-016 | Dashboard Portfolio Intelligence empty state: add three equal-weight paths (Manual / Import / Broker) | Audit D Group B+F | P1 |
 | BI-017 | Smart Panel (`smart-panel.tsx:125`): replace broker CTA as primary with context-aware research CTA | Audit D Group B | P1 |

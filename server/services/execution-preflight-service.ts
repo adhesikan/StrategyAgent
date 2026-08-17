@@ -34,6 +34,7 @@ import type {
   ExecutionAuditMetadata,
   TradePlanReadiness,
   BrokerExecutionReadiness,
+  PlanningQuoteData,
 } from "@shared/execution-types";
 import {
   EXECUTION_FRESHNESS_THRESHOLDS,
@@ -62,6 +63,18 @@ export interface PreflightDependencies {
 
   /** Persist an audit event — append-only */
   saveAuditEvent(event: ExecutionAuditEvent): Promise<void>;
+
+  /**
+   * Sprint 2.8.7B — Broker-independent equity planning quote.
+   *
+   * Optional: when provided, the preflight will enrich the Quote Validation
+   * dimension for brokerless EQUITY plans with Twelve Data planning data.
+   *
+   * SAFETY: the result (PlanningQuoteData) carries source="PLANNING_MARKET_DATA"
+   * and must NEVER be used to satisfy the execution-grade quote gate.
+   * When absent, the dimension falls back to the existing PLANNING_MODE note.
+   */
+  getPlanningQuote?(userId: string, symbol: string): Promise<PlanningQuoteData | null>;
 
   /** Current timestamp override for tests */
   now?(): Date;
@@ -277,6 +290,19 @@ export async function runExecutionPreflight(
     }
   }
 
+  // ── 5b. Sprint 2.8.7B: Broker-independent planning quote (EQUITY only) ──
+  //
+  // When broker is absent AND planType is EQUITY AND the dep is wired, fetch a
+  // Twelve Data planning quote.  The result enriches the Quote Validation
+  // dimension with structured price/session data for the trader.
+  //
+  // SAFETY: planningQuoteData.source = "PLANNING_MARKET_DATA" — never used to
+  // satisfy the execution-grade quote gate.  Broker-connected path is unchanged.
+  let planningQuoteData: PlanningQuoteData | null = null;
+  if (!brokerStatus?.connected && plan.planType === "EQUITY" && deps.getPlanningQuote) {
+    planningQuoteData = await deps.getPlanningQuote(input.userId, plan.symbol).catch(() => null);
+  }
+
   // ── 6. Build dimension results ──────────────────────────────────────────
   const blockers: PreflightBlocker[] = [];
   const warnings: PreflightWarning[] = [];
@@ -319,8 +345,8 @@ export async function runExecutionPreflight(
     positionList, plan, brokerIsConnected, blockers, warnings
   );
 
-  // Quote validation dimension
-  const quoteDim = buildQuoteDimension(quoteValidation, optionContracts, plan.planType, blockers, warnings, brokerIsConnected);
+  // Quote validation dimension (Sprint 2.8.7B: planningQuoteData passed for brokerless EQUITY)
+  const quoteDim = buildQuoteDimension(quoteValidation, optionContracts, plan.planType, blockers, warnings, brokerIsConnected, planningQuoteData);
 
   // Structure validation dimension
   const structureDim = buildStructureDimension(plan.structureSnapshot, plan.planType, optionContracts, blockers, brokerIsConnected);
@@ -706,16 +732,61 @@ export function formatPreflightQuoteAge(freshnessSec: number): string {
   return `Quote is ${Math.round(freshnessSec)}s old.`;
 }
 
+/**
+ * Sprint 2.8.7B: Build a PLANNING_MODE ValidationDimension enriched with
+ * structured Twelve Data planning-quote info for informational UI display.
+ *
+ * SAFETY: This dimension NEVER satisfies the execution-grade quote gate.
+ * planningQuote.source = "PLANNING_MARKET_DATA" must never be promoted to
+ * broker-equivalent execution data.
+ */
+function buildPlanningModeQuoteDimension(pq: PlanningQuoteData): ValidationDimension {
+  const price = pq.price.toLocaleString("en-US", {
+    style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  const sessionLabels: Record<string, string> = {
+    pre: "Pre-Market", regular: "Market Open", after: "After-Hours", closed: "Market Closed",
+  };
+  const sessionLabel = sessionLabels[pq.session] ?? pq.session;
+
+  let note: string;
+  if (pq.dataQuality === "fresh") {
+    note = `Planning data — Twelve Data · ${price} · ${sessionLabel}`;
+  } else if (pq.dataQuality === "stale") {
+    const hoursOld = Math.floor(pq.freshnessSec / 3600);
+    note = `Planning data — Twelve Data · ${price} · Stale (${hoursOld}h old)`;
+  } else {
+    // last_close — normal outside market hours
+    note = `Planning data — Twelve Data · ${price} · ${sessionLabel}`;
+  }
+
+  return {
+    status: "PLANNING_MODE",
+    label: "Quote Validation",
+    note,
+    planningQuote: pq,
+  };
+}
+
 function buildQuoteDimension(
   quoteValidation: import("@shared/execution-types").BrokerQuoteValidation | null,
   optionContracts: Array<{ symbol: string; valid: boolean; expired: boolean }>,
   planType: "EQUITY" | "OPTIONS",
   blockers: PreflightBlocker[],
   warnings: PreflightWarning[],
-  brokerConnected: boolean
+  brokerConnected: boolean,
+  planningQuote?: PlanningQuoteData | null  // Sprint 2.8.7B — optional planning quote
 ): ValidationDimension {
-  // ── Sprint 2.8.7A: Broker absent → PLANNING_MODE, not a blocker ──
+  // ── Broker absent → PLANNING_MODE ──────────────────────────────────────────
+  //
+  // Sprint 2.8.7A: broker absence is not a blocker.
+  // Sprint 2.8.7B: EQUITY plans get enriched PLANNING_MODE when Twelve Data
+  //                planning quote is available.
   if (!brokerConnected) {
+    if (planType === "EQUITY" && planningQuote) {
+      return buildPlanningModeQuoteDimension(planningQuote);
+    }
+    // OPTIONS or no planning data: fall back to unstructured note
     return { status: "PLANNING_MODE", label: "Quote Validation", note: "Planning mode — live quote validation requires broker connection." };
   }
 
@@ -1229,6 +1300,15 @@ export async function createDbPreflightDeps(
         accountRefMasked: event.accountRefMasked ?? null,
         metadata: event.metadata as Record<string, unknown>,
       }).onConflictDoNothing();
+    },
+
+    // Sprint 2.8.7B — Broker-independent equity planning quote.
+    // Gated via getRealtimeQuoteForUser (Twelve Data access control + credit management).
+    // Returns null if provider is unavailable, user has no access, or any error occurs.
+    // SAFETY: result.source = "PLANNING_MARKET_DATA" — never satisfies execution gate.
+    async getPlanningQuote(userId, symbol) {
+      const { getPlanningQuoteData } = await import("./daily-market-data/planning-quote");
+      return getPlanningQuoteData(userId, symbol);
     },
   };
 }

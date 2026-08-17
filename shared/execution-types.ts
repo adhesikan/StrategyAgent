@@ -80,12 +80,60 @@ export type ValidationStatus =
   /** Independently evaluated in planning context; broker enrichment not available. */
   | "PLANNING_MODE";
 
+/**
+ * Broker-independent planning quote from Twelve Data.
+ *
+ * SAFETY BOUNDARY:
+ *   source = "PLANNING_MARKET_DATA" — NEVER satisfies execution-grade quote
+ *   validation, which requires a live broker quote from the broker adapter.
+ *   These two data classes must remain distinct at all times.
+ *
+ * Data quality:
+ *   "fresh"      — market open, freshnessSec < 300 (≤5 min)
+ *   "last_close" — not fresh, but freshnessSec < 90_000 (~25h; normal overnight/weekend)
+ *   "stale"      — freshnessSec ≥ 90_000 (anomalous; missed a trading session)
+ *
+ * Sprint 2.8.7B — added for brokerless equity planning validation.
+ */
+export interface PlanningQuoteData {
+  /** Canonical discriminant separating planning data from execution-grade broker quotes. */
+  source: "PLANNING_MARKET_DATA";
+  /** Data provider supplying this quote */
+  provider: "twelve_data";
+  symbol: string;
+  /** Planning price — last traded price (or extended-hours price if applicable) */
+  price: number;
+  /** ISO-8601 trade timestamp from the provider */
+  asOf: string;
+  /** Market session at the time this quote was fetched */
+  session: "pre" | "regular" | "after" | "closed";
+  /** True when price came from extended-hours (pre/after) data */
+  extendedHours: boolean;
+  /** Whether the market was open when this quote was fetched */
+  isMarketOpen: boolean;
+  /** Seconds between asOf and the preflight evaluation time */
+  freshnessSec: number;
+  /** Qualitative freshness classification (see above) */
+  dataQuality: "fresh" | "last_close" | "stale";
+  /** True when dataQuality is "stale" — surfaces as an explicit UI indicator */
+  isStale: boolean;
+}
+
 export interface ValidationDimension {
   status: ValidationStatus;
   /** Short human-readable label — never uses "approved", "recommended", "safe" */
   label: string;
   /** Optional note explaining the outcome */
   note?: string;
+  /**
+   * Planning quote data — only present on the Quote Validation dimension when:
+   *   1. Broker is NOT connected (PLANNING_MODE), AND
+   *   2. planType === "EQUITY", AND
+   *   3. A valid Twelve Data quote was obtained.
+   *
+   * Must never be used to authorize execution. Use only for informational display.
+   */
+  planningQuote?: PlanningQuoteData;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

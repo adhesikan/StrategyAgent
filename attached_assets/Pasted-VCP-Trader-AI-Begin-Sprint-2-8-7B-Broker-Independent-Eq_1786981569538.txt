@@ -1,0 +1,258 @@
+VCP Trader AI — Begin Sprint 2.8.7B
+Broker-Independent Equity Market Data & Planning Validation
+
+Sprint 2.8.7A has completed production UAT successfully.
+
+DO NOT modify or redesign the completed 2.8.7A architecture unless a genuine blocker or regression is discovered.
+
+Architecture principle:
+All research, intelligence, analysis, Trade Plan creation, lifecycle monitoring,
+risk modeling, and planning capabilities must operate without a brokerage
+connection wherever technically feasible.
+
+Broker connections primarily enrich account-aware functionality and enable
+execution.
+
+OBJECTIVE
+
+Implement broker-independent equity market-data validation using our existing
+Twelve Data integration.
+
+A user without a connected brokerage should be able to use current underlying
+market data for research and Trade Plan planning/readiness.
+
+This sprint is NOT options-chain implementation.
+Do not duplicate Audit C or Amendment C1 work.
+
+Audit C/C1 already defines the future options provider hierarchy and
+UNDERLYING_ONLY_THEORETICAL_MODE.
+
+PHASE 1 — AUDIT EXISTING DATA PATHS
+
+Before changing code:
+
+1. Identify the existing Twelve Data integration and all existing normalized
+   equity quote/history interfaces.
+
+2. Identify how:
+   - Research
+   - Opportunity Intelligence
+   - Trade Plans
+   - Quote Validation
+   - Execution Preflight
+   currently obtain underlying equity prices.
+
+3. Determine whether an existing market-data abstraction can be reused.
+
+4. Do not create a second Twelve Data client if one already exists.
+
+5. Document the proposed canonical data flow before implementation.
+
+Preferred architecture:
+
+Twelve Data
+    ↓
+existing normalized market-data service
+    ↓
+broker-independent planning quote
+    ↓
+Trade Plan Readiness / planning validation
+
+Broker connected:
+Broker execution-grade quote
+    ↓
+Broker Execution Readiness / execution validation
+
+These two data classes MUST remain distinct.
+
+PHASE 2 — DATA PROVENANCE
+
+Every broker-independent quote used for planning must identify at minimum:
+
+- symbol
+- price
+- asOf
+- provider/source
+- freshness
+- market session if available
+- data quality/status
+
+Create or reuse a canonical classification distinguishing:
+
+PLANNING_MARKET_DATA
+from
+EXECUTION_MARKET_DATA
+
+Twelve Data must never be silently promoted to execution-grade data.
+
+PHASE 3 — EQUITY PLANNING QUOTE VALIDATION
+
+For an equity Trade Plan with no broker connected:
+
+Quote Validation should attempt to use Twelve Data.
+
+If valid planning data is available:
+
+status = PLANNING_MODE
+
+Display language should communicate something equivalent to:
+
+"Planning data available — Twelve Data"
+
+Include price and timestamp where appropriate.
+
+Do NOT say that a broker connection is required for live/current market data
+when Twelve Data planning data is available.
+
+If Twelve Data data is stale:
+
+represent the planning-data freshness accurately.
+
+Do not convert brokerless planning-data staleness into an execution failure.
+
+If Twelve Data is unavailable:
+
+return an explicit unavailable/not-confirmed planning-data state.
+
+Never fabricate a price.
+
+PHASE 4 — STRUCTURE VALIDATION
+
+For equity plans, structure validation should use the broker-independent
+underlying planning price wherever technically appropriate.
+
+Broker connection must not be required merely to validate an equity planning
+structure.
+
+Execution validation remains separate.
+
+PHASE 5 — SAFETY BOUNDARY
+
+Preserve these invariants permanently:
+
+1. Twelve Data planning quotes cannot satisfy broker execution quote validation.
+
+2. Brokerless overall execution status can never become PASS.
+
+3. Brokerless executionAvailable must always remain false.
+
+4. Order Preparation must continue requiring execution-grade broker data.
+
+5. Broker Submission remains broker-required.
+
+6. BROKER_EXECUTION_ENABLED behavior remains unchanged.
+
+7. Connecting a broker enriches the same Trade Plan; it must not create a
+   separate research/planning artifact.
+
+Add tests proving these invariants.
+
+PHASE 6 — MARKET SESSION BEHAVIOR
+
+Explicitly test:
+
+- regular market hours
+- premarket
+- after-hours
+- weekend/market closed
+- fresh Twelve Data value
+- stale Twelve Data value
+- Twelve Data unavailable
+
+Planning should degrade gracefully outside regular market hours.
+
+Do not label the last regular-session price as a live quote if it isn't live.
+
+PHASE 7 — UI
+
+Brokerless Trade Plan Readiness should clearly show when independent market
+data is being used.
+
+Example:
+
+Quote Validation
+PLANNING_MODE
+Underlying: NVDA
+Planning Price: $xxx.xx
+Source: Twelve Data
+As of: ...
+Market status: ...
+
+Use neutral/informational presentation.
+
+Do not use red execution-failure styling merely because no broker is connected.
+
+Direct Execution remains a separate section.
+
+PHASE 8 — TESTS
+
+Add focused tests for:
+
+A. Brokerless equity + valid Twelve Data planning quote
+B. Brokerless equity + stale Twelve Data data
+C. Brokerless equity + Twelve Data unavailable
+D. Broker connected + broker execution quote
+E. Disconnect broker → planning quote remains available
+F. Reconnect broker → execution validation becomes available
+G. Twelve Data quote cannot satisfy execution gate
+H. Brokerless overallStatus never PASS
+I. Brokerless executionAvailable never true
+J. Market-session behavior
+K. No fabricated prices
+L. Existing 2.8.7A invariants remain passing
+
+Run targeted tests first, then the appropriate regression suite.
+
+Do not spend this sprint fixing unrelated pre-existing test failures.
+
+PHASE 9 — DOCUMENTATION
+
+Update:
+
+- broker independence architecture
+- sprint change log
+- known issues/backlog
+- system manifest if required
+
+Record Sprint 2.8.7A production UAT as PASS.
+
+Create the Sprint 2.8.7B implementation document.
+
+IMPORTANT SCOPE BOUNDARIES
+
+Do NOT implement:
+- theoretical Black-Scholes options pricing
+- HV30/HV calculations
+- theoretical strike grids
+- options provider fallback
+- options chain sourcing
+- order execution changes
+- portfolio changes
+- unrelated UI redesign
+
+Those belong to subsequent packages and Audit C/C1 already specifies the
+options architecture.
+
+DELIVERABLE
+
+Before coding, report:
+
+1. Existing Twelve Data implementation discovered
+2. Existing quote abstractions discovered
+3. Exact files expected to change
+4. Proposed canonical planning-data flow
+5. Any conflict with Docs 46–49 or Sprint 2.8.7A
+6. Test plan
+7. Confirmation that no execution safety gate will be weakened
+
+Then proceed with implementation unless a material architecture conflict is
+found.
+
+At completion provide:
+- files changed
+- behavior before/after
+- tests added
+- test results
+- safety invariant results
+- remaining limitations
+- exact production UAT steps

@@ -1337,8 +1337,41 @@ Live broker chain; `normalizeOptionChainContract` reads `greeks.mid_iv`; `clearC
 
 ---
 
-## Sprint 2.8.7A — Brokerless Trade Plan Readiness & Preflight Split
+## Sprint 2.8.7B — Broker-Independent Equity Market Data & Planning Validation
 **Status:** COMPLETE
+
+**Scope:** Enrich the PLANNING_MODE Quote Validation dimension with Twelve Data
+planning quote data for brokerless EQUITY Trade Plans. Sprint 2.8.7A UAT: PASS.
+
+**Architecture:**
+- New `PlanningQuoteData` type (`source: "PLANNING_MARKET_DATA"`) — permanently distinct from execution-grade broker quotes
+- New `server/services/daily-market-data/planning-quote.ts` — thin adapter wrapping `getRealtimeQuoteForUser`
+- `PreflightDependencies.getPlanningQuote?` — optional injectable dep (backward compatible)
+- `buildPlanningModeQuoteDimension()` — enriched PLANNING_MODE dim with price/session/source
+- `ValidationDimension.planningQuote?` — structured planning quote data for UI rendering
+- `BrokerExecutionReadinessPanel` — renders planning quote detail block when present
+
+**Data quality classification:**
+- `"fresh"` — market open + <5 min since asOf
+- `"last_close"` — not fresh but <25h (normal overnight/weekend)
+- `"stale"` — >25h (anomalous; not an execution failure)
+
+**Safety invariants preserved:** overallStatus never PASS without broker; executionAvailable never true without broker; planning quote never satisfies execution gate; broker path unchanged.
+
+**Files changed:**
+- `shared/execution-types.ts` — `PlanningQuoteData` interface, `planningQuote?` on `ValidationDimension`
+- `server/services/daily-market-data/planning-quote.ts` — **NEW**
+- `server/services/execution-preflight-service.ts` — `getPlanningQuote?` dep, fetch block 5b, `buildPlanningModeQuoteDimension`, wired in `createDbPreflightDeps`
+- `client/src/pages/trade-plan-detail.tsx` — planning quote detail block in BER panel
+
+**New tests:** Suite 13A–J (34 tests), all pass. Full suite: 9823/9852.
+
+**Doc:** [52-sprint-2.8.7b-brokerless-equity-market-data.md](52-sprint-2.8.7b-brokerless-equity-market-data.md)
+
+---
+
+## Sprint 2.8.7A — Brokerless Trade Plan Readiness & Preflight Split
+**Status:** COMPLETE — Production UAT: **PASS**
 
 **Scope:** BI-001/002 (two-layer preflight split) + BI-014 (Trade Plan execution section brokerless behavior). First P0 package from Audit A/B/D series.
 

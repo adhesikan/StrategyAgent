@@ -692,6 +692,413 @@ describe("Suite 10 — Planning Constraint Dimension", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SUITE 13: SPRINT 2.8.7B — BROKER-INDEPENDENT EQUITY PLANNING QUOTE
+//
+// Tests Phases 5–8 of Sprint 2.8.7B. All scenarios use injectable
+// getPlanningQuote dep — no real Twelve Data calls in tests.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makePlanningQuote(overrides: Partial<import("@shared/execution-types").PlanningQuoteData> = {}): import("@shared/execution-types").PlanningQuoteData {
+  return {
+    source: "PLANNING_MARKET_DATA",
+    provider: "twelve_data",
+    symbol: "AAPL",
+    price: 185.42,
+    asOf: new Date(NOW.getTime() - 45_000).toISOString(), // 45s ago
+    session: "regular",
+    extendedHours: false,
+    isMarketOpen: true,
+    freshnessSec: 45,
+    dataQuality: "fresh",
+    isStale: false,
+    ...overrides,
+  };
+}
+
+function makeDepsWithPlanningQuote(
+  plan: StoredTradePlan | null,
+  lifecycle: StoredLifecycleResult | null,
+  brokerConnected: boolean,
+  planningQuote: import("@shared/execution-types").PlanningQuoteData | null,
+  brokerOverrides: Record<string, any> = {}
+): PreflightDependencies {
+  return {
+    ...makeDeps(plan, lifecycle, brokerConnected, brokerOverrides),
+    getPlanningQuote: vi.fn().mockResolvedValue(planningQuote),
+  };
+}
+
+describe("Suite 13A — Phase 8A: Brokerless EQUITY + valid Twelve Data planning quote", () => {
+  it("quote dim carries planningQuote when planning data available", async () => {
+    const pq = makePlanningQuote();
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote).toBeDefined();
+    expect(result.quoteValidation.planningQuote?.source).toBe("PLANNING_MARKET_DATA");
+    expect(result.quoteValidation.planningQuote?.provider).toBe("twelve_data");
+    expect(result.quoteValidation.planningQuote?.price).toBe(185.42);
+  });
+
+  it("planning quote note mentions Twelve Data and the price", async () => {
+    const pq = makePlanningQuote({ price: 185.42, dataQuality: "fresh" });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.note).toContain("Twelve Data");
+    expect(result.quoteValidation.note).toContain("185.42");
+  });
+
+  it("planning quote note for fresh quote mentions market session", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh", isMarketOpen: true, session: "regular" });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.note).toContain("Market Open");
+  });
+
+  it("planning data does NOT affect overallStatus (still not PASS without broker)", async () => {
+    const pq = makePlanningQuote();
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.overallStatus).not.toBe("PASS");
+    expect(result.executionAvailable).toBe(false);
+  });
+
+  it("planning quote does not make TPR PASS on its own — TPR depends on plan dims", async () => {
+    const pq = makePlanningQuote();
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    // TPR PASS remains possible (plan is complete)
+    expect(result.tradePlanReadiness?.status).toBe("PASS");
+    // But execution is still unavailable
+    expect(result.executionAvailable).toBe(false);
+  });
+});
+
+describe("Suite 13B — Phase 8B: Brokerless EQUITY + stale Twelve Data data", () => {
+  it("stale planning quote still produces PLANNING_MODE (not FAIL)", async () => {
+    const pq = makePlanningQuote({
+      dataQuality: "stale",
+      isStale: true,
+      freshnessSec: 100_000,
+      isMarketOpen: false,
+      session: "closed",
+    });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    // Stale planning data → PLANNING_MODE (not an execution blocker)
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote?.isStale).toBe(true);
+    // Not converted to FAIL or blocker
+    const quoteBl = result.blockers.filter(b => b.code === "QUOTE_STALE");
+    expect(quoteBl).toHaveLength(0);
+  });
+
+  it("stale note contains 'Stale' and hours-old indicator", async () => {
+    const pq = makePlanningQuote({
+      dataQuality: "stale",
+      isStale: true,
+      freshnessSec: 100_800, // 28h
+      isMarketOpen: false,
+      session: "closed",
+    });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.note).toContain("Stale");
+    expect(result.quoteValidation.note).toContain("28h");
+  });
+
+  it("last_close (overnight) quote: PLANNING_MODE, not stale, not error", async () => {
+    const pq = makePlanningQuote({
+      dataQuality: "last_close",
+      isStale: false,
+      freshnessSec: 14_400, // 4h ago (overnight)
+      isMarketOpen: false,
+      session: "closed",
+    });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote?.isStale).toBe(false);
+    expect(result.quoteValidation.planningQuote?.dataQuality).toBe("last_close");
+  });
+});
+
+describe("Suite 13C — Phase 8C: Brokerless EQUITY + Twelve Data unavailable", () => {
+  it("null planning quote → fallback PLANNING_MODE note (no planningQuote field)", async () => {
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, null);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote).toBeUndefined();
+    expect(result.quoteValidation.note).toContain("Planning mode");
+  });
+
+  it("no getPlanningQuote dep → PLANNING_MODE fallback (existing 2.8.7A behavior)", async () => {
+    // Deps without getPlanningQuote — simulates legacy/test callers
+    const deps = makeDeps(makePlan(), makeLifecycle("CURRENT"), false);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote).toBeUndefined();
+  });
+
+  it("getPlanningQuote throwing → null fallback, no crash", async () => {
+    const deps: PreflightDependencies = {
+      ...makeDeps(makePlan(), makeLifecycle("CURRENT"), false),
+      getPlanningQuote: vi.fn().mockRejectedValue(new Error("Network error")),
+    };
+    // Must not throw
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote).toBeUndefined();
+  });
+});
+
+describe("Suite 13D — Phase 8D: Broker connected + broker execution quote", () => {
+  it("broker connected → broker quote validation used (planning quote NOT called)", async () => {
+    const getPlanningQuote = vi.fn().mockResolvedValue(makePlanningQuote());
+    const deps: PreflightDependencies = {
+      ...makeDeps(makePlan(), makeLifecycle("CURRENT"), true),
+      getPlanningQuote,
+    };
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    // Broker connected → execution-grade quote used, not planning quote
+    expect(getPlanningQuote).not.toHaveBeenCalled();
+    // Quote dim reflects broker result
+    expect(result.quoteValidation.status).toBe("PASS");
+    // No planningQuote on execution-grade dim
+    expect(result.quoteValidation.planningQuote).toBeUndefined();
+  });
+
+  it("broker connected → overallStatus can be PASS (planning quote does not interfere)", async () => {
+    const deps: PreflightDependencies = {
+      ...makeDeps(makePlan(), makeLifecycle("CURRENT"), true),
+      getPlanningQuote: vi.fn().mockResolvedValue(makePlanningQuote()),
+    };
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.overallStatus).toBe("PASS");
+    expect(result.executionAvailable).toBe(true);
+  });
+});
+
+describe("Suite 13E — Phase 8E/F: Broker connect/disconnect transitions", () => {
+  it("Phase 8E: disconnect broker → planning quote remains available, execution unavailable", async () => {
+    const pq = makePlanningQuote();
+    const withBroker    = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), true,  null);
+    const withoutBroker = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+
+    const [rBroker, rNoBroker] = await Promise.all([
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withBroker),
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withoutBroker),
+    ]);
+
+    // With broker: execution-grade quote, execution available
+    expect(rBroker.overallStatus).toBe("PASS");
+    expect(rBroker.quoteValidation.planningQuote).toBeUndefined();
+
+    // Without broker: planning quote available, execution not available
+    expect(rNoBroker.overallStatus).not.toBe("PASS");
+    expect(rNoBroker.executionAvailable).toBe(false);
+    expect(rNoBroker.quoteValidation.planningQuote).toBeDefined();
+    expect(rNoBroker.quoteValidation.planningQuote?.source).toBe("PLANNING_MARKET_DATA");
+  });
+
+  it("Phase 8F: reconnect broker → execution validation becomes available, planning quote not used", async () => {
+    const pq = makePlanningQuote();
+    const withoutBroker = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const withBroker    = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), true,  null);
+
+    const [rNoBroker, rBroker] = await Promise.all([
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withoutBroker),
+      runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, withBroker),
+    ]);
+
+    // Reconnected → execution available
+    expect(rBroker.overallStatus).toBe("PASS");
+    expect(rBroker.executionAvailable).toBe(true);
+    expect(rBroker.quoteValidation.planningQuote).toBeUndefined();
+
+    // Disconnected → execution not available, but planning quote shown
+    expect(rNoBroker.executionAvailable).toBe(false);
+    expect(rNoBroker.quoteValidation.planningQuote?.source).toBe("PLANNING_MARKET_DATA");
+  });
+});
+
+describe("Suite 13F — Phase 8G: Planning quote cannot satisfy execution gate", () => {
+  it("overallStatus NEVER PASS from planning quote alone", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh", isMarketOpen: true });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.overallStatus).not.toBe("PASS");
+    expect(result.executionAvailable).toBe(false);
+  });
+
+  it("planningQuote.source is PLANNING_MARKET_DATA — never EXECUTION_MARKET_DATA or broker", async () => {
+    const pq = makePlanningQuote();
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.planningQuote?.source).toBe("PLANNING_MARKET_DATA");
+    expect(result.quoteValidation.planningQuote?.source).not.toBe("broker");
+  });
+
+  it("brokerExecutionReadiness is NOT_CONNECTED even with valid planning quote", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh" });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.brokerExecutionReadiness?.status).toBe("NOT_CONNECTED");
+    expect(result.brokerExecutionReadiness?.brokerConnected).toBe(false);
+  });
+});
+
+describe("Suite 13G — Phase 8H/I: Permanent safety invariants with planning quote", () => {
+  it("Phase 8H: overallStatus never PASS when brokerless (with planning quote)", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh", isMarketOpen: true });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.overallStatus).not.toBe("PASS");
+  });
+
+  it("Phase 8I: executionAvailable never true when brokerless (with planning quote)", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh", isMarketOpen: true });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.executionAvailable).toBe(false);
+  });
+
+  it("planning quote does not produce QUOTE_STALE blocker", async () => {
+    const pq = makePlanningQuote({ dataQuality: "stale", isStale: true, freshnessSec: 200_000 });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const quoteBl = result.blockers.filter(b => b.code === "QUOTE_STALE");
+    expect(quoteBl).toHaveLength(0);
+  });
+
+  it("planning quote does not produce QUOTE_INVALID blocker", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh" });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    const invBl = result.blockers.filter(b => b.code === "QUOTE_INVALID");
+    expect(invBl).toHaveLength(0);
+  });
+});
+
+describe("Suite 13H — Phase 8J: Market session behavior", () => {
+  const sessions = [
+    { session: "regular" as const, isMarketOpen: true,  freshnessSec: 30,    expectedQuality: "fresh"      },
+    { session: "pre"     as const, isMarketOpen: false, freshnessSec: 1_800,  expectedQuality: "last_close" },
+    { session: "after"   as const, isMarketOpen: false, freshnessSec: 3_600,  expectedQuality: "last_close" },
+    { session: "closed"  as const, isMarketOpen: false, freshnessSec: 14_400, expectedQuality: "last_close" },
+    // Weekend
+    { session: "closed"  as const, isMarketOpen: false, freshnessSec: 60_000, expectedQuality: "last_close" },
+  ];
+
+  for (const s of sessions) {
+    it(`${s.session} session (freshnessSec=${s.freshnessSec}) → PLANNING_MODE, dataQuality="${s.expectedQuality}"`, async () => {
+      const pq = makePlanningQuote({
+        session: s.session,
+        isMarketOpen: s.isMarketOpen,
+        freshnessSec: s.freshnessSec,
+        dataQuality: s.expectedQuality as any,
+        isStale: s.expectedQuality === "stale",
+      });
+      const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+      const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+      expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+      expect(result.quoteValidation.planningQuote?.dataQuality).toBe(s.expectedQuality);
+      // Session label in note for non-stale
+      if (s.expectedQuality !== "stale") {
+        expect(result.quoteValidation.note).toBeDefined();
+      }
+    });
+  }
+
+  it("stale quote (>25h) → PLANNING_MODE with isStale=true, not execution failure", async () => {
+    const pq = makePlanningQuote({ dataQuality: "stale", isStale: true, freshnessSec: 100_800 });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote?.isStale).toBe(true);
+    expect(result.blockers.filter(b => b.dimension === "quote")).toHaveLength(0);
+  });
+});
+
+describe("Suite 13I — Phase 8K: No fabricated prices", () => {
+  it("null planning quote → no price in note or planningQuote", async () => {
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, null);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.planningQuote).toBeUndefined();
+    // Note should not contain a fabricated $ amount
+    expect(result.quoteValidation.note).not.toMatch(/\$\d+/);
+  });
+
+  it("planning quote price comes directly from injected mock — not derived from plan fields", async () => {
+    const pq = makePlanningQuote({ price: 999.99 });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.quoteValidation.planningQuote?.price).toBe(999.99);
+  });
+});
+
+describe("Suite 13J — Phase 8L: Existing 2.8.7A invariants remain passing", () => {
+  it("INV-A intact: TPR can PASS without broker (with planning quote)", async () => {
+    const pq = makePlanningQuote();
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.tradePlanReadiness?.status).toBe("PASS");
+  });
+
+  it("INV-B intact: brokerless overallStatus never PASS", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh" });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.overallStatus).not.toBe("PASS");
+  });
+
+  it("INV-C intact: brokerless executionAvailable always false", async () => {
+    const pq = makePlanningQuote({ dataQuality: "fresh" });
+    const deps = makeDepsWithPlanningQuote(makePlan(), makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    expect(result.executionAvailable).toBe(false);
+  });
+
+  it("OPTIONS plan: planning quote not used (OPTIONS stays PLANNING_MODE without price)", async () => {
+    const optionsPlan = makePlan({ planType: "OPTIONS", structureSnapshot: { legs: [{ contractSymbol: "AAPL260619C185" }] } });
+    const pq = makePlanningQuote({ symbol: "AAPL" });
+    const deps = makeDepsWithPlanningQuote(optionsPlan, makeLifecycle("CURRENT"), false, pq);
+    const result = await runExecutionPreflight({ tradePlanId: "plan-123", userId: "user-456" }, deps);
+
+    // OPTIONS: planning quote not enriched (contract validation requires broker)
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
+    expect(result.quoteValidation.planningQuote).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SUITE 12: UAT BLOCKER REGRESSION — UNAVAILABLE ≠ REQUIRES_REVIEW
 //
 // Reproduces the exact UAT failure: Risk Analysis = UNAVAILABLE was incorrectly

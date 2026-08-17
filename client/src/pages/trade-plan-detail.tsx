@@ -165,14 +165,58 @@ function BrokerExecutionReadinessPanel({ ber }: { ber: BrokerExecutionReadiness 
       </div>
       <div className="rounded border border-border divide-y divide-border text-xs">
         {dims.map(({ key, dim }) => (
-          <div key={key} className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-muted-foreground">{dim.label}</span>
-            <span className={
-              dim.status === "PASS" ? "text-green-500" :
-              dim.status === "FAIL" ? "text-red-500" :
-              dim.status === "REQUIRES_REVIEW" ? "text-yellow-500" :
-              "text-muted-foreground"
-            }>{dim.status}{dim.note ? ` — ${dim.note}` : ""}</span>
+          <div key={key} className="flex-col">
+            <div className="flex items-center justify-between px-3 py-1.5">
+              <span className="text-muted-foreground">{dim.label}</span>
+              <span className={
+                dim.status === "PASS" ? "text-green-500" :
+                dim.status === "FAIL" ? "text-red-500" :
+                dim.status === "REQUIRES_REVIEW" ? "text-yellow-500" :
+                "text-muted-foreground"
+              }>{dim.status}{dim.note ? ` — ${dim.note}` : ""}</span>
+            </div>
+            {/* Sprint 2.8.7B — Planning quote detail for brokerless EQUITY plans */}
+            {key === "quote" && dim.planningQuote && (
+              <div className="px-3 pb-2 space-y-0.5 text-[10px] text-muted-foreground border-t border-border/50 pt-1.5" data-testid="planning-quote-detail">
+                <div className="flex justify-between">
+                  <span>Underlying</span>
+                  <span className="font-mono">{dim.planningQuote.symbol}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Planning Price</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {dim.planningQuote.price.toLocaleString("en-US", {
+                      style: "currency", currency: "USD",
+                      minimumFractionDigits: 2, maximumFractionDigits: 2,
+                    })}
+                    {dim.planningQuote.isStale && (
+                      <span className="ml-1 text-yellow-500">· Stale</span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Source</span>
+                  <span>Twelve Data</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>As of</span>
+                  <span>{new Date(dim.planningQuote.asOf).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Market status</span>
+                  <span>
+                    {dim.planningQuote.session === "regular" ? "Market Open" :
+                     dim.planningQuote.session === "pre" ? "Pre-Market" :
+                     dim.planningQuote.session === "after" ? "After-Hours" :
+                     "Market Closed"}
+                    {dim.planningQuote.extendedHours && " · Extended"}
+                  </span>
+                </div>
+                <p className="mt-1 text-[9px] text-muted-foreground/70 leading-tight">
+                  Planning data only — not execution-grade. Connect a broker for live execution validation.
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>

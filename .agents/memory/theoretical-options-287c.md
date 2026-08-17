@@ -56,6 +56,24 @@ const bars = barsResult.bars;  // .bars, not the result itself
 - _brand guards prevent accidental use in order flows — this is a permanent invariant (Invariant C1).
 - getHistoricalBars returning HistoricalBarsResult (not the bars array directly) caused a TypeScript error that needs `.bars` extraction.
 
+## UAT Mounting Fix
+
+**Defect:** TheoreticalOptionsPanel was implemented but never mounted — dead code from the user's perspective.
+
+**Fix:** Import + mount in `opportunity-research.tsx` Trade Planning tab, between TradeStructureEngine and LiveContractResolver. No broker required. No session required.
+
+**Pure helpers exported for testability:**
+- `buildTheoreticalOptionsQueryKey(symbol)` → `["theoretical-options", symbol]`
+- `isPanelActive(symbol, enabled)` → bool (no broker param)
+- `getRequiredDisclosureText()` → required disclosure string
+- `isForbiddenMarketField(fieldName)` → bool (Set keys must be all-lowercase after .toLowerCase())
+
+**isForbiddenMarketField bug pattern to avoid:** Set must contain lowercase entries (e.g. "openinterest") because lookup uses `.toLowerCase()`. Mixed-case entries (e.g. "openInterest") in the Set will never match.
+
+**TABS** exported from `opportunity-research.tsx` for structural tests.
+
+**Test file:** `client/src/pages/__tests__/theoretical-options-mounting.test.tsx` (46 pure function tests, no DOM, no @testing-library/react).
+
 ## Files
 
 - `shared/theoretical-options-types.ts` — all canonical types and disclosures

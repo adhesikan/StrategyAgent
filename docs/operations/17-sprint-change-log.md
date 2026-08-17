@@ -1,5 +1,34 @@
 # Sprint Change Log
 
+## Sprint 2.8.7C — UAT Mounting Fix (2026-08-17)
+**Status:** COMPLETE
+
+**Defect:** `TheoreticalOptionsPanel` was fully implemented and tested but never imported or mounted — dead code, unreachable from any route.
+
+**Fix:**
+- Imported `TheoreticalOptionsPanel` into `opportunity-research.tsx`
+- Mounted in Trade Planning tab between `TradeStructureEngine` and `LiveContractResolver`
+- `TABS` const exported for structural tests
+- 4 pure helper exports added to `TheoreticalOptionsPanel`: `buildTheoreticalOptionsQueryKey`, `isPanelActive`, `getRequiredDisclosureText`, `isForbiddenMarketField`
+- 46 new pure-function mounting tests (all 9 spec requirements T-1 through T-9)
+
+**Click path after fix:** Dashboard → opportunity card → `/opportunity/:symbol` → "Trade Planning" tab → `TheoreticalOptionsPanel` renders immediately
+
+**Broker states:** Panel always shown regardless of broker connection. Broker connection enhances `LiveContractResolver` only.
+
+**Invariant C1 preserved:** Mounting change is display/research only. No execution flow is affected.
+
+**Files changed:**
+- `client/src/pages/opportunity-research.tsx` — import + mount + export TABS
+- `client/src/components/theoretical-options/TheoreticalOptionsPanel.tsx` — 4 pure helper exports
+- `client/src/pages/__tests__/theoretical-options-mounting.test.tsx` — NEW (46 tests)
+- `docs/operations/53-sprint-2.8.7c-theoretical-options.md` — UAT defect record added
+- `docs/operations/17-sprint-change-log.md` — this entry
+
+**Test counts:** 46 mounting + 85 math/product = 131 Sprint 2.8.7C tests total. All passing.
+
+---
+
 ## Sprint 2.8.7C — Broker-Independent Theoretical Options Research (2026-08-17)
 **Status:** IMPLEMENTATION COMPLETE — Production UAT pending
 

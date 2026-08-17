@@ -109,6 +109,9 @@ import {
   InstitutionalWorkspaceCompact,
 } from "@/components/research/institutional";
 
+// Sprint 2.8.7C — Broker-Independent Theoretical Options Research
+import { TheoreticalOptionsPanel } from "@/components/theoretical-options/TheoreticalOptionsPanel";
+
 // ---------------------------------------------------------------------------
 // Sentiment types (for News Evidence tab)
 // ---------------------------------------------------------------------------
@@ -2135,7 +2138,8 @@ function SymbolNotFound({ symbol }: { symbol: string }) {
 // Main page component
 // ---------------------------------------------------------------------------
 
-const TABS = [
+// Exported for structural tests (e.g. verify trade-planning tab exists)
+export const TABS = [
   { value: "overview",       label: "Workspace" },
   { value: "decision",       label: "Decision" },
   { value: "trade-planning", label: "Trade Planning" },
@@ -2412,9 +2416,23 @@ export default function OpportunityResearchPage() {
                 snapshot={snapshot}
                 onNavigateTab={handleTabChange}
               />
+
+              {/* Theoretical Options Research — Sprint 2.8.7C
+                  Broker-independent model values from historical volatility + BSM.
+                  Always shown regardless of broker connection state.
+                  Broker connection is an ENHANCEMENT for live/observed quotes, not a
+                  prerequisite for theoretical research.
+                  Invariant C1: these values can never satisfy any execution gate. */}
+              <TheoreticalOptionsPanel
+                symbol={symbol}
+                enabled={true}
+              />
+
               {/* Live Contract Resolver — uses connected broker's chain data to verify
                   illustrative structures with currently listed strikes and live quotes.
-                  Only visible after a structure is selected; never submits orders. */}
+                  No broker → shows enhancement prompt for live contract data.
+                  Broker connected → live chain verification.
+                  Never submits orders. */}
               <LiveContractResolver
                 pkg={pkg}
                 structures={deriveOptionsStructures(pkg, deriveThesis(pkg, stars))}

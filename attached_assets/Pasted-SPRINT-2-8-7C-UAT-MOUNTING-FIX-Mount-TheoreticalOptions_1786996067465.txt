@@ -1,0 +1,189 @@
+SPRINT 2.8.7C — UAT MOUNTING FIX
+Mount TheoreticalOptionsPanel into Research Package
+
+ROOT CAUSE
+
+TheoreticalOptionsPanel exists and is fully implemented, but is not imported
+or rendered by any user-facing page.
+
+The API and backend services are already wired and tested.
+
+DO NOT redesign the theoretical options architecture.
+DO NOT create a new route.
+DO NOT duplicate the component.
+DO NOT change execution safety.
+DO NOT require a broker.
+DO NOT require a trade-planning session.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Mount the existing:
+
+client/src/components/theoretical-options/TheoreticalOptionsPanel.tsx
+
+into the existing RESEARCH-stage surface:
+
+/opportunity/:symbol
+→ opportunity-research.tsx
+
+inside the existing "Trade Planning" tab.
+
+============================================================
+EXPECTED LAYOUT
+============================================================
+
+Trade Planning tab:
+
+1. TradeStructureEngine
+   - existing
+   - broker-independent
+
+2. TheoreticalOptionsPanel
+   - NEWLY MOUNTED
+   - always available when symbol context is valid
+   - no broker required
+   - no planning session required
+   - disclosure always visible:
+     "Theoretical values — not live option quotes."
+
+3. LiveContractResolver
+   - existing
+   - if broker disconnected:
+     show current "Connect for live contracts" / equivalent enhancement prompt
+   - if broker connected:
+     preserve current live contract behavior
+
+============================================================
+IMPORTANT UX RULE
+============================================================
+
+Theoretical options research is useful content.
+
+The "Connect Broker" card must no longer be the only meaningful options outcome
+when the broker is disconnected.
+
+Broker connection is an enhancement for observed/live contract data and execution.
+
+Theoretical research remains available independently.
+
+============================================================
+IMPLEMENTATION
+============================================================
+
+1. Import the existing TheoreticalOptionsPanel into opportunity-research.tsx.
+
+2. Pass:
+
+symbol={current symbol}
+enabled={true}
+
+or the equivalent existing component API.
+
+3. Reuse the existing symbol context from the page.
+
+4. Do not introduce a new API request wrapper if the component already owns its
+query.
+
+5. Preserve existing TradeStructureEngine and LiveContractResolver behavior.
+
+6. Ensure TheoreticalOptionsPanel renders before the broker/live-contract section.
+
+============================================================
+BROKER STATES
+============================================================
+
+NO BROKER:
+
+TradeStructureEngine
+TheoreticalOptionsPanel
+LiveContractResolver enhancement prompt
+
+BROKER CONNECTED:
+
+TradeStructureEngine
+TheoreticalOptionsPanel
+LiveContractResolver live contract data
+
+Connecting a broker must NOT hide theoretical research.
+
+============================================================
+LOADING / ERROR
+============================================================
+
+If theoretical options data cannot load:
+
+show the component's existing graceful error/unavailable state.
+
+Do not break the entire Trade Planning tab.
+
+Do not convert theoretical-data failure into a broker-required message.
+
+============================================================
+SAFETY
+============================================================
+
+Preserve permanent Invariant C1:
+
+Theoretical/model values can never satisfy:
+
+- Execution Preflight quote validation
+- Order Preparation
+- Order Preview
+- Final Revalidation
+- Broker Submission
+
+This mounting change is display/research integration only.
+
+============================================================
+TESTS
+============================================================
+
+Add tests proving:
+
+1. /opportunity/:symbol Trade Planning tab renders TheoreticalOptionsPanel.
+2. It renders without broker connection.
+3. It renders without trade-planning session creation.
+4. It remains rendered when broker connects.
+5. LiveContractResolver remains present.
+6. No execution CTA is created by theoretical panel.
+7. No OCC/bid/ask/volume/OI fields appear in theoretical mode.
+8. Existing TradeStructureEngine still renders.
+9. The theoretical panel failure does not crash the page.
+
+Run relevant theoretical-options, opportunity-research, brokerless, and regression suites.
+
+============================================================
+DOCUMENTATION
+============================================================
+
+Update:
+
+docs/operations/53-sprint-2.8.7c-theoretical-options.md
+docs/operations/17-sprint-change-log.md
+
+Record:
+
+2.8.7C UAT mounting defect:
+TheoreticalOptionsPanel implemented but not mounted.
+
+============================================================
+COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Files changed
+2. Exact mounting location
+3. Brokerless render result
+4. Broker-connected render result
+5. Session requirement = NO
+6. Execution behavior unchanged
+7. Tests added
+8. Test counts
+9. Build result
+10. TypeScript result
+11. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.

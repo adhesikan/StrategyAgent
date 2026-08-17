@@ -298,6 +298,61 @@ Broker connection after the fact does NOT promote a theoretical value to executi
 
 ---
 
+## UAT Mounting Defect — Post-Implementation Fix
+
+**Defect identified:** 2026-08-17  
+**Fixed in:** Same sprint (2.8.7C UAT Mounting Fix)
+
+### Root Cause
+
+`TheoreticalOptionsPanel.tsx` was fully implemented, tested, and wired to the API — but never imported or mounted into any user-facing page. The component was dead code. No click path existed from Dashboard to the panel.
+
+### Fix Applied
+
+1. **Import added** to `client/src/pages/opportunity-research.tsx`:
+   ```typescript
+   import { TheoreticalOptionsPanel } from "@/components/theoretical-options/TheoreticalOptionsPanel";
+   ```
+
+2. **Component mounted** in the "Trade Planning" tab (`TabsContent value="trade-planning"`), positioned between `TradeStructureEngine` and `LiveContractResolver`:
+   ```
+   Trade Planning tab
+   ├── TradeStructureEngine      (unchanged)
+   ├── TheoreticalOptionsPanel   (NEWLY MOUNTED — always shown, broker-independent)
+   └── LiveContractResolver      (unchanged — enhancement prompt / live chain)
+   ```
+
+3. **Pure helpers exported** from `TheoreticalOptionsPanel.tsx` for testability:
+   - `buildTheoreticalOptionsQueryKey(symbol)` — query key contract, no broker/session
+   - `isPanelActive(symbol, enabled)` — activation logic, symbol-only dependency
+   - `getRequiredDisclosureText()` — always-visible disclosure string
+   - `isForbiddenMarketField(fieldName)` — validates no forbidden fields appear
+
+4. **`TABS` exported** from `opportunity-research.tsx` for structural tests.
+
+5. **46 new mounting tests** in `client/src/pages/__tests__/theoretical-options-mounting.test.tsx` — pure function tests covering all 9 spec requirements (T-1 through T-9).
+
+### Broker States After Fix
+
+| Broker State | TradeStructureEngine | TheoreticalOptionsPanel | LiveContractResolver |
+|---|---|---|---|
+| No broker | ✓ shown | ✓ shown | Enhancement prompt |
+| Broker connected | ✓ shown | ✓ shown | Live chain data |
+
+Connecting a broker does NOT hide theoretical research.
+
+### Click Path After Fix
+
+```
+Dashboard
+  → Click any opportunity card (qualified symbol)
+  → /opportunity/:symbol   [Research Package page]
+  → "Trade Planning" tab
+  → TheoreticalOptionsPanel renders immediately (no broker, no session)
+```
+
+---
+
 ## API Endpoints
 
 ### GET /api/trade-planning/theoretical-options/health

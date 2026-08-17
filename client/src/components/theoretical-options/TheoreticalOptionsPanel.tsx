@@ -304,10 +304,53 @@ function StrikeGridSection({ grid }: { grid: TheoreticalStrikeGrid }) {
 // Main panel
 // ===========================================================================
 
-interface TheoreticalOptionsPanelProps {
+export interface TheoreticalOptionsPanelProps {
   symbol: string;
   /** When false, panel is hidden. Useful for conditional rendering in the trade plan flow. */
   enabled?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers — exported for testability (no DOM, no broker, no session)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the React Query cache key for the theoretical options endpoint.
+ * Depends only on symbol — no broker token, no session ID.
+ */
+export function buildTheoreticalOptionsQueryKey(symbol: string): [string, string] {
+  return ["theoretical-options", symbol];
+}
+
+/**
+ * Returns true when the panel should attempt to fetch data.
+ * Pure function: only depends on enabled flag and symbol validity.
+ * No broker state, no session, no account access required.
+ */
+export function isPanelActive(symbol: string | undefined | null, enabled = true): boolean {
+  return enabled === true && typeof symbol === "string" && symbol.trim().length > 0;
+}
+
+/**
+ * Returns the required disclosure text that must always be visible on the panel.
+ * Invariant: this string can never be empty and must contain "Theoretical values".
+ */
+export function getRequiredDisclosureText(): string {
+  return "Theoretical values — not live option quotes.";
+}
+
+/**
+ * Returns true when fieldName is a forbidden execution/market field.
+ * Theoretical research must never surface bid, ask, volume, openInterest,
+ * lastPrice, mark, midpoint, or OCC contract symbols.
+ */
+export function isForbiddenMarketField(fieldName: string): boolean {
+  // All entries must be lowercase — lookup uses .toLowerCase()
+  const FORBIDDEN = new Set([
+    "bid", "ask", "volume", "openinterest", "lastprice",
+    "mark", "midpoint", "executionprice", "occsymbol",
+  ]);
+  return FORBIDDEN.has(fieldName.trim().toLowerCase());
 }
 
 export function TheoreticalOptionsPanel({

@@ -394,12 +394,15 @@ describe("§VD1–§VD4: Execution Preparation section visibility (§13)", () =>
     expect(gateToSection).not.toContain("brokerConnected");
   });
 
-  it("§VD3: BLOCKED state renders with reason text when broker is not connected", () => {
-    // Source must contain the BLOCKED state and a plain-English reason.
-    expect(detailSrc).toContain("BLOCKED");
-    expect(detailSrc).toContain("Connect a broker account");
-    // data-testid for the blocked state element
-    expect(detailSrc).toContain('data-testid="execution-preparation-blocked"');
+  it("§VD3: Not-connected state renders with reason text when broker is not connected (Sprint 2.8.7A)", () => {
+    // Sprint 2.8.7A: BLOCKED state replaced by neutral NOT_CONNECTED card.
+    // No longer shows "BLOCKED" banner — broker absence is not a failure.
+    // Must show a neutral reason and optional connect CTA.
+    expect(detailSrc).toContain("Brokerage not connected");
+    // data-testid for the not-connected element (BER card)
+    expect(detailSrc).toContain('data-testid="broker-execution-not-connected"');
+    // Optional connect CTA is present but secondary (not alarming)
+    expect(detailSrc).toContain('data-testid="connect-broker-optional-cta"');
   });
 
   it("§VD4: section is hidden for ARCHIVED plans and OPTIONS plans (gate assertions)", () => {
@@ -492,16 +495,17 @@ describe("§VD8–§VD10: E2E execution path — no broker mutation (§16)", () 
     expect(equityPrevSrc).not.toMatch(brokerOrderPattern);
   });
 
-  it("§VD10: BLOCKED state is distinct from the CTA — CTA text appears in source", () => {
-    // "Check Execution Preconditions" appears in: file header comment, section comment,
-    // aria-label, and button text — all legitimate. Assert it exists (≥ 1) and that
-    // the BLOCKED state does NOT contain the button text (so they are truly distinct paths).
-    expect(detailSrc).toContain("Check Execution Preconditions");
-    // BLOCKED state must contain "BLOCKED" — not the CTA button label.
-    const blockedIdx = detailSrc.indexOf('data-testid="execution-preparation-blocked"');
-    expect(blockedIdx).toBeGreaterThan(-1);
-    const blockedContent = detailSrc.slice(blockedIdx, blockedIdx + 500);
-    expect(blockedContent).toContain("BLOCKED");
-    expect(blockedContent).not.toContain("Check Execution Preconditions");
+  it("§VD10: NOT_CONNECTED state is distinct from the execute CTA — two-card layout (Sprint 2.8.7A)", () => {
+    // Sprint 2.8.7A: BLOCKED state replaced by neutral NOT_CONNECTED card in the Direct Execution card.
+    // Prepare-for-Execution CTA only appears when overallStatus=PASS — not inside the not-connected card.
+    const notConnIdx = detailSrc.indexOf('data-testid="broker-execution-not-connected"');
+    expect(notConnIdx).toBeGreaterThan(-1);
+    const notConnContent = detailSrc.slice(notConnIdx, notConnIdx + 600);
+    // Not-connected content contains neutral text
+    expect(notConnContent).toContain("Brokerage not connected");
+    // Not-connected content does NOT contain "Prepare for Execution" (the live CTA)
+    expect(notConnContent).not.toContain("Prepare for Execution");
+    // Prepare-for-execution CTA is elsewhere in the file (gated on overallStatus=PASS)
+    expect(detailSrc).toContain('data-testid="prepare-for-execution-cta"');
   });
 });

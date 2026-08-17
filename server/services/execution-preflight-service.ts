@@ -32,6 +32,8 @@ import type {
   ExecutionAuditEvent,
   ExecutionAuditEventType,
   ExecutionAuditMetadata,
+  TradePlanReadiness,
+  BrokerExecutionReadiness,
 } from "@shared/execution-types";
 import {
   EXECUTION_FRESHNESS_THRESHOLDS,
@@ -120,23 +122,9 @@ export async function runExecutionPreflight(
     metadata: { executionMode, planType: "UNKNOWN", durationMs: 0 },
   });
 
-  // ── 1. If execution is globally disabled, fast-path return ──────────────
-  if (!isExecutionEnabled()) {
-    await emitAuditEvent(deps, {
-      id: crypto.randomUUID(),
-      userId: input.userId,
-      tradePlanId: input.tradePlanId,
-      eventType: "EXECUTION_DISABLED_ATTEMPT",
-      occurredAt: now.toISOString(),
-      metadata: { executionMode, status: "EXECUTION_DISABLED" },
-    });
+  const executionDisabled = !isExecutionEnabled();
 
-    const result = buildDisabledResult(id, input, now);
-    await deps.savePreflight(result);
-    return result;
-  }
-
-  // ── 2. Load trade plan ──────────────────────────────────────────────────
+  // ── 1. Load trade plan (always — needed for TPR even when execution disabled) ──
   const plan = await deps.getTradePlan(input.tradePlanId, input.userId);
 
   if (!plan) {
@@ -149,6 +137,77 @@ export async function runExecutionPreflight(
     return buildFailResult(id, input, now, [
       { code: "TRADE_PLAN_ARCHIVED", message: "This Trade Plan has been archived.", dimension: "tradePlan" },
     ]);
+  }
+
+  // ── 2. If execution is globally disabled: compute TPR only, skip broker calls ──
+  //    Sprint 2.8.7A: Trade Plan Readiness is independent of execution being enabled.
+  //    Users should still see plan readiness even when the kill switch is off.
+  if (executionDisabled) {
+    await emitAuditEvent(deps, {
+      id: crypto.randomUUID(),
+      userId: input.userId,
+      tradePlanId: input.tradePlanId,
+      eventType: "EXECUTION_DISABLED_ATTEMPT",
+      occurredAt: now.toISOString(),
+      metadata: { executionMode, status: "EXECUTION_DISABLED" },
+    });
+
+    // Compute broker-independent TPR even in disabled mode
+    const lifecycleResultDisabled = await deps.getLifecycleResult(input.tradePlanId, input.userId).catch(() => null);
+    const disabledBlockers: PreflightBlocker[] = [];
+    const disabledWarnings: PreflightWarning[] = [];
+    const tprTradePlanDim = buildTradePlanDimension(plan);
+    const tprLifecycleDim = buildLifecycleDimension(lifecycleResultDisabled, now, disabledBlockers, disabledWarnings);
+    const tprFreshnessDim = buildFreshnessDimension(plan, lifecycleResultDisabled, now);
+    const tprRiskDim = buildRiskDimension(plan.riskSnapshot, plan.updatedAt, now, disabledBlockers, disabledWarnings);
+    const tprConstraintDim = buildPlanningConstraintDimension(plan.planningSnapshot, disabledBlockers, disabledWarnings);
+    const tprResult = computeTradePlanReadiness(tprTradePlanDim, tprLifecycleDim, tprFreshnessDim, tprRiskDim, tprConstraintDim);
+
+    const berDisabled: BrokerExecutionReadiness = {
+      status: "NOT_CONNECTED",
+      label: "Execution Disabled",
+      brokerConnected: false,
+      dimensions: {
+        brokerConnection: { status: "SKIPPED", label: "Broker Connection", note: "Execution disabled." },
+        brokerAccount:    { status: "SKIPPED", label: "Broker Account",    note: "Execution disabled." },
+        permissions:      { status: "SKIPPED", label: "Broker Permissions",note: "Execution disabled." },
+        buyingPower:      { status: "SKIPPED", label: "Buying Power",      note: "Execution disabled." },
+        position:         { status: "SKIPPED", label: "Position Requirements", note: "Execution disabled." },
+        quote:            { status: "SKIPPED", label: "Quote Validation",  note: "Execution disabled." },
+        structure:        { status: "SKIPPED", label: "Structure Validation", note: "Execution disabled." },
+      },
+    };
+
+    const disabledDim: ValidationDimension = { status: "SKIPPED", label: "—", note: "Execution disabled." };
+    const result: ExecutionPreflightResult = {
+      id,
+      tradePlanId: input.tradePlanId,
+      userId: input.userId,
+      evaluatedAt: now.toISOString(),
+      overallStatus: "EXECUTION_DISABLED",
+      tradePlanValidation: tprTradePlanDim,
+      lifecycleValidation: tprLifecycleDim,
+      freshnessValidation: tprFreshnessDim,
+      brokerValidation: disabledDim,
+      accountValidation: disabledDim,
+      permissionsValidation: disabledDim,
+      buyingPowerValidation: disabledDim,
+      positionValidation: disabledDim,
+      quoteValidation: disabledDim,
+      structureValidation: disabledDim,
+      riskValidation: tprRiskDim,
+      confirmationRequirements: buildConfirmationRequirements(plan.planType),
+      blockers: [{ code: "EXECUTION_DISABLED", message: "Order submission is currently disabled. This preflight checks technical readiness only.", dimension: "global" }],
+      warnings: [],
+      limitations: [EXECUTION_PREFLIGHT_DISCLAIMER],
+      executionMode,
+      methodologyVersion: "2.8.7a",
+      tradePlanReadiness: tprResult,
+      brokerExecutionReadiness: berDisabled,
+      executionAvailable: false,
+    };
+    await deps.savePreflight(result);
+    return result;
   }
 
   // ── 3. Run all dimension checks in parallel ─────────────────────────────
@@ -221,6 +280,7 @@ export async function runExecutionPreflight(
   // ── 6. Build dimension results ──────────────────────────────────────────
   const blockers: PreflightBlocker[] = [];
   const warnings: PreflightWarning[] = [];
+  const brokerIsConnected = brokerStatus?.connected ?? false;
 
   // Trade Plan dimension
   const tradePlanDim = buildTradePlanDimension(plan);
@@ -231,42 +291,42 @@ export async function runExecutionPreflight(
   // Freshness dimension
   const freshnessDim = buildFreshnessDimension(plan, lifecycleResult, now);
 
-  // Broker connection dimension
+  // Risk validation dimension (before constraints — needed for TPR)
+  const riskDim = buildRiskDimension(plan.riskSnapshot, plan.updatedAt, now, blockers, warnings);
+
+  // Planning constraint dimension (now returns ValidationDimension)
+  const constraintDim = buildPlanningConstraintDimension(plan.planningSnapshot, blockers, warnings);
+
+  // Broker connection dimension (Sprint 2.8.7A: no blocker when simply absent)
   const brokerDim = buildBrokerDimension(brokerStatus, blockers, deps);
 
   // Account dimension
   const accountDim = buildAccountDimension(
     accountList, resolvedAccountRef, resolvedAccountMasked,
-    input.requestedAccountRef, blockers, warnings
+    input.requestedAccountRef, blockers, warnings, brokerIsConnected
   );
 
   // Permissions dimension
   const permissionsDim = buildPermissionsDimension(
-    permissionsResult, plan.planType, plan.structureSnapshot, blockers, warnings
+    permissionsResult, plan.planType, plan.structureSnapshot, blockers, warnings, brokerIsConnected
   );
 
   // Buying power dimension
-  const buyingPowerDim = buildBuyingPowerDimension(buyingPower, plan, blockers, warnings);
+  const buyingPowerDim = buildBuyingPowerDimension(buyingPower, plan, blockers, warnings, brokerIsConnected);
 
   // Position validation dimension
   const positionDim = buildPositionDimension(
-    positionList, plan, brokerStatus?.connected ?? false, blockers, warnings
+    positionList, plan, brokerIsConnected, blockers, warnings
   );
 
   // Quote validation dimension
-  const quoteDim = buildQuoteDimension(quoteValidation, optionContracts, plan.planType, blockers, warnings);
+  const quoteDim = buildQuoteDimension(quoteValidation, optionContracts, plan.planType, blockers, warnings, brokerIsConnected);
 
   // Structure validation dimension
-  const structureDim = buildStructureDimension(plan.structureSnapshot, plan.planType, optionContracts, blockers);
+  const structureDim = buildStructureDimension(plan.structureSnapshot, plan.planType, optionContracts, blockers, brokerIsConnected);
 
-  // Risk validation dimension
-  const riskDim = buildRiskDimension(plan.riskSnapshot, plan.updatedAt, now, blockers, warnings);
-
-  // Planning constraint dimension — from planningSnapshot
-  checkPlanningConstraints(plan.planningSnapshot, blockers, warnings);
-
-  // Multiple accounts warning
-  if (accountList.length > 1 && !resolvedAccountRef) {
+  // Multiple accounts warning (only when broker connected)
+  if (brokerIsConnected && accountList.length > 1 && !resolvedAccountRef) {
     warnings.push({
       code: "MULTI_ACCOUNT_SELECTION_REQUIRED",
       message: "Multiple broker accounts found. An account must be selected before any future order can be prepared.",
@@ -274,8 +334,18 @@ export async function runExecutionPreflight(
     });
   }
 
+  // ── 6b. Compute two-layer readiness (Sprint 2.8.7A) ──────────────────
+  const tradePlanReadiness = computeTradePlanReadiness(
+    tradePlanDim, lifecycleDim, freshnessDim, riskDim, constraintDim
+  );
+
+  const brokerExecutionReadiness = computeBrokerExecutionReadiness(
+    brokerIsConnected, brokerStatus?.provider,
+    brokerDim, accountDim, permissionsDim, buyingPowerDim, positionDim, quoteDim, structureDim
+  );
+
   // ── 7. Determine overall status ─────────────────────────────────────────
-  const overallStatus = determineOverallStatus(blockers, warnings, brokerStatus?.connected ?? false);
+  const overallStatus = determineOverallStatus(blockers, warnings, brokerIsConnected);
 
   // ── 8. Build validUntil ─────────────────────────────────────────────────
   const validUntil = overallStatus === "PASS" || overallStatus === "REQUIRES_REVIEW"
@@ -339,7 +409,11 @@ export async function runExecutionPreflight(
     validUntil,
     executionMode,
     provider: brokerStatus?.provider,
-    methodologyVersion: "2.8.0",
+    methodologyVersion: "2.8.7a",
+    // ── Sprint 2.8.7A: Two-layer readiness (additive fields) ──────────────
+    tradePlanReadiness,
+    brokerExecutionReadiness,
+    executionAvailable: overallStatus === "PASS",
   };
 
   await deps.savePreflight(result);
@@ -431,16 +505,16 @@ function buildBrokerDimension(
   blockers: PreflightBlocker[],
   _deps: PreflightDependencies
 ): ValidationDimension {
+  // ── Sprint 2.8.7A: Broker absence is NOT_CONNECTED, not a plan blocker ──
   if (!status) {
-    blockers.push({ code: "BROKER_NOT_CONNECTED", message: "Broker connection status unavailable.", dimension: "broker" });
-    return { status: "UNAVAILABLE", label: "Broker Connection" };
+    return { status: "NOT_CONNECTED", label: "Broker Connection", note: "Connection status unavailable." };
   }
 
   if (!status.connected) {
-    blockers.push({ code: "BROKER_NOT_CONNECTED", message: "No active broker connection. Connect your broker to proceed.", dimension: "broker" });
-    return { status: "FAIL", label: "Broker Connection", note: "No active broker connection." };
+    return { status: "NOT_CONNECTED", label: "Broker Connection", note: "No broker connected." };
   }
 
+  // Re-auth failures ARE errors — they happen while a connection is expected
   if (status.needsReauth) {
     blockers.push({ code: "BROKER_NEEDS_REAUTH", message: "Broker session expired. Reconnect your broker to continue.", dimension: "broker" });
     return { status: "FAIL", label: "Broker Connection", note: "Session requires re-authentication." };
@@ -455,8 +529,14 @@ function buildAccountDimension(
   resolvedMasked: string | undefined,
   requestedRef: string | undefined,
   blockers: PreflightBlocker[],
-  warnings: PreflightWarning[]
+  warnings: PreflightWarning[],
+  brokerConnected: boolean
 ): ValidationDimension {
+  // ── Sprint 2.8.7A: Broker absent → NOT_CONNECTED, not a plan blocker ──
+  if (!brokerConnected) {
+    return { status: "NOT_CONNECTED", label: "Broker Account", note: "Broker connection required." };
+  }
+
   if (accounts.length === 0) {
     blockers.push({ code: "ACCOUNT_NOT_RESOLVED", message: "No broker accounts available.", dimension: "account" });
     return { status: "FAIL", label: "Broker Account" };
@@ -479,8 +559,14 @@ function buildPermissionsDimension(
   planType: "EQUITY" | "OPTIONS",
   structure: Record<string, unknown> | undefined | null,
   blockers: PreflightBlocker[],
-  warnings: PreflightWarning[]
+  warnings: PreflightWarning[],
+  brokerConnected: boolean
 ): ValidationDimension {
+  // ── Sprint 2.8.7A: Broker absent → NOT_CONNECTED, not a plan blocker ──
+  if (!brokerConnected) {
+    return { status: "NOT_CONNECTED", label: "Broker Permissions", note: "Broker connection required to verify permissions." };
+  }
+
   if (!permissions || permissions.source === "unavailable") {
     warnings.push({ code: "OPTIONS_LEVEL_UNVERIFIED", message: "Broker permissions API unavailable. Permissions not verified.", dimension: "permissions" });
     return { status: "UNAVAILABLE", label: "Broker Permissions", note: "Not verifiable with this provider." };
@@ -512,8 +598,14 @@ function buildBuyingPowerDimension(
   bp: import("@shared/execution-types").BrokerBalanceContext | null,
   plan: StoredTradePlan,
   blockers: PreflightBlocker[],
-  warnings: PreflightWarning[]
+  warnings: PreflightWarning[],
+  brokerConnected: boolean
 ): ValidationDimension {
+  // ── Sprint 2.8.7A: Broker absent → NOT_CONFIRMED, not a plan blocker ──
+  if (!brokerConnected) {
+    return { status: "NOT_CONFIRMED", label: "Buying Power Availability", note: "Broker connection required for buying power verification." };
+  }
+
   if (!bp || !bp.available) {
     blockers.push({ code: "BUYING_POWER_UNAVAILABLE", message: "Buying power information unavailable from broker.", dimension: "buyingPower" });
     return { status: "UNAVAILABLE", label: "Buying Power Availability" };
@@ -539,8 +631,18 @@ function buildPositionDimension(
   blockers: PreflightBlocker[],
   warnings: PreflightWarning[]
 ): ValidationDimension {
+  // ── Sprint 2.8.7A: Broker absent — use NOT_APPLICABLE / NOT_CONFIRMED ──
   if (!brokerConnected) {
-    return { status: "UNAVAILABLE", label: "Position Requirements", note: "Broker not connected." };
+    if (plan.planType !== "OPTIONS" || !plan.structureSnapshot) {
+      // Equity direct purchase does not require pre-existing position
+      return { status: "NOT_APPLICABLE", label: "Position Requirements", note: "No position requirement for this plan type." };
+    }
+    const structureType = getStructureType(plan.structureSnapshot);
+    const requiresShares = SHARE_REQUIRING_STRUCTURES.has(structureType);
+    if (requiresShares) {
+      return { status: "NOT_CONFIRMED", label: "Position Requirements", note: `${formatStructureType(structureType)} requires underlying shares — confirmation needs broker connection.` };
+    }
+    return { status: "NOT_APPLICABLE", label: "Position Requirements", note: "No position requirement for this strategy." };
   }
 
   if (plan.planType !== "OPTIONS" || !plan.structureSnapshot) {
@@ -609,10 +711,16 @@ function buildQuoteDimension(
   optionContracts: Array<{ symbol: string; valid: boolean; expired: boolean }>,
   planType: "EQUITY" | "OPTIONS",
   blockers: PreflightBlocker[],
-  warnings: PreflightWarning[]
+  warnings: PreflightWarning[],
+  brokerConnected: boolean
 ): ValidationDimension {
+  // ── Sprint 2.8.7A: Broker absent → PLANNING_MODE, not a blocker ──
+  if (!brokerConnected) {
+    return { status: "PLANNING_MODE", label: "Quote Validation", note: "Planning mode — live quote validation requires broker connection." };
+  }
+
   if (!quoteValidation) {
-    blockers.push({ code: "QUOTE_STALE", message: "Underlying quote not available. Broker connection required.", dimension: "quote" });
+    blockers.push({ code: "QUOTE_STALE", message: "Underlying quote not available from broker.", dimension: "quote" });
     return { status: "UNAVAILABLE", label: "Quote Validation" };
   }
 
@@ -652,10 +760,16 @@ function buildStructureDimension(
   structure: Record<string, unknown> | undefined | null,
   planType: "EQUITY" | "OPTIONS",
   optionContracts: Array<{ symbol: string; valid: boolean; expired: boolean }>,
-  blockers: PreflightBlocker[]
+  blockers: PreflightBlocker[],
+  brokerConnected: boolean
 ): ValidationDimension {
   if (!structure) {
     return { status: "UNAVAILABLE", label: "Structure Validation", note: "No selected structure in plan." };
+  }
+
+  // ── Sprint 2.8.7A: OPTIONS without broker → PLANNING_MODE (can't validate live contracts) ──
+  if (planType === "OPTIONS" && !brokerConnected) {
+    return { status: "PLANNING_MODE", label: "Structure Validation", note: "Planning mode — contract validation requires broker connection." };
   }
 
   if (planType === "OPTIONS") {
@@ -702,12 +816,18 @@ function buildRiskDimension(
   return { status: "PASS", label: "Risk Analysis" };
 }
 
-function checkPlanningConstraints(
+/**
+ * Sprint 2.8.7A: Returns a ValidationDimension AND pushes blockers when FAIL.
+ * Was previously void; now also used by computeTradePlanReadiness.
+ */
+function buildPlanningConstraintDimension(
   planningSnapshot: Record<string, unknown> | null | undefined,
   blockers: PreflightBlocker[],
   warnings: PreflightWarning[]
-): void {
-  if (!planningSnapshot) return;
+): ValidationDimension {
+  if (!planningSnapshot) {
+    return { status: "UNAVAILABLE", label: "Planning Constraints", note: "No planning context in this plan." };
+  }
 
   const maxLoss = planningSnapshot.maxRiskDollars ?? planningSnapshot.maxLossDollars;
   const scenarioLoss = planningSnapshot.scenarioMaxLoss ?? planningSnapshot.maxScenarioLoss;
@@ -719,8 +839,119 @@ function checkPlanningConstraints(
         message: "Current scenario loss estimate may exceed planning constraint. Review before proceeding.",
         dimension: "riskConstraint",
       });
+      return { status: "FAIL", label: "Planning Constraints", note: "Scenario loss estimate exceeds planning constraint." };
     }
   }
+
+  return { status: "PASS", label: "Planning Constraints" };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TWO-LAYER COMPUTATION (Sprint 2.8.7A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute broker-independent Trade Plan Readiness.
+ *
+ * Evaluates: Trade Plan, Research Lifecycle, Plan Freshness, Risk Analysis,
+ * Planning Constraints. Does NOT require a broker connection.
+ *
+ * INVARIANT: PASS here NEVER authorizes order preparation or broker submission.
+ */
+function computeTradePlanReadiness(
+  tradePlanDim: ValidationDimension,
+  lifecycleDim: ValidationDimension,
+  freshnessDim: ValidationDimension,
+  riskDim: ValidationDimension,
+  constraintDim: ValidationDimension
+): TradePlanReadiness {
+  const dims = [tradePlanDim, lifecycleDim, freshnessDim, riskDim, constraintDim];
+
+  let status: TradePlanReadiness["status"] = "PASS";
+  for (const d of dims) {
+    if (d.status === "FAIL") { status = "FAIL"; break; }
+    if (d.status === "REQUIRES_REVIEW" || d.status === "UNAVAILABLE") { status = "REQUIRES_REVIEW"; }
+  }
+
+  const label = status === "PASS" ? "Plan Ready"
+    : status === "FAIL" ? "Blocked"
+    : "Review Required";
+
+  return {
+    status,
+    label,
+    dimensions: {
+      tradePlan: tradePlanDim,
+      lifecycle: lifecycleDim,
+      freshness: freshnessDim,
+      risk: riskDim,
+      planningConstraints: constraintDim,
+    },
+    limitations: [],
+  };
+}
+
+/**
+ * Compute broker-dependent Broker Execution Readiness.
+ *
+ * Reaches READY only when broker is connected, account verified, permissions
+ * confirmed, and buying power / position / quote checks all pass.
+ */
+function computeBrokerExecutionReadiness(
+  brokerConnected: boolean,
+  provider: string | undefined,
+  brokerDim: ValidationDimension,
+  accountDim: ValidationDimension,
+  permissionsDim: ValidationDimension,
+  buyingPowerDim: ValidationDimension,
+  positionDim: ValidationDimension,
+  quoteDim: ValidationDimension,
+  structureDim: ValidationDimension
+): BrokerExecutionReadiness {
+  if (!brokerConnected) {
+    return {
+      status: "NOT_CONNECTED",
+      label: "Not Connected",
+      brokerConnected: false,
+      provider: undefined,
+      dimensions: {
+        brokerConnection: brokerDim,
+        brokerAccount: accountDim,
+        permissions: permissionsDim,
+        buyingPower: buyingPowerDim,
+        position: positionDim,
+        quote: quoteDim,
+        structure: structureDim,
+      },
+    };
+  }
+
+  const dims = [brokerDim, accountDim, permissionsDim, buyingPowerDim, positionDim, quoteDim, structureDim];
+  let status: BrokerExecutionReadiness["status"] = "READY";
+  for (const d of dims) {
+    if (d.status === "FAIL") { status = "BLOCKED"; break; }
+    if (d.status === "REQUIRES_REVIEW" && status !== "BLOCKED") { status = "REQUIRES_REVIEW"; }
+  }
+
+  const label = status === "READY" ? "Ready"
+    : status === "REQUIRES_REVIEW" ? "Review Required"
+    : "Blocked";
+
+  return {
+    status,
+    label,
+    brokerConnected: true,
+    provider,
+    dimensions: {
+      brokerConnection: brokerDim,
+      brokerAccount: accountDim,
+      permissions: permissionsDim,
+      buyingPower: buyingPowerDim,
+      position: positionDim,
+      quote: quoteDim,
+      structure: structureDim,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -805,7 +1036,8 @@ function buildFailResult(
     warnings: [],
     limitations: [EXECUTION_PREFLIGHT_DISCLAIMER],
     executionMode: getExecutionMode(),
-    methodologyVersion: "2.8.0",
+    methodologyVersion: "2.8.7a",
+    executionAvailable: false,
   };
 }
 

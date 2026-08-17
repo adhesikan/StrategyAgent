@@ -225,6 +225,20 @@ See Doc 49 §C1 for the full underlying-only theoretical mode design.
 - **No DB schema migration required** for Phase 1 — new fields are additive in `result_json`
 - **Test plan:** 8 required suites covering all failure matrix scenarios, broker transitions, and backward compatibility
 
+## 5A. Sprint 2.8.7A — Implementation Complete
+
+**BI-001 / BI-002 / BI-014 RESOLVED** — See [Doc 51](51-sprint-2.8.7a-brokerless-readiness.md) for full implementation record.
+
+**Implemented:**
+- Two-layer preflight model: `TradePlanReadiness` (dims 1–3, 11, 12) + `BrokerExecutionReadiness` (dims 4–10)
+- 4 new `ValidationStatus` values: `NOT_CONNECTED`, `NOT_APPLICABLE`, `NOT_CONFIRMED`, `PLANNING_MODE`
+- Trade Plan detail: two-card layout — TPR always visible, Direct Execution neutral when broker absent
+- Broker absence removed as a plan-level blocker; `overallStatus` is UNAVAILABLE (not FAIL) when no broker and no plan problems
+- `methodologyVersion` → `"2.8.7a"`, 57 permanent invariant tests
+- `BROKER_EXECUTION_ENABLED=false` (kill switch) does NOT suppress TPR computation
+
+---
+
 ## 5. Proposed Next Architecture Audit (Sprint 2.8.7)
 
 Before starting Sprint 2.8.7 implementation, the following audit tasks must be completed:

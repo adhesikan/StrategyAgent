@@ -39,6 +39,7 @@
 | [48](48-audit-b-preflight-layering.md) | Audit B — Preflight Layer Design | TRADE_PLAN_READINESS vs BROKER_EXECUTION_READINESS architecture, API contract, failure matrix |
 | [49](49-audit-c-broker-independent-options.md) | Audit C — Broker-Independent Options | Taxonomy, IV engine, Greeks design, provider interface, minimum feed spec, implementation groups |
 | [50](50-audit-d-brokerless-ux.md) | Audit D — Brokerless UX & Onboarding | Gate inventory, FIND→RESEARCH→PLAN→MONITOR journey, 9 implementation groups, 17-item acceptance criteria |
+| [51](51-sprint-2.8.7a-brokerless-readiness.md) | Sprint 2.8.7A — Brokerless Trade Plan Readiness | Two-layer preflight split, TPR/BER model, safety invariants, UAT criteria |
 | [manifest](system-manifest.yaml) | System Manifest | Machine-readable service/job/flag catalog |
 
 ---

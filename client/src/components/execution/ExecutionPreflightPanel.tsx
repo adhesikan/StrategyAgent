@@ -61,21 +61,31 @@ function SkipIcon() {
 
 function StatusIcon({ status }: { status: ValidationStatus | "SKIPPED" }) {
   switch (status) {
-    case "PASS": return <CheckIcon />;
-    case "FAIL": return <XIcon />;
-    case "REQUIRES_REVIEW": return <AlertIcon />;
-    case "UNAVAILABLE": return <QuestionIcon />;
-    default: return <SkipIcon />;
+    case "PASS":             return <CheckIcon />;
+    case "FAIL":             return <XIcon />;
+    case "REQUIRES_REVIEW":  return <AlertIcon />;
+    case "UNAVAILABLE":      return <QuestionIcon />;
+    // Sprint 2.8.7A: new brokerless status values
+    case "NOT_CONNECTED":    return <QuestionIcon />;
+    case "NOT_APPLICABLE":   return <SkipIcon />;
+    case "NOT_CONFIRMED":    return <QuestionIcon />;
+    case "PLANNING_MODE":    return <QuestionIcon />;
+    default:                 return <SkipIcon />;
   }
 }
 
 function statusColor(status: ValidationStatus | string): string {
   switch (status) {
-    case "PASS": return "text-green-400";
-    case "FAIL": return "text-red-400";
-    case "REQUIRES_REVIEW": return "text-yellow-400";
-    case "UNAVAILABLE": return "text-slate-400";
-    default: return "text-slate-500";
+    case "PASS":             return "text-green-400";
+    case "FAIL":             return "text-red-400";
+    case "REQUIRES_REVIEW":  return "text-yellow-400";
+    case "UNAVAILABLE":      return "text-slate-400";
+    // Sprint 2.8.7A: new values — neutral slate (not error)
+    case "NOT_CONNECTED":    return "text-slate-400";
+    case "NOT_APPLICABLE":   return "text-slate-500";
+    case "NOT_CONFIRMED":    return "text-amber-400";
+    case "PLANNING_MODE":    return "text-blue-400";
+    default:                 return "text-slate-500";
   }
 }
 
@@ -212,24 +222,18 @@ export function ExecutionPreflightPanel({
         </div>
       )}
 
-      {/* Run button */}
+      {/* Run button — Sprint 2.8.7A: no longer disabled when broker absent */}
       <div>
         <button
           onClick={() => runPreflight.mutate()}
-          disabled={runPreflight.isPending || !brokerConnected}
-          className={`
-            px-4 py-2 text-sm font-medium rounded transition-colors
-            ${brokerConnected
-              ? "bg-blue-600 hover:bg-blue-700 text-white"
-              : "bg-slate-700 text-slate-400 cursor-not-allowed"
-            }
-          `}
+          disabled={runPreflight.isPending}
+          className="px-4 py-2 text-sm font-medium rounded transition-colors bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60"
         >
           {runPreflight.isPending ? "Checking…" : "Check Execution Preconditions"}
         </button>
 
         {!brokerConnected && (
-          <p className="text-xs text-slate-500 mt-1">Connect a broker to run execution preflight.</p>
+          <p className="text-xs text-slate-400 mt-1">No broker connected — independent plan checks will run; broker dimensions will show NOT_CONNECTED.</p>
         )}
 
         {runPreflight.error && (

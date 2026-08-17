@@ -362,10 +362,14 @@ describe("§HK20–§HK22: Lifecycle/preflight/activity queries use `enabled` gu
   });
 
   it("§HK21: lifecycleData query has enabled: !!id && !!plan", () => {
-    const lifecycleIdx = src.indexOf('"lifecycle"');
+    // Sprint 2.8.7A: search for the queryKey array form to avoid matching the
+    // TradePlanReadinessPanel helper component's { key: "lifecycle", ... } object literal.
+    const lifecycleQueryKeyPattern = '"/api/trade-plans", id, "lifecycle"';
+    const lifecycleIdx = src.indexOf(lifecycleQueryKeyPattern);
+    expect(lifecycleIdx).toBeGreaterThan(-1);
     const lifecycleBlock = src.slice(
       src.lastIndexOf("useQuery", lifecycleIdx),
-      lifecycleIdx + 200,
+      lifecycleIdx + 300,
     );
     expect(lifecycleBlock).toContain("enabled:");
     expect(lifecycleBlock).toContain("!!plan");

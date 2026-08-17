@@ -1,0 +1,481 @@
+SPRINT 2.8.7A — BROKERLESS TRADE PLAN READINESS & PREFLIGHT SPLIT
+
+STATUS
+
+Audits A, B, C, C1, and D are complete.
+
+This sprint implements ONLY the first P0 architecture package:
+
+- BI-001 / BI-002 — Execution Preflight two-layer split
+- BI-014 — Trade Plan execution section brokerless behavior
+- related P0 broker-connected render gates required to expose Trade Plan Readiness
+
+DO NOT implement:
+- independent options provider
+- theoretical options engine
+- dashboard portfolio redesign
+- options scanner redesign
+- onboarding/guided journey
+- broad market-data abstraction beyond what is required here
+
+============================================================
+PRIMARY GOAL
+============================================================
+
+A user WITHOUT a broker connection must be able to:
+
+- open a saved Trade Plan
+- run Trade Plan Readiness
+- see independent readiness dimensions
+- receive a meaningful PASS / REQUIRES_REVIEW / FAIL result
+- continue monitoring/researching the plan
+
+Broker absence must NOT be shown as a plan failure.
+
+However:
+
+Trade Plan Readiness PASS must NEVER authorize order preparation or broker submission.
+
+============================================================
+1. IMPLEMENT THE TWO-LAYER MODEL
+============================================================
+
+Add canonical types in shared execution types for:
+
+TRADE_PLAN_READINESS
+
+BROKER_EXECUTION_READINESS
+
+Suggested shapes based on Audit B:
+
+tradePlanReadiness: {
+  status: "PASS" | "FAIL" | "REQUIRES_REVIEW",
+  label,
+  dimensions,
+  limitations
+}
+
+brokerExecutionReadiness: {
+  status: "READY" | "NOT_CONNECTED" | "REQUIRES_REVIEW" | "BLOCKED",
+  label,
+  brokerConnected,
+  provider,
+  dimensions
+} | null
+
+executionAvailable: boolean
+
+Preserve existing overallStatus.
+
+============================================================
+2. PRESERVE OVERALL EXECUTION SEMANTICS
+============================================================
+
+overallStatus must remain:
+
+PASS
+FAIL
+REQUIRES_REVIEW
+UNAVAILABLE
+EXECUTION_DISABLED
+
+Critical invariant:
+
+overallStatus === "PASS"
+
+ONLY when:
+
+tradePlanReadiness.status === "PASS"
+AND
+brokerExecutionReadiness.status === "READY"
+AND
+broker connected
+
+No brokerless code path may produce overallStatus = PASS.
+
+============================================================
+3. INDEPENDENT DIMENSIONS
+============================================================
+
+Evaluate fully without broker:
+
+1 Trade Plan
+2 Research Lifecycle
+3 Plan Freshness
+11 Risk Analysis
+12 Planning Constraints
+
+Do not return UNAVAILABLE merely because broker is absent.
+
+Use existing logic.
+
+Do not duplicate lifecycle/freshness computation.
+
+============================================================
+4. MODE-AWARE DIMS 8–10
+============================================================
+
+For long equity plans without broker:
+
+Position Requirements:
+NOT_APPLICABLE
+
+Quote Validation:
+PLANNING_MODE if an acceptable broker-independent research quote exists today;
+otherwise NOT_CONFIRMED / limitation according to current available data.
+
+Structure Validation:
+PLANNING_MODE where independently derivable.
+
+Do NOT implement Twelve Data research quote infrastructure in this sprint if it
+requires new architecture from 2.8.7C.
+
+If independent quote is not available yet:
+
+return a truthful non-blocking planning state.
+
+Do not fabricate PASS.
+
+============================================================
+5. BROKER DIMS 4–7
+============================================================
+
+Without broker:
+
+Broker Connection:
+NOT_CONNECTED
+
+Broker Account:
+NOT_CONNECTED or NOT_APPLICABLE according to canonical status model
+
+Broker Permissions:
+NOT_CONNECTED
+
+Buying Power:
+NOT_CONFIRMED / broker enhancement unavailable
+
+These are NOT Trade Plan Readiness blockers.
+
+They remain execution-layer blockers.
+
+============================================================
+6. STATUS VOCABULARY
+============================================================
+
+Add ValidationStatus values approved in Audit B:
+
+NOT_CONNECTED
+NOT_APPLICABLE
+NOT_CONFIRMED
+PLANNING_MODE
+
+Preserve existing:
+
+PASS
+FAIL
+REQUIRES_REVIEW
+UNAVAILABLE
+
+Update compliance/forbidden-label tests if required.
+
+============================================================
+7. EXECUTIONPRELIGHT SERVICE
+============================================================
+
+Refactor determineOverallStatus only as necessary.
+
+Compute:
+
+tradePlanReadiness
+
+brokerExecutionReadiness
+
+executionAvailable
+
+Do not break existing stored result_json.
+
+New fields are additive.
+
+No DB migration required.
+
+============================================================
+8. DATABASE COMPATIBILITY
+============================================================
+
+execution_preflights.status remains the existing overallStatus.
+
+Order Preparation still gates on:
+
+preflightRow.status === "PASS"
+
+Do not change this.
+
+This is a permanent safety boundary.
+
+============================================================
+9. TRADE PLAN DETAIL UI
+============================================================
+
+The Trade Plan page must render execution/readiness sections even when no broker
+is connected.
+
+Remove client hard gates that hide:
+
+Trade Plan Readiness
+Preflight query
+independent validation results
+
+No broker user should see a blank/missing section.
+
+============================================================
+10. TWO-SECTION UI
+============================================================
+
+Render:
+
+TRADE PLAN READINESS
+
+with independent checks and headline:
+
+PLAN READY
+or
+REVIEW REQUIRED
+or
+BLOCKED
+
+Then separately:
+
+DIRECT EXECUTION
+
+If broker absent:
+
+Brokerage not connected
+
+Connect a supported broker if you'd like account-aware execution checks and
+direct order submission.
+
+[Connect Broker — Optional]
+
+Neutral styling.
+
+Not red.
+Not FAIL.
+
+============================================================
+11. BROKER-CONNECTED UI
+============================================================
+
+With broker connected:
+
+render both layers.
+
+If both pass:
+
+Prepare for Execution
+
+may appear through the existing execution path.
+
+Do not introduce a new order path.
+
+============================================================
+12. BROKER DISCONNECT / RECONNECT
+============================================================
+
+Test:
+
+Plan created with broker
+→ broker disconnected
+→ Trade Plan Readiness remains usable
+→ Direct Execution becomes NOT_CONNECTED
+
+Then reconnect:
+
+same Trade Plan
+→ broker layer re-evaluates
+→ no plan recreation
+
+============================================================
+13. CLIENT QUERY GATES
+============================================================
+
+Remove or refactor:
+
+enabled: brokerConnected
+
+for preflight retrieval where it suppresses independent readiness.
+
+Do not cause execution APIs to run automatically.
+
+Explicit user action remains required for preflight evaluation.
+
+============================================================
+14. BLOCKED-STATE VISIBILITY
+============================================================
+
+Never silently hide the section.
+
+If Trade Plan Readiness cannot run:
+
+show explicit reason.
+
+If broker layer unavailable:
+
+show NOT_CONNECTED.
+
+============================================================
+15. PLATFORM HEALTH
+============================================================
+
+Update Trade Planning / Preflight health interpretation:
+
+broker disconnected must NOT make the overall Trade Planning subsystem degraded
+if broker-independent readiness is operational.
+
+Do not misreport broker absence as platform failure.
+
+============================================================
+16. API CONTRACT
+============================================================
+
+Existing preflight endpoints remain.
+
+Response gains additive fields:
+
+tradePlanReadiness
+brokerExecutionReadiness
+executionAvailable
+
+Do not remove or rename existing fields.
+
+============================================================
+17. SAFETY INVARIANTS
+============================================================
+
+Add permanent tests:
+
+A. brokerless Trade Plan Readiness can PASS
+B. brokerless overallStatus is NEVER PASS
+C. brokerless executionAvailable is ALWAYS false
+D. order preparation rejects brokerless result
+E. broker submission remains impossible
+F. broker connection transition enriches same plan
+G. broker disconnect removes execution availability only
+H. lifecycle/freshness logic remains unchanged
+I. no automatic broker calls from Trade Plan rendering
+
+============================================================
+18. TEST SUITES
+============================================================
+
+Implement at minimum:
+
+- Brokerless Independent Preflight
+- TPR Never Authorizes Execution
+- Broker Transition
+- Equity Independent Mode
+- Status Vocabulary
+- Backward Compatibility
+- Failure Matrix subset relevant to this sprint
+
+Run all existing execution/preflight/security/compliance/release suites.
+
+============================================================
+19. PRODUCTION UAT
+============================================================
+
+Brokerless user:
+
+1. Open Trade Plan
+2. Trade Plan Readiness visible
+3. Run readiness/preflight
+4. Independent dimensions evaluate
+5. Plan may show PLAN READY
+6. Direct Execution shows NOT CONNECTED
+7. No red broker failure
+8. Connect Broker CTA optional
+9. No order preparation possible
+
+Broker-connected user:
+
+10. Run preflight
+11. Both layers evaluate
+12. existing Prepare for Execution path unchanged when full PASS
+
+============================================================
+20. DOCUMENTATION
+============================================================
+
+Create:
+
+docs/operations/51-sprint-2.8.7a-brokerless-readiness.md
+
+Update:
+
+Doc 46
+Doc 48
+Doc 50
+Known Issues
+README
+Sprint change log
+
+============================================================
+21. QUALITY GATES
+============================================================
+
+Run:
+
+smoke
+regression
+integration
+security
+compliance
+lifecycle
+candidate consistency
+trade-plan
+execution-preflight
+order-preparation
+equity-preview
+options-preview
+execution-readiness
+order-confirmation
+execution
+TEST_LIVE certification
+DB
+migrations
+invariants
+idempotency
+release
+release:full
+build
+TypeScript
+
+Report exact counts.
+
+============================================================
+22. DO NOT DEPLOY AUTOMATICALLY
+============================================================
+
+Return:
+
+1. Root implementation summary
+2. Files changed
+3. Types added
+4. Dimension behavior brokerless
+5. Dimension behavior broker-connected
+6. tradePlanReadiness behavior
+7. brokerExecutionReadiness behavior
+8. overallStatus behavior
+9. executionAvailable behavior
+10. Order Preparation gate verification
+11. Broker Submission gate verification
+12. Trade Plan UI before/after
+13. Broker disconnect/reconnect test
+14. Platform Health behavior
+15. Tests added
+16. Full test count
+17. Build
+18. TypeScript
+19. Docs updated
+20. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+Do not deploy automatically.

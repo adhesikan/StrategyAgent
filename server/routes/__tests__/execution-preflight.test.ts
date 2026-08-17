@@ -318,17 +318,20 @@ describe("preflight: execution disabled", () => {
     expect(result.limitations.join(" ")).toContain("not an investment recommendation");
   });
 
-  it("all dimension validations are SKIPPED", async () => {
+  it("broker/account/quote dimensions are SKIPPED when execution disabled", async () => {
+    // Sprint 2.8.7A: EXECUTION_DISABLED path now computes TPR dims (risk/lifecycle/freshness).
+    // Broker-dependent dims (broker, account, quote) remain SKIPPED.
     const plan = makePlan();
     const deps = makeDeps(plan, makeLifecycle());
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-001", userId: "user-001" }, deps
     );
-    const dims = [
+    const brokerDims = [
       result.brokerValidation, result.accountValidation, result.quoteValidation,
-      result.riskValidation, result.lifecycleValidation,
     ];
-    expect(dims.every(d => d.status === "SKIPPED")).toBe(true);
+    expect(brokerDims.every(d => d.status === "SKIPPED")).toBe(true);
+    // overallStatus is EXECUTION_DISABLED (not FAIL)
+    expect(result.overallStatus).toBe("EXECUTION_DISABLED");
   });
 });
 
@@ -464,13 +467,17 @@ describe("preflight: broker connection", () => {
     delete process.env.BROKER_EXECUTION_MODE;
   });
 
-  it("broker not connected → BROKER_NOT_CONNECTED blocker", async () => {
+  it("broker not connected → NOT_CONNECTED status on broker dim (Sprint 2.8.7A: no BROKER_NOT_CONNECTED blocker)", async () => {
+    // Sprint 2.8.7A: broker absence is no longer a blocker — dimension returns NOT_CONNECTED.
+    // The overall status becomes UNAVAILABLE (not FAIL) when broker is absent and no plan blockers exist.
     const plan = makePlan();
     const deps = makeDeps(plan, makeLifecycle(), { connected: false });
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-001", userId: "user-001" }, deps
     );
-    expect(result.blockers.map(b => b.code)).toContain("BROKER_NOT_CONNECTED");
+    expect(result.brokerValidation.status).toBe("NOT_CONNECTED");
+    expect(result.blockers.map(b => b.code)).not.toContain("BROKER_NOT_CONNECTED");
+    expect(result.overallStatus).toBe("UNAVAILABLE");
   });
 
   it("needs reauth → BROKER_NEEDS_REAUTH blocker", async () => {
@@ -806,7 +813,9 @@ describe("preflight: quote validation", () => {
     expect(result.quoteValidation.status).toBe("PASS");
   });
 
-  it("broker disconnected → quote dimension UNAVAILABLE", async () => {
+  it("broker disconnected → quote dimension PLANNING_MODE (Sprint 2.8.7A)", async () => {
+    // Sprint 2.8.7A: broker absence no longer produces UNAVAILABLE on the quote dim.
+    // Returns PLANNING_MODE — evaluated in planning context; not a blocker.
     const plan = makePlan();
     const deps = makeDeps(plan, makeLifecycle(), {
       connected: false,
@@ -814,7 +823,7 @@ describe("preflight: quote validation", () => {
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-001", userId: "user-001" }, deps
     );
-    expect(result.quoteValidation.status).toBe("UNAVAILABLE");
+    expect(result.quoteValidation.status).toBe("PLANNING_MODE");
   });
 
   it("expired options contract → CONTRACT_EXPIRED blocker", async () => {
@@ -966,7 +975,7 @@ describe("preflight: blockers, warnings, validUntil", () => {
     const result = await runExecutionPreflight(
       { tradePlanId: "plan-001", userId: "user-001" }, deps
     );
-    expect(result.methodologyVersion).toBe("2.8.0");
+    expect(result.methodologyVersion).toBe("2.8.7a");
   });
 });
 

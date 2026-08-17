@@ -1337,6 +1337,39 @@ Live broker chain; `normalizeOptionChainContract` reads `greeks.mid_iv`; `clearC
 
 ---
 
+## Sprint 2.8.7A — Brokerless Trade Plan Readiness & Preflight Split
+**Status:** COMPLETE
+
+**Scope:** BI-001/002 (two-layer preflight split) + BI-014 (Trade Plan execution section brokerless behavior). First P0 package from Audit A/B/D series.
+
+**Architecture:**
+- Two-layer model: `TradePlanReadiness` (broker-independent dims 1–3, 11, 12) + `BrokerExecutionReadiness` (broker-dependent dims 4–10)
+- Both additive fields on `ExecutionPreflightResult` — no DB migration
+- `overallStatus=PASS` still requires TPR=PASS AND BER=READY AND broker connected
+- Broker absence → UNAVAILABLE (not FAIL); plan/research/risk blockers still correctly produce FAIL
+
+**New status vocabulary:** `NOT_CONNECTED`, `NOT_APPLICABLE`, `NOT_CONFIRMED`, `PLANNING_MODE`
+
+**Dim changes without broker:**
+- Dims 4–6 (broker/account/permissions): `NOT_CONNECTED` — no blocker
+- Dim 7 (buying power): `NOT_CONFIRMED` — no blocker
+- Dim 8 (position): `NOT_APPLICABLE` (equity) — no blocker
+- Dim 9 (quote): `PLANNING_MODE` — no blocker
+- Dim 10 (structure): PASS (equity) / `PLANNING_MODE` (options)
+- Dims 1–3, 11, 12: unchanged
+
+**Files changed:**
+- `shared/execution-types.ts` — 4 new ValidationStatus values, `TradePlanReadiness`, `BrokerExecutionReadiness`, 3 additive result fields
+- `server/services/execution-preflight-service.ts` — dim refactor, `buildPlanningConstraintDimension`, `computeTradePlanReadiness`, `computeBrokerExecutionReadiness`, `methodologyVersion="2.8.7a"`
+- `client/src/pages/trade-plan-detail.tsx` — two-card TPR/BER layout, brokerless runReadiness mutation
+- `client/src/components/execution/ExecutionPreflightPanel.tsx` — new status handling, broker gate removed from button
+
+**New:** `server/__tests__/execution-preflight-brokerless.test.ts` (57 tests, 11 suites, all pass)
+
+**Doc:** [51-sprint-2.8.7a-brokerless-readiness.md](51-sprint-2.8.7a-brokerless-readiness.md)
+
+---
+
 ## Sprint 2.7.0 — Trade Planning Foundation
 **Status:** COMPLETE
 

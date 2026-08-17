@@ -64,7 +64,21 @@ export type ExecutionPreflightStatus =
 // VALIDATION DIMENSIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ValidationStatus = "PASS" | "FAIL" | "REQUIRES_REVIEW" | "UNAVAILABLE" | "SKIPPED";
+export type ValidationStatus =
+  | "PASS"
+  | "FAIL"
+  | "REQUIRES_REVIEW"
+  | "UNAVAILABLE"
+  | "SKIPPED"
+  // ── Sprint 2.8.7A broker-independent status values ──────────────────────
+  /** Broker is not connected; dimension cannot be evaluated. Not an error — expected in planning mode. */
+  | "NOT_CONNECTED"
+  /** Dimension is not applicable to this plan type or context without broker. */
+  | "NOT_APPLICABLE"
+  /** Value cannot be confirmed without broker; plan assumptions apply. */
+  | "NOT_CONFIRMED"
+  /** Independently evaluated in planning context; broker enrichment not available. */
+  | "PLANNING_MODE";
 
 export interface ValidationDimension {
   status: ValidationStatus;
@@ -166,6 +180,63 @@ export interface ConfirmationRequirements {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TWO-LAYER PREFLIGHT MODEL (Sprint 2.8.7A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Trade Plan Readiness — broker-independent layer.
+ *
+ * Evaluates whether the plan itself is current, well-formed, and meets
+ * planning constraints. Does NOT require a broker connection.
+ *
+ * PASS here means the plan is ready for monitoring and optionally for execution.
+ * PASS here NEVER authorizes order preparation or broker submission.
+ */
+export interface TradePlanReadiness {
+  /** "PASS" | "FAIL" | "REQUIRES_REVIEW" */
+  status: "PASS" | "FAIL" | "REQUIRES_REVIEW";
+  /** Display headline: "Plan Ready" | "Review Required" | "Blocked" */
+  label: string;
+  /** Broker-independent dimensions: trade plan, lifecycle, freshness, risk, constraints */
+  dimensions: {
+    tradePlan: ValidationDimension;
+    lifecycle: ValidationDimension;
+    freshness: ValidationDimension;
+    risk: ValidationDimension;
+    planningConstraints: ValidationDimension;
+  };
+  /** Platform limitations relevant to this layer */
+  limitations: string[];
+}
+
+/**
+ * Broker Execution Readiness — broker-dependent layer.
+ *
+ * Only reaches READY when broker is connected, account verified, permissions
+ * confirmed, and buying power / position checks pass.
+ *
+ * null when preflight was run without a broker connection (expected state).
+ */
+export interface BrokerExecutionReadiness {
+  /** "READY" | "NOT_CONNECTED" | "REQUIRES_REVIEW" | "BLOCKED" */
+  status: "READY" | "NOT_CONNECTED" | "REQUIRES_REVIEW" | "BLOCKED";
+  /** Display label: "Ready" | "Not Connected" | "Review Required" | "Blocked" */
+  label: string;
+  brokerConnected: boolean;
+  provider?: string;
+  /** Broker-dependent dimensions: connection, account, permissions, buying power, position, quote, structure */
+  dimensions: {
+    brokerConnection: ValidationDimension;
+    brokerAccount: ValidationDimension;
+    permissions: ValidationDimension;
+    buyingPower: ValidationDimension;
+    position: ValidationDimension;
+    quote: ValidationDimension;
+    structure: ValidationDimension;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EXECUTION PREFLIGHT RESULT
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -228,6 +299,28 @@ export interface ExecutionPreflightResult {
 
   /** Methodology version for auditability */
   methodologyVersion: string;
+
+  // ── Sprint 2.8.7A: Two-layer model (additive — never breaks stored result_json) ──
+
+  /**
+   * Broker-independent readiness layer.
+   * PASS when plan is current, well-formed, and meets planning constraints.
+   * PASS here NEVER authorizes order preparation or broker submission.
+   */
+  tradePlanReadiness?: TradePlanReadiness;
+
+  /**
+   * Broker-dependent readiness layer.
+   * null / undefined when broker not connected (expected — not an error).
+   */
+  brokerExecutionReadiness?: BrokerExecutionReadiness | null;
+
+  /**
+   * Whether direct execution is available at this moment.
+   * true ONLY when overallStatus === "PASS" (requires both layers + broker).
+   * Always false when broker is not connected.
+   */
+  executionAvailable?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

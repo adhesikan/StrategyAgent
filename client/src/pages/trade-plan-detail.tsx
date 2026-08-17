@@ -64,11 +64,11 @@ import { ExecutionPreflightPanel } from "@/components/execution/ExecutionPreflig
 import { OrderPreparationPanel } from "@/components/execution/OrderPreparationPanel";
 import { EquityOrderPreviewPanel } from "@/components/execution/EquityOrderPreviewPanel";
 import { FinalOrderReviewPanel } from "@/components/execution/FinalOrderReviewPanel";
-import type { ExecutionPreflightResult } from "../../../shared/execution-types";
+import type { ExecutionPreflightResult, TradePlanReadiness, BrokerExecutionReadiness } from "../../../shared/execution-types";
 import type { OrderDraft } from "../../../shared/order-draft-types";
 import {
-  Activity, AlertCircle, Archive, CheckSquare, ChevronLeft, Clock, Copy,
-  ExternalLink, Filter, Info, Play, RefreshCw, ShieldAlert, TrendingDown, TrendingUp
+  Activity, AlertCircle, Archive, CheckCircle, CheckSquare, ChevronLeft, Circle, Clock,
+  Copy, ExternalLink, Filter, Info, Play, RefreshCw, ShieldAlert, TrendingDown, TrendingUp
 } from "lucide-react";
 
 // ============================================================================
@@ -91,6 +91,89 @@ function PlanHealthBadge({ health }: { health: TradePlanHealth }) {
     >
       {TRADE_PLAN_HEALTH_LABELS[health]}
     </span>
+  );
+}
+
+// ============================================================================
+// Sprint 2.8.7A — Trade Plan Readiness & Broker Execution Readiness helpers
+// ============================================================================
+
+function tprStatusIcon(status: string) {
+  if (status === "PASS") return <CheckCircle className="h-4 w-4 text-green-500" />;
+  if (status === "FAIL") return <AlertCircle className="h-4 w-4 text-red-500" />;
+  return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+}
+
+function TradePlanReadinessPanel({ tpr }: { tpr: TradePlanReadiness }) {
+  const headlineColor =
+    tpr.status === "PASS" ? "text-green-600 dark:text-green-400" :
+    tpr.status === "FAIL" ? "text-red-600 dark:text-red-400" :
+    "text-yellow-600 dark:text-yellow-400";
+  const dims = [
+    { key: "tradePlan",         dim: tpr.dimensions.tradePlan },
+    { key: "lifecycle",         dim: tpr.dimensions.lifecycle },
+    { key: "freshness",         dim: tpr.dimensions.freshness },
+    { key: "risk",              dim: tpr.dimensions.risk },
+    { key: "planningConstraints", dim: tpr.dimensions.planningConstraints },
+  ];
+  return (
+    <div className="space-y-3">
+      <div className={`flex items-center gap-2 font-semibold text-sm ${headlineColor}`}>
+        {tprStatusIcon(tpr.status)}
+        {tpr.label}
+      </div>
+      <div className="rounded border border-border divide-y divide-border text-xs">
+        {dims.map(({ key, dim }) => (
+          <div key={key} className="flex items-center justify-between px-3 py-1.5">
+            <span className="text-muted-foreground">{dim.label}</span>
+            <span className={
+              dim.status === "PASS" ? "text-green-500" :
+              dim.status === "FAIL" ? "text-red-500" :
+              dim.status === "REQUIRES_REVIEW" ? "text-yellow-500" :
+              "text-muted-foreground"
+            }>{dim.status}{dim.note ? ` — ${dim.note}` : ""}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BrokerExecutionReadinessPanel({ ber }: { ber: BrokerExecutionReadiness }) {
+  const headlineColor =
+    ber.status === "READY" ? "text-green-600 dark:text-green-400" :
+    ber.status === "BLOCKED" ? "text-red-600 dark:text-red-400" :
+    ber.status === "NOT_CONNECTED" ? "text-muted-foreground" :
+    "text-yellow-600 dark:text-yellow-400";
+  const dims = [
+    { key: "connection",  dim: ber.dimensions.brokerConnection },
+    { key: "account",     dim: ber.dimensions.brokerAccount },
+    { key: "permissions", dim: ber.dimensions.permissions },
+    { key: "buyingPower", dim: ber.dimensions.buyingPower },
+    { key: "position",    dim: ber.dimensions.position },
+    { key: "quote",       dim: ber.dimensions.quote },
+    { key: "structure",   dim: ber.dimensions.structure },
+  ];
+  return (
+    <div className="space-y-3">
+      <div className={`flex items-center gap-2 font-semibold text-sm ${headlineColor}`}>
+        <Circle className="h-4 w-4" />
+        {ber.label}{ber.provider ? ` · ${ber.provider}` : ""}
+      </div>
+      <div className="rounded border border-border divide-y divide-border text-xs">
+        {dims.map(({ key, dim }) => (
+          <div key={key} className="flex items-center justify-between px-3 py-1.5">
+            <span className="text-muted-foreground">{dim.label}</span>
+            <span className={
+              dim.status === "PASS" ? "text-green-500" :
+              dim.status === "FAIL" ? "text-red-500" :
+              dim.status === "REQUIRES_REVIEW" ? "text-yellow-500" :
+              "text-muted-foreground"
+            }>{dim.status}{dim.note ? ` — ${dim.note}` : ""}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -235,11 +318,25 @@ export default function TradePlanDetailPage() {
   const { isConnected: brokerConnected } = useBrokerStatus();
 
   // Fetch current execution preflight (Sprint 2.8.0/2.8.1)
+  // Sprint 2.8.7A: enabled without broker — independent Trade Plan Readiness is available brokerless.
   const { data: preflightData } = useQuery<ExecutionPreflightResult & { isExpired?: boolean }>({
     queryKey: ["/api/trade-plans", id, "execution", "preflight"],
     queryFn:  () => apiRequest("GET", `/api/trade-plans/${id}/execution/preflight`).then(r => r.json()),
-    enabled:  !!id && !!plan && brokerConnected,
+    enabled:  !!id && !!plan,
     staleTime: 4 * 60 * 1000,
+  });
+
+  // Sprint 2.8.7A: Explicit "Check Plan Readiness" mutation (POST) — always enabled.
+  // User must click explicitly; this does NOT auto-run.
+  const runReadiness = useMutation<ExecutionPreflightResult & { isExpired?: boolean }, Error>({
+    mutationFn: () =>
+      apiRequest("POST", `/api/trade-plans/${id}/execution/preflight`, {}).then(r => {
+        if (!r.ok) return r.json().then((d: any) => { throw new Error(d.error ?? "Readiness check failed."); });
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/trade-plans", id, "execution", "preflight"] });
+    },
   });
 
   // Watch the order draft — same query key as OrderPreparationPanel so cache is shared.
@@ -753,51 +850,100 @@ export default function TradePlanDetailPage() {
           </Card>
         </section>
 
-        {/* § Execution Preparation — §10 UX invariant: always visible for eligible Equity plans.
-             When broker is disconnected: renders BLOCKED state with reason (never silent absence).
-             When broker is connected: renders "Check Execution Preconditions" CTA.
-             TEST_LIVE allowlisting is a SUBMISSION gate only — it must not suppress this section.
-             AI cannot initiate this workflow. User must explicitly click the CTA. */}
-        {plan.planType === "EQUITY" && plan.status !== "ARCHIVED" && (
+        {/* § Execution Preparation — Sprint 2.8.7A two-layer model.
+             Layer 1 (Trade Plan Readiness) is fully brokerless — always visible.
+             Layer 2 (Direct Execution) shows neutral NOT_CONNECTED when broker absent.
+             "Prepare for Execution" CTA only appears when overallStatus=PASS (both layers + broker).
+             AI cannot initiate this workflow. User must explicitly click. */}
+        {plan.planType === "EQUITY" && plan.status !== "ARCHIVED" && id && (
           <section aria-labelledby="execution-preparation-heading" data-testid="execution-preparation-section">
+
+            {/* ── Card 1: Trade Plan Readiness (broker-independent) ─────────────── */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle id="execution-preparation-heading" className="text-base flex items-center gap-2">
-                  <Play className="h-4 w-4" />
-                  Execution Preparation
+                  <CheckSquare className="h-4 w-4" />
+                  Trade Plan Readiness
                 </CardTitle>
                 <CardDescription>
-                  Verify account conditions, prepare an order draft, and complete the final review.
-                  No broker order is submitted from this page.
+                  Independent plan and research checks — no broker connection required.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                {!brokerConnected ? (
-                  /* §10 BLOCKED state — never silently hide required workflow */
-                  <div
-                    className="flex items-start gap-3 p-3 rounded-md border border-yellow-500/30 bg-yellow-500/5"
-                    role="status"
-                    aria-label="Execution preparation blocked"
-                    data-testid="execution-preparation-blocked"
-                  >
-                    <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-sm font-semibold">BLOCKED</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Connect a broker account to run execution preflight. Preflight checks account
-                        permissions, buying power, and order constraints before any order is prepared.
-                        No order is submitted until you complete the full review workflow.
-                      </p>
-                    </div>
-                  </div>
+              <CardContent className="space-y-4">
+                {preflightData?.tradePlanReadiness ? (
+                  <TradePlanReadinessPanel tpr={preflightData.tradePlanReadiness} />
                 ) : (
-                  /* Broker connected — show CTA */
-                  <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Run a readiness check to evaluate your plan's current status.
+                  </p>
+                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => runReadiness.mutate()}
+                    disabled={runReadiness.isPending}
+                    data-testid="check-plan-readiness-cta"
+                    aria-label="Check plan readiness"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${runReadiness.isPending ? "animate-spin" : ""}`} />
+                    {runReadiness.isPending ? "Checking…" : "Check Plan Readiness"}
+                  </Button>
+                  {preflightData?.isExpired && (
+                    <span className="text-xs text-amber-500">Result expired — re-run recommended</span>
+                  )}
+                </div>
+                {runReadiness.error && (
+                  <p className="text-xs text-red-500 mt-1">{(runReadiness.error as Error).message}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Card 2: Direct Execution (broker-dependent layer) ─────────────── */}
+            <Card className="mt-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  Direct Execution
+                </CardTitle>
+                <CardDescription>
+                  Account-aware execution checks — broker connection required for order submission.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!brokerConnected ? (
+                  /* Neutral NOT_CONNECTED state — not an error, not BLOCKED */
+                  <div
+                    className="p-3 rounded-md border border-border bg-muted/20 space-y-2"
+                    role="status"
+                    aria-label="Direct execution — brokerage not connected"
+                    data-testid="broker-execution-not-connected"
+                  >
+                    <p className="text-sm font-medium text-muted-foreground">Brokerage not connected</p>
                     <p className="text-sm text-muted-foreground">
-                      Run execution preflight to verify account permissions, buying power, and risk
-                      constraints for this plan. No order will be submitted until you complete the
-                      full review workflow below.
+                      Connect a supported broker if you'd like account-aware execution checks and
+                      direct order submission.
                     </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate("/settings")}
+                      data-testid="connect-broker-optional-cta"
+                    >
+                      Connect Broker — Optional
+                    </Button>
+                  </div>
+                ) : preflightData?.brokerExecutionReadiness ? (
+                  <BrokerExecutionReadinessPanel ber={preflightData.brokerExecutionReadiness} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Run a readiness check above to evaluate broker account status.
+                  </p>
+                )}
+
+                {/* Prepare for Execution CTA — only when both layers PASS (overallStatus=PASS + broker) */}
+                {preflightData?.overallStatus === "PASS" && !preflightData.isExpired && brokerConnected && (
+                  <div className="space-y-1 pt-1">
                     <Button
                       size="sm"
                       variant={showExecution ? "secondary" : "default"}
@@ -811,11 +957,14 @@ export default function TradePlanDetailPage() {
                         }
                       }}
                       data-testid="prepare-for-execution-cta"
-                      aria-label={showExecution ? "Hide execution workflow" : "Check Execution Preconditions"}
+                      aria-label={showExecution ? "Hide execution workflow" : "Prepare for Execution"}
                     >
                       <Play className="h-3.5 w-3.5 mr-1.5" />
-                      {showExecution ? "Hide Execution Workflow" : "Check Execution Preconditions"}
+                      {showExecution ? "Hide Execution Workflow" : "Prepare for Execution"}
                     </Button>
+                    <p className="text-xs text-muted-foreground">
+                      No broker order is submitted from this page.
+                    </p>
                   </div>
                 )}
               </CardContent>
@@ -1311,13 +1460,14 @@ export default function TradePlanDetailPage() {
           </Card>
         </section>
 
-        {/* § Execution Workflow (Sprints 2.8.0–2.8.5) ─────────────────────────
-             Rendered when user clicks "Prepare for Execution" in the plan header.
-             Pipeline: Preflight → Order Preparation → Equity Preview → Final Review
+        {/* § Execution Workflow (Sprints 2.8.1–2.8.6) ─────────────────────────
+             Sprint 2.8.7A: Preflight readiness is now shown in the Trade Plan Readiness
+             section above. This workflow renders only AFTER overallStatus=PASS + broker.
+             Pipeline: Order Preparation → Equity Preview → Final Review
              Sprint 2.8.6 submission is handled by /executions/:id after confirmation.
 
              SAFETY INVARIANTS:
-             - brokerConnected required at every step
+             - brokerConnected required at every step (overallStatus PASS requires it)
              - Preflight must PASS before Order Preparation renders
              - EquityOrderPreviewPanel is preview-only — no broker call
              - FinalOrderReviewPanel collects acknowledgements — no broker call
@@ -1326,12 +1476,7 @@ export default function TradePlanDetailPage() {
         {showExecution && brokerConnected && id && (
           <div id="execution-workflow-section" className="space-y-6" aria-label="Execution workflow">
 
-            {/* Step 1 — Execution Preflight (Sprint 2.8.0) */}
-            <section aria-labelledby="execution-preflight-heading">
-              <ExecutionPreflightPanel tradePlanId={id} brokerConnected={brokerConnected} />
-            </section>
-
-            {/* Step 2 — Order Preparation (Sprint 2.8.1) — only after preflight PASS */}
+            {/* Step 1 — Order Preparation (Sprint 2.8.1) — only after preflight PASS */}
             {preflightData && !preflightData.isExpired && preflightData.overallStatus === "PASS" && (
               <section aria-labelledby="order-preparation-heading">
                 <OrderPreparationPanel
@@ -1342,7 +1487,7 @@ export default function TradePlanDetailPage() {
               </section>
             )}
 
-            {/* Step 3 — Equity Order Preview (Sprint 2.8.2) — only when draft exists and preflight passed */}
+            {/* Step 2 — Equity Order Preview (Sprint 2.8.2) — only when draft exists and preflight passed */}
             {activeDraftId && preflightData?.overallStatus === "PASS" && !preflightData.isExpired && (
               <section aria-labelledby="equity-order-preview-heading">
                 <EquityOrderPreviewPanel
@@ -1352,7 +1497,7 @@ export default function TradePlanDetailPage() {
               </section>
             )}
 
-            {/* Step 4 — Final Order Review (Sprint 2.8.5) — only when draft exists and preflight passed
+            {/* Step 3 — Final Order Review (Sprint 2.8.5) — only when draft exists and preflight passed
                 THIS DOES NOT SUBMIT AN ORDER TO A BROKER.
                 After confirmation, Sprint 2.8.6 submission is initiated separately via the
                 POST /api/executions/from-confirmation/:confirmationId endpoint. */}

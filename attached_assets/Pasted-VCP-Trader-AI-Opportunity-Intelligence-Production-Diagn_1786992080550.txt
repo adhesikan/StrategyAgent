@@ -1,0 +1,184 @@
+VCP Trader AI — Opportunity Intelligence Production Diagnostic
+
+DO NOT CHANGE CODE.
+DO NOT CHANGE SCORING THRESHOLDS.
+DO NOT MODIFY QUALIFICATION RULES.
+DO NOT CREATE TEST OPPORTUNITIES.
+DO NOT RESET DATA.
+
+We are performing a read-only diagnostic.
+
+Production Dashboard has continued to show:
+
+Today's Stock Opportunities
+0 ranked
+
+Earlier today AMD and XOM appeared under Top Watchlist with score 48,
+while NVDA, TSLA and other symbols were removed.
+
+We need to determine whether zero qualified opportunities is a legitimate
+result of the current scoring/qualification rules or whether some part of
+the Opportunity Intelligence pipeline is failing.
+
+STEP 1 — VERIFY SCANNER/SCHEDULER
+
+Determine:
+
+1. When the most recent Opportunity Intelligence scan completed.
+2. Whether the scheduled scan is still running at the configured interval.
+3. Whether the latest scan completed successfully.
+4. Whether any provider/API errors occurred.
+5. Whether Twelve Data/MCP/other required research data sources were available.
+6. Whether the scan processed the expected stock universe.
+
+Report:
+- scan timestamp
+- scan duration if available
+- number of symbols attempted
+- number successfully evaluated
+- number skipped
+- number failed
+- failure reasons
+
+STEP 2 — TRACE THE LATEST PIPELINE
+
+For the latest completed scan report counts for each stage:
+
+Universe
+→ market data available
+→ technical analysis completed
+→ fundamental analysis completed
+→ institutional analysis completed
+→ composite score generated
+→ qualification evaluated
+→ qualified/ranked
+→ watchlist
+→ rejected
+
+Do not alter any thresholds.
+
+STEP 3 — EXAMINE REPRESENTATIVE SYMBOLS
+
+Inspect at minimum:
+
+AMD
+XOM
+NVDA
+META
+MSFT
+MU
+
+For each report:
+
+- current research score
+- technical score
+- fundamental score
+- institutional score
+- risk state
+- market regime
+- qualification result
+- exact qualification criteria that passed
+- exact qualification criteria that failed
+- whether any required data was unavailable
+
+We especially need to understand why AMD and XOM received score 48 and
+entered the watchlist but did not become qualified opportunities.
+
+STEP 4 — VERIFY ZERO-RANKING SEMANTICS
+
+Determine whether:
+
+"0 ranked"
+
+means:
+
+A. the scanner successfully evaluated the universe and legitimately found
+   zero qualifying opportunities
+
+OR
+
+B. the scanner could not fully evaluate candidates because required data
+   was unavailable
+
+OR
+
+C. the ranking/qualification pipeline failed
+
+OR
+
+D. another condition prevented candidates from being emitted.
+
+The UI must not be used as proof. Trace the server-side data.
+
+STEP 5 — CHECK FOR REGRESSION
+
+Review recent Sprint 2.8.7A and 2.8.7B changes.
+
+Determine whether either sprint could have affected:
+
+- Opportunity Intelligence scanning
+- ranking
+- qualification
+- score computation
+- market-data retrieval
+- candidate persistence
+- dashboard candidate retrieval
+
+These sprints were intended to affect Trade Plan readiness and
+broker-independent planning data, NOT opportunity discovery.
+
+Report any unexpected coupling.
+
+STEP 6 — CHECK MARKET-DATA HEALTH
+
+Verify that current underlying equity data is being obtained successfully
+during today's market session.
+
+Report provider/source and freshness for representative symbols.
+
+Do not expose API keys or credentials.
+
+STEP 7 — DATABASE / SNAPSHOT CONSISTENCY
+
+Verify that the latest Opportunity Intelligence snapshot:
+
+- exists
+- has a valid generated timestamp
+- contains evaluated symbols
+- contains scores
+- contains qualification decisions
+- is the snapshot being served to the Dashboard
+
+Check for stale-cache or latest-snapshot selection issues.
+
+STEP 8 — CONCLUSION
+
+Return exactly one primary classification:
+
+HEALTHY_ZERO_OPPORTUNITIES
+PIPELINE_PARTIALLY_DEGRADED
+PIPELINE_FAILURE
+DASHBOARD_DISPLAY_OR_DATA_SELECTION_BUG
+UNKNOWN_REQUIRES_FURTHER_DIAGNOSIS
+
+Then explain the evidence.
+
+If HEALTHY_ZERO_OPPORTUNITIES:
+show why the highest-scoring candidates failed qualification and identify
+the nearest-to-qualification candidates.
+
+If degraded/failure/bug:
+identify the root cause as precisely as possible and propose the smallest
+fix.
+
+IMPORTANT:
+
+Do not loosen qualification criteria simply because there are zero
+opportunities.
+
+Zero opportunities is a valid product result if no stocks satisfy the
+current methodology.
+
+Do not implement any fix without reporting the diagnosis first.
+
+Do not change application code during this diagnostic.

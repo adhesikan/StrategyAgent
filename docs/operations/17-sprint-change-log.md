@@ -1,5 +1,46 @@
 # Sprint Change Log
 
+## Sprint 2.8.7C — Broker-Independent Theoretical Options Research (2026-08-17)
+**Status:** IMPLEMENTATION COMPLETE — Production UAT pending
+
+**What changed:**
+- New service: `realized-volatility.ts` — HV10/20/30/60/90 engine (log-return, 252-day annualization)
+- New service: `black-scholes.ts` — Full BSM + 5 Greeks (Delta/Gamma/Theta/Vega/Rho); T = DTE/365
+- New service: `risk-free-rate.ts` — Isolated `getRiskFreeRate()`, APPROX_RATE 4.5%, env-configurable
+- New service: `strike-grid.ts` — ATM ± 5 hypothetical strike grid; deterministic increments by price tier
+- New service: `theoretical-options-research-service.ts` — Orchestration: planning quote + bars once; full grid + ATM summary + methodology
+- New route: `server/routes/theoretical-options.ts` — `GET /api/trade-planning/theoretical-options/:symbol` (auth), `/health` (public)
+- New types: `shared/theoretical-options-types.ts` — `TheoreticalOptionValue` with `_brand: "THEORETICAL_ONLY"`, all related types, required disclosures
+- New UI: `client/src/components/theoretical-options/TheoreticalOptionsPanel.tsx` — Disclosure banner, ATM table, collapsible strike grids, methodology section
+- New tests: `server/__tests__/theoretical-options-math.test.ts` (62 tests), `server/__tests__/theoretical-options-product.test.ts` (23 tests)
+
+**Key invariants:**
+- T = DTE / 365 (NOT trading days); 252 used only for HV annualization
+- Default vol: HV30 → HV20 → HV60 → HV10 → HV90 fallback
+- `TheoreticalOptionValue._brand = "THEORETICAL_ONLY"` — structurally incompatible with all execution types
+- `dividendYieldSource = "DEFAULT_ZERO"` (no live source) — never silently implied
+- `riskFreeRateSource = "APPROX_RATE"` (4.5%) — never scattered as a hardcoded constant
+- No OCC symbols; no bid/ask/volume/OI; DTE labels always "(hypothetical)"; ExpirationMode = HYPOTHETICAL_EXPIRATION
+- Never fabricates — returns `UNAVAILABLE` result when underlying price or bar history is absent
+
+**Test counts:** 85 new (math + product). Regression: 676 execution + 272 trade plan + 369 lifecycle + 100 brokerless options — all passing.
+
+**Known limitations:** TH-001 (dividends), TH-002 (live risk-free rate), TH-003 (IV solver), TH-004/TH-005 (OptionsResearchValue market/comparison fields).
+
+**Documents added/updated:**
+- `docs/operations/53-sprint-2.8.7c-theoretical-options.md` — NEW
+- `docs/operations/15-known-issues-and-backlog.md` — BI-009/BI-011 RESOLVED; BI-008 partial
+- `docs/operations/README.md` — Doc 53 entry added
+- `docs/operations/17-sprint-change-log.md` — this entry
+
+**Routes added:**
+- `GET /api/trade-planning/theoretical-options/health`
+- `GET /api/trade-planning/theoretical-options/:symbol`
+
+**No database schema changes.**
+
+---
+
 ## Audit D — Brokerless UX, Onboarding & Graceful Degradation (2026-08-17)
 **Status:** COMPLETE — No application code changed
 

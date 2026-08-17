@@ -1,0 +1,812 @@
+VCP TRADER AI — SPRINT 2.8.7C
+Broker-Independent Theoretical Options Research
+
+STATUS
+
+Sprint 2.8.7A — Brokerless Trade Plan Readiness: COMPLETE / UAT PASS
+Sprint 2.8.7B — Broker-Independent Equity Planning Data: IMPLEMENTATION COMPLETE
+Production UAT for 2.8.7B remains pending a naturally qualified opportunity.
+
+Opportunity Intelligence diagnostic:
+HEALTHY_ZERO_OPPORTUNITIES
+No remediation required.
+Do NOT alter qualification thresholds or Opportunity Engine behavior.
+
+Architecture references already completed:
+
+- Audit C — Broker-Independent Options Data
+- Amendment C1 — UNDERLYING_ONLY_THEORETICAL_MODE
+
+THIS IS AN IMPLEMENTATION SPRINT.
+DO NOT RE-AUDIT OR REDESIGN THE ARCHITECTURE UNLESS A MATERIAL CONFLICT IS FOUND.
+
+============================================================
+PRIMARY GOAL
+============================================================
+
+Allow VCP Trader AI users to perform meaningful options research without:
+
+- connecting a brokerage account
+- having access to a live options chain
+
+Use broker-independent underlying equity data from the existing Twelve Data /
+planning-market-data infrastructure to produce clearly labeled THEORETICAL
+options research.
+
+The feature must support:
+
+- historical/realized volatility
+- theoretical call/put values
+- modeled Greeks
+- hypothetical DTE scenarios
+- theoretical strike grid
+- scenario research integration
+
+These outputs are RESEARCH DATA ONLY.
+
+They must never become execution-grade data.
+
+============================================================
+CRITICAL NON-DUPLICATION REQUIREMENT
+============================================================
+
+DO NOT create parallel versions of existing:
+
+- Options Strategy Matching
+- Contract Research
+- Trade Risk & Scenario Analysis
+- Execution Preflight
+- Order Preparation
+- Order Preview
+- Final Revalidation
+- Broker Submission
+- Twelve Data client
+- market-data normalization layer
+
+Before coding, produce a REUSE MAP:
+
+EXISTING COMPONENT
+→ REUSED
+→ EXTENDED
+→ UNCHANGED
+
+If implementation requires replacing an established subsystem rather than
+extending it, STOP and report the conflict.
+
+============================================================
+1. IMPLEMENT CANONICAL THEORETICAL OPTIONS TYPES
+============================================================
+
+Use the Audit C/C1 architecture.
+
+Add/reuse canonical types for:
+
+TheoreticalOptionValue
+
+TheoreticalGreeks
+
+TheoreticalStrikeRow
+
+TheoreticalStrikeGrid
+
+HistoricalVolatilitySet
+
+TheoreticalQuality
+
+ExpirationMode
+
+OptionsResearchValue
+
+Required provenance fields should include:
+
+mode: "UNDERLYING_ONLY_THEORETICAL_MODE"
+
+model: "BLACK_SCHOLES_CONTINUOUS_DIVIDEND"
+
+greekSource: "VCP_REALIZED_VOL_MODEL"
+
+underlyingDataSource
+
+volatilityInput
+
+volatilitySource
+
+sigmaLookback
+
+sigmaAsOf
+
+quality
+
+expirationMode
+
+Do not name modeled values:
+
+price
+quote
+bid
+ask
+last
+mark
+midpoint
+executionPrice
+
+Use canonical language such as:
+
+theoreticalValue
+modelCallValue
+modelPutValue
+modelDelta
+modelGamma
+modelTheta
+modelVega
+modelRho
+
+============================================================
+2. HISTORICAL / REALIZED VOLATILITY ENGINE
+============================================================
+
+Implement:
+
+HV10
+HV20
+HV30
+HV60
+HV90
+
+Use log returns:
+
+ln(P_t / P_t-1)
+
+Annualize using:
+
+standardDeviation(daily log returns) × sqrt(252)
+
+Record:
+
+lookback
+observationCount
+annualizationFactor = 252
+asOf
+underlyingDataSource
+
+Default volatility input for theoretical pricing:
+
+HV30
+
+Do NOT use implied volatility when no option-market observation exists.
+
+If insufficient history exists for a requested lookback:
+
+return null for that lookback
+and appropriate quality metadata.
+
+Do not fabricate values.
+
+============================================================
+3. BLACK-SCHOLES-MERTON PRICING ENGINE
+============================================================
+
+Implement dividend-adjusted Black-Scholes-Merton for theoretical research.
+
+Inputs:
+
+S = underlying price
+K = strike
+T = time to expiration in calendar-year fraction
+r = risk-free rate
+q = continuous dividend yield
+sigma = volatility input
+optionType = CALL | PUT
+
+IMPORTANT TIME CONVENTION
+
+Do NOT use:
+
+T = DTE / 252
+
+for Black-Scholes time to expiry.
+
+Use calendar-time fraction, e.g.:
+
+T = DTE / 365
+
+or a more precise actual-calendar-time fraction consistent with the project's
+date utilities.
+
+252 is used for annualizing trading-day realized volatility, not for contract
+time-to-expiration.
+
+Document this explicitly.
+
+============================================================
+4. RISK-FREE RATE
+============================================================
+
+Audit whether the application already has a risk-free-rate source.
+
+If yes:
+reuse it.
+
+If not:
+use the Audit C/C1 approved approximation path for this sprint, but:
+
+- isolate it behind a small function/interface
+- label provenance as APPROX_RATE
+- document the configured/default value
+- make replacement with a future live rate source easy
+
+Do not scatter a hard-coded rate throughout the codebase.
+
+============================================================
+5. DIVIDEND YIELD
+============================================================
+
+Audit existing fundamental/dividend data.
+
+If a current dividend yield is available:
+use it.
+
+If unavailable:
+use q = 0 only as an explicit fallback.
+
+Record:
+
+qSource:
+OBSERVED
+DERIVED
+DEFAULT_ZERO
+
+Do not silently imply a known dividend yield when using zero fallback.
+
+============================================================
+6. THEORETICAL CALL / PUT VALUES
+============================================================
+
+For every valid input combination return:
+
+MODEL_CALL_VALUE
+MODEL_PUT_VALUE
+
+or equivalent canonical fields.
+
+Values must always be attached to:
+
+mode
+model
+volatility input
+quality
+provenance
+
+UI terminology:
+
+"Theoretical Value"
+
+not:
+
+"Option Price"
+
+============================================================
+7. MODEL GREEKS
+============================================================
+
+Implement:
+
+MODEL_DELTA
+MODEL_GAMMA
+MODEL_THETA
+MODEL_VEGA
+MODEL_RHO
+
+Use the same:
+
+S
+K
+T
+r
+q
+sigma
+
+as the theoretical value.
+
+Set:
+
+greekSource = "VCP_REALIZED_VOL_MODEL"
+
+Do not silently substitute provider Greeks.
+
+Do not label modeled Greeks as live or market-observed.
+
+============================================================
+8. THEORETICAL QUALITY STATES
+============================================================
+
+Implement approved quality states:
+
+NORMAL
+LOW_CONFIDENCE
+SHORT_DTE_WARNING
+DEEP_ITM_OTM_WARNING
+INSUFFICIENT_HISTORY
+UNAVAILABLE
+
+Required behaviors:
+
+DTE < 7
+→ SHORT_DTE_WARNING
+
+very deep ITM/OTM per approved C1 threshold
+→ DEEP_ITM_OTM_WARNING
+
+insufficient HV history
+→ INSUFFICIENT_HISTORY
+
+invalid or missing required input
+→ UNAVAILABLE
+→ all affected numeric outputs null
+
+Never fill missing required values with zero.
+
+============================================================
+9. HYPOTHETICAL EXPIRATION MODE
+============================================================
+
+Implement:
+
+ExpirationMode =
+  ACTUAL_LISTED_EXPIRATION
+  | HYPOTHETICAL_EXPIRATION
+
+For theoretical-only mode use:
+
+HYPOTHETICAL_DTE_SCENARIOS = [7, 14, 30, 45, 60, 90]
+
+Display these as:
+
+"30 DTE (hypothetical)"
+
+NOT as exchange-listed expiration dates.
+
+Do not fabricate actual expiration dates.
+
+============================================================
+10. THEORETICAL STRIKE GRID
+============================================================
+
+Implement:
+
+THEORETICAL_STRIKE_GRID
+
+This is distinct from:
+
+OPTION_CHAIN
+
+Requirements:
+
+- deterministic strikes around the underlying
+- reasonable strike increment selection based on current project conventions
+- ATM/ITM/OTM labeling
+- call and put theoretical values
+- selected model Greeks
+- quality/provenance per row or inherited from grid metadata
+
+Do NOT generate OCC contract symbols.
+
+Do NOT make the grid visually or structurally indistinguishable from a real
+option chain.
+
+============================================================
+11. UNDERLYING MARKET DATA
+============================================================
+
+Reuse existing 2.8.7B planning-market-data infrastructure.
+
+Preferred path:
+
+existing broker-independent planning quote
++
+historical bars
+→ volatility
+→ theoretical options engine
+
+Do not create a new direct Twelve Data client if one already exists.
+
+If the underlying planning quote is unavailable:
+
+theoretical research must degrade gracefully.
+
+No fabricated underlying price.
+
+============================================================
+12. THEORETICAL OPTIONS SERVICE
+============================================================
+
+Create the smallest canonical service required to orchestrate:
+
+underlying data
+historical volatility
+pricing model
+Greeks
+strike grid
+DTE scenarios
+
+Possible conceptual name:
+
+theoretical-options-research-service
+
+but inspect existing service naming first.
+
+It must not become a second Contract Research engine.
+
+Its job is to produce model inputs/outputs that existing research surfaces can
+consume.
+
+============================================================
+13. INTEGRATE WITH EXISTING OPTIONS STRATEGY MATCHING
+============================================================
+
+Audit the existing Options Strategy Matching service.
+
+Allow theoretical research metadata to enrich strategy-level research where
+safe.
+
+Allowed examples:
+
+- expected underlying range
+- hypothetical strike exploration
+- theoretical call/put value
+- theoretical strategy debit/credit estimates
+- modeled Greeks
+- scenario comparisons
+
+Do not introduce:
+
+best
+recommended
+optimal
+highest-probability
+POP
+automatic strategy selection
+
+Existing strategy matching semantics remain authoritative.
+
+============================================================
+14. INTEGRATE WITH EXISTING RISK / SCENARIO ANALYSIS
+============================================================
+
+Reuse the existing Trade Risk & Scenario Analysis engine.
+
+Allow user-selected theoretical values to drive explicitly hypothetical scenario
+analysis where current architecture permits.
+
+Clearly label:
+
+Hypothetical / Model-Based
+
+Do not allow modeled premiums to masquerade as market premiums.
+
+If the risk engine expects market-observed contracts, add an explicit modeled
+research input path rather than weakening the existing type.
+
+============================================================
+15. CONTRACT RESEARCH BOUNDARY
+============================================================
+
+DO NOT pretend theoretical strikes are actual contracts.
+
+If no actual independent option chain exists:
+
+Contract Research should clearly indicate that actual contract-level market data
+is unavailable.
+
+The user may still access:
+
+Theoretical Options Research
+
+Do not create fake contract symbols, expiration dates, bid/ask, volume, OI or IV.
+
+============================================================
+16. MODEL VS MARKET DATA MODEL
+============================================================
+
+Preserve the Audit C/C1 architecture:
+
+OptionsResearchValue {
+  theoretical: ...
+  market: ...
+  derivedComparison: ...
+}
+
+For this sprint:
+
+market may remain null.
+
+When future independent options-market data arrives, both theoretical and market
+values must coexist.
+
+Do not design the system so one overwrites the other.
+
+============================================================
+17. DO NOT IMPLEMENT IMPLIED VOLATILITY SOLVER YET UNLESS REQUIRED
+============================================================
+
+Audit C designed the future IV solver.
+
+For 2.8.7C, the primary objective is underlying-only theoretical research.
+
+If the existing code already contains a clean IV solver:
+reuse it where relevant.
+
+Otherwise defer full observed-premium → IV implementation to the independent
+options-market-data package.
+
+Do not expand scope unnecessarily.
+
+============================================================
+18. USER INTERFACE
+============================================================
+
+Implement a clear:
+
+"Theoretical Options Research"
+
+experience.
+
+Required header/disclosure:
+
+"Theoretical values — not live option quotes."
+
+Required value terminology:
+
+Theoretical Value
+
+Delta
+Model estimate based on historical volatility
+
+Methodology expandable details:
+
+Black-Scholes
+HV30
+underlying source
+as-of time
+risk-free-rate source
+dividend-yield source
+
+Use ~ prefix or equivalent model indicator where approved by Audit D.
+
+Do not visually imitate a live option chain.
+
+============================================================
+19. OPTIONS RESEARCH MODES
+============================================================
+
+Preserve the three-mode UX architecture:
+
+MODE A
+Independent option-market observations available
+→ future/current market-data mode
+
+MODE B
+UNDERLYING_ONLY_THEORETICAL_MODE
+→ THIS SPRINT
+
+MODE C
+Broker connected
+→ account/execution enrichment
+
+Broker connection must not disable or replace theoretical research.
+
+============================================================
+20. EXECUTION SAFETY — PERMANENT INVARIANT C1
+============================================================
+
+Theoretical/model option values can NEVER satisfy:
+
+Execution Preflight quote validation
+Order Preparation execution quote
+Order Preview executable price validation
+Final Revalidation
+Broker Submission
+
+Enforce structurally wherever possible.
+
+Add type-level and runtime safety tests.
+
+A modeled value must not become execution-grade simply because a broker later
+connects.
+
+============================================================
+21. TYPE SAFETY
+============================================================
+
+Prefer structural incompatibility between:
+
+TheoreticalOptionValue
+
+and
+
+NormalizedOptionContract
+ExecutionQuote
+BrokerQuote
+OrderPreparationQuote
+
+Do not rely only on comments or UI labels.
+
+============================================================
+22. TESTS — MATH
+============================================================
+
+Add deterministic unit tests for:
+
+A. known Black-Scholes call example
+B. known Black-Scholes put example
+C. put-call parity sanity check where applicable
+D. non-zero dividend yield
+E. HV10
+F. HV20
+G. HV30
+H. HV60
+I. HV90
+J. insufficient history
+K. delta sign/range
+L. gamma positive
+M. theta sign conventions
+N. vega positive
+O. rho direction
+P. short DTE warning
+Q. deep ITM/OTM warning
+R. null-input behavior
+
+Use known mathematical fixtures independent of live APIs.
+
+============================================================
+23. TESTS — PRODUCT BEHAVIOR
+============================================================
+
+Add tests for:
+
+A. no broker + no option chain + valid underlying data
+   → theoretical mode available
+
+B. no broker + underlying unavailable
+   → theoretical mode unavailable without fabrication
+
+C. broker connected
+   → theoretical mode remains available
+
+D. modeled value cannot satisfy execution quote gate
+
+E. modeled value cannot enter Order Preparation
+
+F. modeled value cannot enter Order Preview
+
+G. modeled value cannot satisfy Final Revalidation
+
+H. hypothetical DTE never claims an actual listed expiration
+
+I. theoretical strike row never has an OCC contract symbol
+
+J. theoretical values never expose bid/ask/volume/OI fields
+
+K. all provenance is present
+
+============================================================
+24. REGRESSION TESTS
+============================================================
+
+Run existing:
+
+Options Strategy Matching
+Contract Research
+Risk & Scenario Analysis
+Execution Preflight
+Order Preparation
+Equity Preview
+Options Preview
+Execution Readiness
+Order Confirmation
+Execution
+TEST_LIVE safety
+2.8.7A brokerless readiness
+2.8.7B planning-market-data
+
+No execution behavior may regress.
+
+============================================================
+25. PERFORMANCE
+============================================================
+
+Theoretical strike grid calculations should be local/deterministic and fast.
+
+Do not make one external API call per strike.
+
+Fetch:
+
+underlying price once
+historical bars once
+
+Then calculate the entire strike/DTE grid locally.
+
+============================================================
+26. DOCUMENTATION
+============================================================
+
+Create:
+
+docs/operations/53-sprint-2.8.7c-theoretical-options.md
+
+Update:
+
+Doc 46
+Doc 49 / Amendment C1 implementation status
+Known Issues / backlog
+README
+Sprint change log
+system manifest if required
+
+Record:
+
+2.8.7B production UAT pending natural qualified opportunity
+
+and
+
+Opportunity Intelligence diagnostic:
+HEALTHY_ZERO_OPPORTUNITIES
+No remediation required.
+
+============================================================
+27. QUALITY GATES
+============================================================
+
+Run:
+
+targeted theoretical-options tests
+options strategy tests
+contract research tests
+risk/scenario tests
+brokerless tests
+execution safety tests
+release suites
+build
+TypeScript
+
+Report exact pass/fail counts.
+
+Do not claim all green if known pre-existing failures remain.
+
+============================================================
+28. NO AUTOMATIC DEPLOY
+============================================================
+
+At completion STOP BEFORE RAILWAY DEPLOY.
+
+Return:
+
+1. Reuse map
+2. Files changed
+3. Types added
+4. Historical-volatility implementation
+5. Time-to-expiration convention
+6. Risk-free-rate approach
+7. Dividend-yield approach
+8. Black-Scholes implementation
+9. Model Greeks implementation
+10. Quality states
+11. Hypothetical DTE implementation
+12. Theoretical strike-grid implementation
+13. Existing Options Strategy Matching integration
+14. Existing Risk/Scenario integration
+15. Contract Research boundary
+16. UI screenshots/description
+17. Execution-safety enforcement
+18. Type-level separation
+19. Tests added
+20. Exact test counts
+21. Existing regressions
+22. Build result
+23. TypeScript result
+24. Documentation updated
+25. Remaining limitations
+26. Production UAT plan
+27. READY_FOR_RAILWAY_REDEPLOY / NOT_READY
+
+DO NOT DEPLOY AUTOMATICALLY.

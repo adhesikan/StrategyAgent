@@ -66,6 +66,7 @@ import { registerAskRoutes } from "./routes/ask";
 import { registerResearchRecordRoutes } from "./routes/research-records";
 import { registerPrepareTicketRoutes } from "./routes/prepare-ticket";
 import { registerLiveContractResolverRoutes } from "./routes/live-contract-resolver";
+import { registerTheoreticalOptionsRoutes } from "./routes/theoretical-options";
 import { registerMcpStatusRoutes } from "./routes/mcp-status";
 import { registerInternalMarketRoutes } from "./routes/internal-market";
 import { registerInternalScannerRoutes } from "./routes/internal-scanner";
@@ -250,6 +251,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerResearchRecordRoutes(app, isAuthenticated);
   registerPrepareTicketRoutes(app, isAuthenticated);
   registerLiveContractResolverRoutes(app, isAuthenticated);
+  registerTheoreticalOptionsRoutes(app, isAuthenticated);
   registerMcpStatusRoutes(app, isAuthenticated, isAdmin);
   // Service-to-service market data (Bearer VCP_INTERNAL_API_KEY, no user auth)
   registerInternalMarketRoutes(app);

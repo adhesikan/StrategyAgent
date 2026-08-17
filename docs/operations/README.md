@@ -41,6 +41,7 @@
 | [50](50-audit-d-brokerless-ux.md) | Audit D — Brokerless UX & Onboarding | Gate inventory, FIND→RESEARCH→PLAN→MONITOR journey, 9 implementation groups, 17-item acceptance criteria |
 | [51](51-sprint-2.8.7a-brokerless-readiness.md) | Sprint 2.8.7A — Brokerless Trade Plan Readiness | Two-layer preflight split, TPR/BER model, safety invariants, UAT criteria |
 | [52](52-sprint-2.8.7b-brokerless-equity-market-data.md) | Sprint 2.8.7B — Broker-Independent Equity Market Data | PlanningQuoteData, planning-quote adapter, enriched PLANNING_MODE dim, 34 tests |
+| [53](53-sprint-2.8.7c-theoretical-options.md) | Sprint 2.8.7C — Theoretical Options Research | BSM engine, HV10/20/30/60/90, hypothetical strike grid, execution safety invariants, 85 tests |
 | [manifest](system-manifest.yaml) | System Manifest | Machine-readable service/job/flag catalog |
 
 ---

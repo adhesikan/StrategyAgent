@@ -124,10 +124,10 @@ These items are the **required pre-work** before Sprint 2.8.7 implementation beg
 | BI-003 | Options Contract Research — evaluate Twelve Data options chain for independent-mode fallback (Audit C) | CON-002 | P2 |
 | BI-004 | Risk guardrails — allow user-entered hypothetical buying power in broker-absent mode (CON-004) | CON-004 | P2 |
 | BI-007 | **Licensing gate** — verify Twelve Data options API plan + redistribution rights before any options integration; evaluate Polygon.io as fallback | Audit C prerequisite | **P0** |
-| BI-008 | Build IV solver (Newton-Raphson) + Black-Scholes Greeks engine with dual-track provenance (`VCP_IV_MODEL` vs `MARKET_PROVIDER`) | Audit C Group C | P1 |
-| BI-009 | Build HV-10/20/30/60/90 rolling volatility engine from stored daily bars; expected-move range calculation | Audit C Group B | P1 |
+| BI-008 | Build IV solver (Newton-Raphson) + Black-Scholes Greeks engine — BSM base built (Sprint 2.8.7C); IV solver deferred (TH-003) | Audit C Group C | Partial (TH-003) |
+| ~~BI-009~~ | ~~Build HV-10/20/30/60/90 rolling volatility engine from stored daily bars~~ | Audit C Group B | ✅ RESOLVED (Sprint 2.8.7C) |
 | BI-010 | Add `OwnershipConfirmationState` to contract research; surface portfolio-import path for covered call / protective put research | Audit C Group E | P1 |
-| BI-011 | Build formal `RealizedVolatilitySet` (HV10/20/30/60/90) + `TheoreticalStrikeGrid` from stored daily bars; enforce `TheoreticalOptionValue` incompatibility with execution types | Amendment C1 / Group B | P1 |
+| ~~BI-011~~ | ~~Build formal `RealizedVolatilitySet` (HV10/20/30/60/90) + `TheoreticalStrikeGrid` from stored daily bars; enforce `TheoreticalOptionValue` incompatibility with execution types~~ | Amendment C1 / Group B | ✅ RESOLVED (Sprint 2.8.7C) |
 | BI-012 | **P0** Options scanner (`options-scanner.tsx:420`) hard-blocks on no broker — scan results come from stored data; remove broker gate | Audit D Group B | **P0** |
 | BI-013 | **P0** Workspace "No Broker Connected" risk card (`workspace-sections.tsx:1257`) misattributes data-provider limitations as broker requirements; reframe | Audit D Group E | **P0** |
 | ~~BI-014~~ | ~~Trade Plan Workspace: two-section execution layout (Plan Readiness + Direct Execution neutral)~~ | ~~Audit D Group D~~ | ✅ RESOLVED (Sprint 2.8.7A) |

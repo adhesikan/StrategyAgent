@@ -1,8 +1,19 @@
 // AI Infrastructure Watch — Sprint 5.5C / Task #58
+// Defect fix: AI-Infra-Price — stale bar gating and provenance fields.
 //
 // Tracks the 8 core AI-infrastructure semiconductors and networking stocks.
 // Data comes from stored daily bars (Twelve Data, zero credits) + news sentiment.
-// No fabricated data — missing fields are explicitly null.
+//
+// CANONICAL PRICE CONTRACT:
+//   price  → AiInfraTicker.last (null when stale or unavailable)
+//   asOf   → AiInfraTicker.asOf (YYYY-MM-DD of most recent stored bar)
+//   source → AiInfraTicker.source ("stored_daily_bar" always for this path)
+//   freshness → AiInfraTicker.freshness ("fresh" | "stale" | "unavailable")
+//
+// STALENESS RULE (permanent):
+//   When freshnessStatus ≠ "fresh" → last = null (display "—")
+//   Never display a stale close price as "Latest daily close".
+//   Never fabricate a price.
 
 import { getReferenceSnapshotsBulk } from "./daily-market-data/reference-snapshot";
 import { storage } from "../storage";
@@ -35,10 +46,23 @@ export interface AiInfraTicker {
   sentiment: "bullish" | "bearish" | "neutral";
   /** 0–100 composite technical score (RSI + EMA alignment + RVOL) */
   technicalScore: number;
-  /** Latest known close price */
+  /**
+   * Latest known close price — null when data is stale or unavailable.
+   * STALENESS RULE: null when freshnessStatus ≠ "fresh".
+   * Never display a stale price — show "—" instead.
+   */
   last: number | null;
-  /** Daily change % */
+  /** Daily change % — null when data is stale or unavailable. */
   changePercent: number | null;
+  /**
+   * Defect fix (AI-Infra-Price): provenance fields added.
+   * Trade date of the most recent stored bar (YYYY-MM-DD), or null.
+   */
+  asOf: string | null;
+  /** Data freshness: "fresh" | "stale" | "unavailable" */
+  freshness: "fresh" | "stale" | "unavailable";
+  /** Always "stored_daily_bar" for this data path. */
+  source: "stored_daily_bar";
 }
 
 function deriveTrend(snap: {
@@ -112,6 +136,31 @@ export interface AiInfraWatchUnavailable {
   status: "unavailable";
 }
 
+/**
+ * Build a fresh no-data ticker for a symbol when bars are unavailable.
+ * Always uses `last: null` and `freshness: "unavailable"` — never fabricates.
+ */
+function buildUnavailableTicker(
+  sym: string,
+  sentiment: "bullish" | "bearish" | "neutral",
+  asOf: string | null = null,
+  freshness: "stale" | "unavailable" = "unavailable",
+): AiInfraTicker {
+  return {
+    symbol: sym,
+    companyName: COMPANY_NAMES[sym] ?? sym,
+    trend: "flat",
+    trendLabel: freshness === "stale" ? "Stale data" : "No data",
+    sentiment,
+    technicalScore: 50,
+    last: null,    // NEVER fabricate — must be null when not fresh
+    changePercent: null,
+    asOf,
+    freshness,
+    source: "stored_daily_bar",
+  };
+}
+
 export async function buildAiInfraWatch(
   userId: string,
 ): Promise<AiInfraWatchResult | AiInfraWatchUnavailable> {
@@ -145,19 +194,44 @@ export async function buildAiInfraWatch(
     // 3. Build ticker data
     const tickers: AiInfraTicker[] = AI_INFRA_SYMBOLS.map((sym) => {
       const snap = snapshots.get(sym);
+      const sentiment = sentimentBySymbol.get(sym) ?? "neutral";
+
+      // CANONICAL PRICE CONTRACT:
+      // Only use price when data is fresh. Stale or unavailable → null.
+      // This prevents displaying old close prices with "Latest daily close" label.
       if (!snap || snap.bars.length === 0) {
+        return buildUnavailableTicker(sym, sentiment, null, "unavailable");
+      }
+
+      const freshness = snap.freshnessStatus;
+
+      // STALENESS GATE: never display a stale price as if it were current.
+      if (freshness === "stale") {
+        // Technical score can still be computed from stored bars — useful for trend direction
+        // even when price staleness disqualifies the actual close value.
+        const { trend, label: trendLabel } = deriveTrend(snap);
+        const technicalScore = computeTechnicalScore(snap);
         return {
           symbol: sym,
           companyName: COMPANY_NAMES[sym] ?? sym,
-          trend: "flat",
-          trendLabel: "No data",
-          sentiment: sentimentBySymbol.get(sym) ?? "neutral",
-          technicalScore: 50,
-          last: null,
+          trend,
+          trendLabel,
+          sentiment,
+          technicalScore,
+          last: null,         // null — do not display stale price
           changePercent: null,
+          asOf: snap.latestBarDate,
+          freshness: "stale",
+          source: "stored_daily_bar",
         };
       }
 
+      // UNAVAILABLE gate
+      if (freshness === "unavailable") {
+        return buildUnavailableTicker(sym, sentiment, snap.latestBarDate, "unavailable");
+      }
+
+      // FRESH: price is safe to display
       const { trend, label: trendLabel } = deriveTrend(snap);
       const technicalScore = computeTechnicalScore(snap);
       const last = snap.lastPrice;
@@ -172,10 +246,13 @@ export async function buildAiInfraWatch(
         companyName: COMPANY_NAMES[sym] ?? sym,
         trend,
         trendLabel,
-        sentiment: sentimentBySymbol.get(sym) ?? "neutral",
+        sentiment,
         technicalScore,
         last: last !== null ? Math.round(last * 100) / 100 : null,
         changePercent,
+        asOf: snap.latestBarDate,
+        freshness: "fresh",
+        source: "stored_daily_bar",
       };
     });
 

@@ -144,17 +144,27 @@ hypothetical sizing) are BROKER_INDEPENDENT.
 Replace planning-level gates with graceful-degradation states ("Enhanced with broker connection")
 rather than hard suppression.
 
-### CON-004: Risk guardrails buying-power check blocks when unavailable
+### CON-004: Risk guardrails buying-power check blocks when unavailable ✅ RESOLVED Sprint 2.8.7 BI-004
 
-**Current behavior:** When no broker is connected, the buying power guardrail dimension
-returns `UNAVAILABLE` — which counts against overall readiness. Hypothetical buying power
-(user-entered) is not an accepted substitute.
+**Previous behavior:** When no broker is connected, the buying power guardrail dimension
+returned `UNAVAILABLE` — which counted against overall readiness. Hypothetical buying power
+(user-entered) was not an accepted substitute.
 
-**Principle violation:** Risk modeling with user-entered hypothetical constraints is
-BROKER_INDEPENDENT.
+**Resolution (Sprint 2.8.7 BI-004):** `PlanningCapitalContext` introduced. Users can enter:
+- Planning capital ($)
+- Max risk per trade (%)
+- Max position allocation (%)
 
-**Proposed resolution (Sprint 2.8.7 audit):** Allow a user-entered buying-power budget
-as an independent-mode substitute for live buying power in risk guardrail evaluation.
+These are embedded in `TradePlanPlanningSnapshot.planningCapital` (JSONB, no migration).
+Dim 7 (`buildBuyingPowerDimension`) returns `PLANNING_MODE` (not `PASS`, not `UNAVAILABLE`)
+when broker absent + planning capital present. Broker absent + no capital → `NOT_CONFIRMED`.
+
+**Safety invariants:** `source` is always `USER_DEFINED_PLANNING_CAPITAL`. Planning capital
+never authorizes execution. `overallStatus` never becomes `PASS` from planning capital alone.
+`BrokerExecutionReadiness` remains `NOT_CONNECTED` when broker absent.
+
+**Principle compliance:** Risk modeling with user-entered hypothetical constraints is
+BROKER_INDEPENDENT — now correctly handled without affecting execution gates.
 
 ---
 

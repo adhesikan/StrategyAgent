@@ -46,6 +46,7 @@ import {
   TRADE_PLAN_VERSION,
 } from "../../shared/trade-plan-types";
 import { getPlanningSession, buildTradePlanningContext } from "./trade-planning-service";
+import { computePlanningCapitalContext } from "../../shared/trade-planning-types";
 import { buildEquityPlanningScenario } from "./equity-planning-service";
 import { getSessionContractResearch, getCachedRiskAnalysis } from "./trade-risk-scenario-service";
 import { getOpportunityIntelligence } from "./opportunity-intelligence-service";
@@ -200,6 +201,16 @@ function _buildPlanningSnapshot(
   goalContextSummary: string | null,
   portfolioContextSummary: string | null,
 ): TradePlanPlanningSnapshot {
+  // Sprint 2.8.7 BI-004: embed planning capital context when session constraints
+  // provide capitalAvailable + maxRiskPercent + maxAllocationPercent.
+  // SAFETY: source is always "USER_DEFINED_PLANNING_CAPITAL" — never execution-grade.
+  const constraints = session.constraints as Record<string, unknown> | null | undefined;
+  const planningCapital = computePlanningCapitalContext(
+    typeof constraints?.capitalAvailable === "number" ? constraints.capitalAvailable : null,
+    typeof constraints?.maxRiskPercent === "number" ? constraints.maxRiskPercent : null,
+    typeof constraints?.maxAllocationPercent === "number" ? constraints.maxAllocationPercent : null,
+  );
+
   return {
     planningContextId:        context.id ?? session.id,
     symbol:                   session.symbol,
@@ -210,6 +221,7 @@ function _buildPlanningSnapshot(
     portfolioContextSummary,
     limitations:              context.limitations ?? [],
     generatedAt:              new Date().toISOString(),
+    planningCapital:          planningCapital ?? null,
   };
 }
 
@@ -752,6 +764,46 @@ export async function updateTradePlan(
   const [row] = await db
     .update(tradePlans)
     .set(updates)
+    .where(and(eq(tradePlans.id, planId), eq(tradePlans.userId, userId)))
+    .returning();
+
+  return row ? _rowToPlan(row) : null;
+}
+
+// ============================================================================
+// Update Planning Capital (Sprint 2.8.7 BI-004)
+// ============================================================================
+
+/**
+ * Patch a trade plan's planningSnapshot.planningCapital in-place.
+ * No version bump — planning capital is a mutable planning assumption,
+ * not a structural research change.
+ *
+ * SAFETY: source is always "USER_DEFINED_PLANNING_CAPITAL".
+ * This NEVER authorizes execution or represents broker buying power.
+ */
+export async function updateTradePlanPlanningCapital(
+  userId: string,
+  planId: string,
+  capitalAmount: number,
+  maxRiskPercent: number,
+  maxAllocationPercent: number,
+): Promise<TradePlan | null> {
+  const existing = await getTradePlan(userId, planId);
+  if (!existing) return null;
+  if (existing.status === "ARCHIVED") return null;
+
+  const planningCapital = computePlanningCapitalContext(capitalAmount, maxRiskPercent, maxAllocationPercent);
+  if (!planningCapital) return null; // invalid inputs
+
+  const updatedSnapshot = {
+    ...(existing.planningSnapshot as Record<string, unknown>),
+    planningCapital,
+  };
+
+  const [row] = await db
+    .update(tradePlans)
+    .set({ planningSnapshot: updatedSnapshot as any, updatedAt: new Date() })
     .where(and(eq(tradePlans.id, planId), eq(tradePlans.userId, userId)))
     .returning();
 

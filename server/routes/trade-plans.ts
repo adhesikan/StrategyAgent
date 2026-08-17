@@ -30,6 +30,7 @@ import {
   createPlanVersion,
   getMonitoringContext,
   getTradePlanHealthMetrics,
+  updateTradePlanPlanningCapital,
 } from "../services/trade-plan-service";
 import {
   evaluateTradePlanLifecycle,
@@ -198,6 +199,38 @@ export function registerTradePlanRoutes(
       return res.json(plan);
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to update trade plan." });
+    }
+  });
+
+  // ── PATCH /api/trade-plans/:id/planning-capital (Sprint 2.8.7 BI-004) ──────
+  // Updates planningSnapshot.planningCapital in-place. No version bump.
+  // SAFETY: never authorizes execution. Never represents broker buying power.
+  app.patch("/api/trade-plans/:id/planning-capital", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { capitalAmount, maxRiskPercent, maxAllocationPercent } = req.body ?? {};
+
+    if (typeof capitalAmount !== "number" || capitalAmount <= 0) {
+      return res.status(400).json({ message: "capitalAmount must be a positive number." });
+    }
+    if (typeof maxRiskPercent !== "number" || maxRiskPercent < 0 || maxRiskPercent > 100) {
+      return res.status(400).json({ message: "maxRiskPercent must be a number between 0 and 100." });
+    }
+    if (typeof maxAllocationPercent !== "number" || maxAllocationPercent < 0 || maxAllocationPercent > 100) {
+      return res.status(400).json({ message: "maxAllocationPercent must be a number between 0 and 100." });
+    }
+
+    try {
+      const plan = await updateTradePlanPlanningCapital(
+        userId, req.params.id, capitalAmount, maxRiskPercent, maxAllocationPercent,
+      );
+      if (!plan) return res.status(404).json({ message: "Trade plan not found or archived." });
+      // Safe log — no capital values logged
+      console.log("[trade-plan] planning_capital_updated", { planType: plan.planType });
+      return res.json({ plan, source: "USER_DEFINED_PLANNING_CAPITAL" });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to update planning capital." });
     }
   });
 

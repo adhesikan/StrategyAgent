@@ -1,5 +1,32 @@
 # Sprint Change Log
 
+## Sprint 2.8.7 BI-004 — Broker-Independent Planning Capital & Risk Sizing (2026-08-17)
+**Status:** IMPLEMENTATION COMPLETE — AUTOMATED VALIDATION PASS (39/39 tests)
+**Application code changed:** YES
+
+**What was built:**
+- `PlanningCapitalContext` type + `computePlanningCapitalContext()` pure function in `shared/trade-planning-types.ts`
+- `TradePlanningConstraints` extended with `maxRiskPercent` and `maxAllocationPercent` percentage fields
+- `TradePlanPlanningSnapshot` extended with optional `planningCapital` field (embedded in JSONB, no migration)
+- `_buildPlanningSnapshot()` in trade-plan-service.ts auto-embeds planning capital from session constraints at plan creation
+- `updateTradePlanPlanningCapital()` service function for post-creation updates (no version bump)
+- `buildBuyingPowerDimension()` in execution-preflight-service.ts: broker absent + planning capital present → `PLANNING_MODE`; broker absent + no capital → `NOT_CONFIRMED` (unchanged)
+- `PATCH /api/trade-plans/:id/planning-capital` route (before /:id catch-all)
+- Planning Capital card in `trade-plan-detail.tsx`: three inputs (capital $, risk %, allocation %), derived dollar display, save mutation, "planning assumptions — not broker buying power" label
+
+**Safety invariants enforced (all 14 tested):**
+- `source` always `USER_DEFINED_PLANNING_CAPITAL` — never broker-sourced
+- Planning capital never authorizes execution, never makes `overallStatus` PASS, never makes `executionAvailable` true
+- `BrokerExecutionReadiness` remains `NOT_CONNECTED` when broker absent
+- `validateConstraints` rejects out-of-range percentages (< 0 or > 100)
+- `constraintsFingerprint` includes new fields
+
+**Files changed:** `shared/trade-planning-types.ts`, `shared/trade-plan-types.ts`, `server/services/trade-plan-service.ts`, `server/services/execution-preflight-service.ts`, `server/routes/trade-plans.ts`, `client/src/pages/trade-plan-detail.tsx`, `server/services/__tests__/planning-capital.test.ts` (new), `docs/operations/15-known-issues-and-backlog.md`
+
+**STOP BEFORE PUSH/DEPLOY** — per sprint spec.
+
+---
+
 ## V1 Options Scope Closure — Product Decision (2026-08-17)
 **Status:** DOCUMENTATION ALIGNMENT ONLY — No application code changed.
 

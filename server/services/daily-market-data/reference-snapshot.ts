@@ -13,10 +13,12 @@
 // module returns null and never leaks data past the gate.
 
 import { canAccessTwelveDataBackedAnalysis } from "./access-control";
-import { getHistoricalBars } from "../market-history-service";
+import { getHistoricalBars, checkFreshness, type FreshnessStatus } from "../market-history-service";
 import { ema, rsi, atr } from "./indicators";
 import { getRealtimeQuoteForUser, type RealTimeQuote } from "./realtime-quote";
 import type { NormalizedDailyBar } from "./types";
+
+export type { FreshnessStatus };
 
 export interface ReferenceTechnicals {
   ema9: number | null;
@@ -42,6 +44,14 @@ export interface ReferenceSnapshot {
   /** Best-known last price: realtime last, else last stored close. */
   lastPrice: number | null;
   prevClose: number | null;
+  /**
+   * Data provenance — Sprint Defect AI-Infra-Price:
+   * freshness and last bar date must travel with the price so callers can
+   * distinguish "Latest daily close" from "Stale" / "Unavailable".
+   */
+  freshnessStatus: FreshnessStatus;
+  /** Trade date of the most recent stored bar (YYYY-MM-DD), or null. */
+  latestBarDate: string | null;
 }
 
 async function isAllowed(userId: string, feature: string): Promise<boolean> {
@@ -118,6 +128,9 @@ export async function getReferenceSnapshot(
 
   const lastBar = bars.length > 0 ? bars[bars.length - 1] : null;
   const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
+  const latestBarDate = lastBar?.tradeDate ?? null;
+  const freshnessStatus: FreshnessStatus =
+    realtime ? "fresh" : checkFreshness(latestBarDate, "user");
   return {
     symbol,
     realtime,
@@ -125,6 +138,8 @@ export async function getReferenceSnapshot(
     technicals: computeReferenceTechnicals(bars),
     lastPrice: realtime?.last ?? lastBar?.close ?? null,
     prevClose: realtime?.previousClose ?? (realtime ? lastBar?.close ?? null : prevBar?.close ?? null),
+    freshnessStatus,
+    latestBarDate,
   };
 }
 
@@ -150,13 +165,18 @@ export async function getReferenceSnapshotsBulk(
       while (queue.length > 0) {
         const symbol = queue.shift()!;
         try {
-          const { bars } = await getHistoricalBars({
+          const result = await getHistoricalBars({
             symbol, outputSize: limit, purpose: "scan", caller: "reference_snapshot_bulk",
             allowExternalRefresh: false,
-          }).catch(() => ({ bars: [] as NormalizedDailyBar[] }));
+          }).catch(() => ({ bars: [] as NormalizedDailyBar[], freshnessStatus: "unavailable" as FreshnessStatus, latestBarDate: null as string | null }));
+          const { bars } = result;
           if (bars.length === 0) continue;
           const lastBar = bars[bars.length - 1];
           const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
+          const latestBarDate: string | null = result.latestBarDate ?? lastBar.tradeDate;
+          // Propagate freshnessStatus from getHistoricalBars so callers can detect stale data.
+          const freshnessStatus: FreshnessStatus =
+            (result as any).freshnessStatus ?? checkFreshness(latestBarDate, "scan");
           out.set(symbol, {
             symbol,
             realtime: null,
@@ -164,6 +184,8 @@ export async function getReferenceSnapshotsBulk(
             technicals: computeReferenceTechnicals(bars),
             lastPrice: lastBar.close,
             prevClose: prevBar?.close ?? null,
+            freshnessStatus,
+            latestBarDate,
           });
         } catch (err: any) {
           console.warn(`[ReferenceSnapshot] bulk bars failed for ${symbol}:`, err?.message ?? err);

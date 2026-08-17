@@ -54,6 +54,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -288,6 +289,12 @@ export default function TradePlanDetailPage() {
   const [checklist, setChecklist] = useState<TradePlanChecklist>({ ...DEFAULT_TRADE_PLAN_CHECKLIST });
   const [notesInitialized, setNotesInitialized] = useState(false);
 
+  // Sprint 2.8.7 BI-004: Planning capital form state
+  const [pcCapital, setPcCapital]     = useState<string>("");
+  const [pcRisk, setPcRisk]           = useState<string>("");
+  const [pcAlloc, setPcAlloc]         = useState<string>("");
+  const [pcInitialized, setPcInit]    = useState(false);
+
   // Fetch plan
   const { data: plan, isLoading, error } = useQuery<TradePlan>({
     queryKey: ["/api/trade-plans", id],
@@ -302,7 +309,17 @@ export default function TradePlanDetailPage() {
       setChecklist({ ...DEFAULT_TRADE_PLAN_CHECKLIST, ...(plan.reviewChecklist as Partial<TradePlanChecklist>) });
       setNotesInitialized(true);
     }
-  }, [plan, notesInitialized]);
+    // Sprint 2.8.7 BI-004: initialize planning capital from persisted snapshot
+    if (plan && !pcInitialized) {
+      const pc = (plan.planningSnapshot as any)?.planningCapital;
+      if (pc) {
+        setPcCapital(String(pc.capitalAmount ?? ""));
+        setPcRisk(String(pc.maxRiskPercent ?? ""));
+        setPcAlloc(String(pc.maxAllocationPercent ?? ""));
+      }
+      setPcInit(true);
+    }
+  }, [plan, notesInitialized, pcInitialized]);
 
   // Fetch changes comparison
   const {
@@ -336,6 +353,21 @@ export default function TradePlanDetailPage() {
       navigate("/trade-plans");
     },
     onError: () => toast({ title: "Archive failed", variant: "destructive" }),
+  });
+
+  // Sprint 2.8.7 BI-004: Planning capital mutation
+  const planningCapitalMutation = useMutation({
+    mutationFn: (body: { capitalAmount: number; maxRiskPercent: number; maxAllocationPercent: number }) =>
+      apiRequest("PATCH", `/api/trade-plans/${id}/planning-capital`, body).then(r => {
+        if (!r.ok) return r.json().then((d: any) => { throw new Error(d.message ?? "Failed to save planning capital."); });
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/trade-plans", id] });
+      qc.invalidateQueries({ queryKey: ["/api/trade-plans", id, "execution", "preflight"] });
+      toast({ title: "Planning capital saved", description: "Run a readiness check to see updated dim-7 status." });
+    },
+    onError: (err: Error) => toast({ title: "Save failed", description: err.message, variant: "destructive" }),
   });
 
   const duplicateMutation = useMutation({
@@ -896,6 +928,120 @@ export default function TradePlanDetailPage() {
             </CardContent>
           </Card>
         </section>
+
+        {/* § Planning Capital (Sprint 2.8.7 BI-004) — broker-independent research sizing.
+             User-defined planning assumptions for risk sizing without a broker.
+             NEVER authorizes execution. NEVER represents broker buying power.
+             When set, dim 7 shows PLANNING_MODE instead of NOT_CONFIRMED. */}
+        {plan.planType === "EQUITY" && plan.status !== "ARCHIVED" && (() => {
+          const pcCapitalNum   = parseFloat(pcCapital);
+          const pcRiskNum      = parseFloat(pcRisk);
+          const pcAllocNum     = parseFloat(pcAlloc);
+          const derivedRisk    = (!isNaN(pcCapitalNum) && !isNaN(pcRiskNum))   ? pcCapitalNum * pcRiskNum   / 100 : null;
+          const derivedAlloc   = (!isNaN(pcCapitalNum) && !isNaN(pcAllocNum))  ? pcCapitalNum * pcAllocNum  / 100 : null;
+          const canSave        = !isNaN(pcCapitalNum) && pcCapitalNum > 0
+                              && !isNaN(pcRiskNum)    && pcRiskNum >= 0    && pcRiskNum <= 100
+                              && !isNaN(pcAllocNum)   && pcAllocNum >= 0   && pcAllocNum <= 100;
+          return (
+            <section aria-labelledby="planning-capital-heading" data-testid="planning-capital-section">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle id="planning-capital-heading" className="text-base flex items-center gap-2">
+                    Planning Capital
+                  </CardTitle>
+                  <CardDescription>
+                    Set your planning assumptions for research-based risk sizing. These are hypothetical — not broker buying power.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="pc-capital" className="text-sm">Planning Capital ($)</Label>
+                      <Input
+                        id="pc-capital"
+                        type="number"
+                        min={0}
+                        step={1000}
+                        placeholder="25000"
+                        value={pcCapital}
+                        onChange={e => setPcCapital(e.target.value)}
+                        aria-label="Planning capital in dollars"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="pc-risk" className="text-sm">Max Risk / Trade (%)</Label>
+                      <Input
+                        id="pc-risk"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        placeholder="2.0"
+                        value={pcRisk}
+                        onChange={e => setPcRisk(e.target.value)}
+                        aria-label="Maximum risk per trade as a percentage"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="pc-alloc" className="text-sm">Max Position Allocation (%)</Label>
+                      <Input
+                        id="pc-alloc"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        placeholder="10.0"
+                        value={pcAlloc}
+                        onChange={e => setPcAlloc(e.target.value)}
+                        aria-label="Maximum position allocation as a percentage"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Derived display */}
+                  {(derivedRisk !== null || derivedAlloc !== null) && (
+                    <div className="flex flex-wrap gap-6 text-sm pt-1">
+                      {derivedRisk !== null && (
+                        <div>
+                          <span className="text-muted-foreground">Max Risk:</span>{" "}
+                          <strong>${derivedRisk.toLocaleString("en-US", { maximumFractionDigits: 2 })}</strong>
+                        </div>
+                      )}
+                      {derivedAlloc !== null && (
+                        <div>
+                          <span className="text-muted-foreground">Max Position:</span>{" "}
+                          <strong>${derivedAlloc.toLocaleString("en-US", { maximumFractionDigits: 2 })}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground italic">
+                    Planning assumptions — not broker buying power. Execution requires a connected broker account.
+                  </p>
+
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!canSave || planningCapitalMutation.isPending}
+                    onClick={() => planningCapitalMutation.mutate({
+                      capitalAmount:        pcCapitalNum,
+                      maxRiskPercent:       pcRiskNum,
+                      maxAllocationPercent: pcAllocNum,
+                    })}
+                    data-testid="save-planning-capital-cta"
+                    aria-label="Save planning capital assumptions"
+                  >
+                    {planningCapitalMutation.isPending ? "Saving…" : "Save Planning Assumptions"}
+                  </Button>
+                  {planningCapitalMutation.isError && (
+                    <p className="text-xs text-red-500">{(planningCapitalMutation.error as Error).message}</p>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+          );
+        })()}
 
         {/* § Execution Preparation — Sprint 2.8.7A two-layer model.
              Layer 1 (Trade Plan Readiness) is fully brokerless — always visible.

@@ -422,8 +422,13 @@ interface AiInfraTicker {
   trendLabel: string;
   sentiment: "bullish" | "bearish" | "neutral";
   technicalScore: number;
+  /** Null when data is stale or unavailable — never a fabricated price. */
   last: number | null;
   changePercent: number | null;
+  /** Defect fix (AI-Infra-Price): provenance fields. */
+  asOf: string | null;
+  freshness: "fresh" | "stale" | "unavailable";
+  source: "stored_daily_bar";
 }
 
 interface Position {
@@ -2333,6 +2338,69 @@ function TechScoreBar({ score }: { score: number }) {
   );
 }
 
+/**
+ * Defect fix (AI-Infra-Price): dynamic freshness badge.
+ * Determines the badge text and style from the actual freshness of the tickers
+ * instead of always showing the hardcoded "Latest daily close" label.
+ *
+ * Rules:
+ *   - ALL fresh           → "Latest daily close" (green)
+ *   - ANY stale + no unavailable → "Stale data"    (amber)
+ *   - ANY unavailable (or all)  → "Unavailable"    (muted)
+ */
+function AiInfraFreshnessBadge({ tickers }: { tickers?: AiInfraTicker[] }) {
+  if (!tickers || tickers.length === 0) {
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] border-muted-foreground/30 text-muted-foreground"
+        data-testid="badge-ai-infra-data"
+      >
+        Unavailable
+      </Badge>
+    );
+  }
+  const hasUnavailable = tickers.some(t => t.freshness === "unavailable");
+  const hasStale       = tickers.some(t => t.freshness === "stale");
+  const allFresh       = tickers.every(t => t.freshness === "fresh");
+
+  if (allFresh) {
+    return (
+      <Badge
+        variant="outline"
+        className={cn("text-[10px]", DATA_QUALITY_CLASS.DAILY_CLOSE)}
+        data-testid="badge-ai-infra-data"
+        aria-label="Data quality: Latest daily close"
+      >
+        {DATA_QUALITY.DAILY_CLOSE}
+      </Badge>
+    );
+  }
+  if (hasUnavailable) {
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] border-muted-foreground/30 text-muted-foreground"
+        data-testid="badge-ai-infra-data"
+        aria-label="Data quality: Unavailable"
+      >
+        Unavailable
+      </Badge>
+    );
+  }
+  // Some stale, none unavailable
+  return (
+    <Badge
+      variant="outline"
+      className="text-[10px] border-amber-500/40 text-amber-600"
+      data-testid="badge-ai-infra-data"
+      aria-label="Data quality: Stale data"
+    >
+      Stale data
+    </Badge>
+  );
+}
+
 function AiInfraWatchSection({
   status,
   tickers,
@@ -2354,13 +2422,8 @@ function AiInfraWatchSection({
               <span id="ai-infra-heading">AI Infrastructure Watch</span>
             </CardTitle>
             <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className={cn("text-[10px]", DATA_QUALITY_CLASS.DAILY_CLOSE)}
-                data-testid="badge-ai-infra-data"
-              >
-                {DATA_QUALITY.DAILY_CLOSE}
-              </Badge>
+              {/* Defect fix (AI-Infra-Price): badge reflects actual data freshness, not a hardcoded label */}
+              <AiInfraFreshnessBadge tickers={tickers} />
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -2412,14 +2475,26 @@ function AiInfraWatchSection({
                       )}
                     </div>
 
-                    {/* Price */}
+                    {/* Price — null when data is stale or unavailable (see AI-Infra-Price defect fix) */}
                     <div className="w-16 text-right">
                       {t.last !== null ? (
-                        <span className="text-xs tabular-nums font-medium">
+                        <span
+                          className="text-xs tabular-nums font-medium"
+                          title={t.asOf ? `Close as of ${t.asOf}` : undefined}
+                        >
                           ${t.last.toFixed(2)}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-muted-foreground">—</span>
+                        <span
+                          className="text-[10px] text-muted-foreground"
+                          title={
+                            t.freshness === "stale"
+                              ? `Stale data (last bar: ${t.asOf ?? "unknown"})`
+                              : "Price unavailable"
+                          }
+                        >
+                          —
+                        </span>
                       )}
                     </div>
 

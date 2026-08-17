@@ -161,6 +161,16 @@ export interface TradePlanPlanningSnapshot {
   portfolioContextSummary:   string | null;  // brief, no sensitive data
   limitations:               string[];
   generatedAt:               string; // ISO
+  /**
+   * Sprint 2.8.7 BI-004: Optional user-defined planning capital context.
+   * Embedded when the user has provided capitalAvailable + maxRiskPercent +
+   * maxAllocationPercent in session constraints at plan creation, or updated
+   * post-creation via PATCH /api/trade-plans/:id/planning-capital.
+   *
+   * SAFETY: source MUST be "USER_DEFINED_PLANNING_CAPITAL".
+   * Never satisfies execution gates. Never represents broker buying power.
+   */
+  planningCapital?:          import("./trade-planning-types").PlanningCapitalContext | null;
 }
 
 // ============================================================================

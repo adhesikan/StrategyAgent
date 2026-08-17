@@ -1,0 +1,180 @@
+VCP TRADER AI — PRODUCTION DEFECT
+AI INFRASTRUCTURE WATCH PRICE DATA CORRECTNESS
+
+This is a production data-correctness defect.
+
+DO NOT start a new roadmap feature.
+DO NOT change Opportunity Engine qualification.
+DO NOT change scoring methodology.
+DO NOT implement customizable watchlists in this defect.
+
+Screenshot shows suspicious/incorrect values in the Dashboard
+"AI Infrastructure Watch" section, including examples such as:
+
+AMD  $514.39
+MU   $971.66
+
+The widget is labeled "Latest daily close".
+
+OBJECTIVE
+
+Determine exactly where this widget obtains its displayed PRICE and ensure
+it uses the canonical market-data source appropriate to the label.
+
+============================================================
+1. TRACE THE CURRENT DATA FLOW
+============================================================
+
+Trace:
+
+Dashboard
+→ AI Infrastructure Watch component
+→ API endpoint
+→ service
+→ DB/cache/provider
+→ displayed price
+
+Report:
+
+- exact component
+- exact endpoint
+- exact response field
+- exact source
+- timestamp
+- whether value is stored/cached/live/daily-close
+- whether adjusted or unadjusted data is being used
+
+Do not change code until root cause is identified.
+
+============================================================
+2. COMPARE AGAINST CANONICAL MARKET DATA
+============================================================
+
+For:
+
+NVDA
+AMD
+MU
+AVGO
+MRVL
+CRDO
+ANET
+TSM
+
+compare the widget value against the canonical existing Twelve Data /
+daily-market-data pipeline.
+
+Do not introduce another market-data provider.
+
+Determine whether the discrepancy is caused by:
+
+- stale DB row
+- incorrect historical bar
+- adjusted/unadjusted mismatch
+- split handling
+- wrong field mapping
+- cached snapshot
+- symbol mapping issue
+- fallback data
+- formatting/math error
+- provider response issue
+
+============================================================
+3. DEFINE ONE CANONICAL PRICE CONTRACT
+============================================================
+
+Because the widget says:
+
+"Latest daily close"
+
+the displayed value must use one authoritative concept.
+
+Define/reuse something equivalent to:
+
+price
+asOf
+source
+freshness
+marketSession
+quality
+
+Do not simply show an old numeric value without provenance.
+
+============================================================
+4. MISSING DATA
+============================================================
+
+If a valid latest daily close cannot be obtained:
+
+display —
+
+NOT a stale or fabricated number.
+
+Never reuse an unrelated historical value just to populate the row.
+
+============================================================
+5. UI FRESHNESS
+============================================================
+
+The widget should be able to distinguish:
+
+Latest daily close
+Delayed
+Stale
+Unavailable
+
+The current section-level label must accurately describe the underlying data.
+
+============================================================
+6. TESTS
+============================================================
+
+Add permanent tests for:
+
+- correct field mapping
+- latest bar selection
+- stale cache
+- split-adjusted data
+- missing data
+- invalid numeric values
+- no fallback fabrication
+- symbol isolation
+- freshness timestamp
+- existing watch scores unaffected
+
+Use deterministic fixtures.
+
+============================================================
+7. SCOPE
+
+DO NOT implement customizable watchlists in this defect.
+
+However, document a backlog item:
+
+Convert "AI Infrastructure Watch" into a user-configurable
+Market Watchlists dashboard component.
+
+That future feature should support:
+
+- multiple named watchlists
+- add/remove symbols
+- sector/theme presets
+- user-created lists
+- persistent per-user configuration
+- AI Infrastructure as an optional/default preset
+
+============================================================
+RETURN BEFORE DEPLOY
+
+1. Root cause
+2. Current data flow
+3. Correct canonical data source
+4. Files changed
+5. Price/freshness behavior
+6. Missing-data behavior
+7. Tests added
+8. Test results
+9. Watchlist customization backlog item created
+10. READY_FOR_DEPLOY / NOT_READY
+
+STOP BEFORE DEPLOY.

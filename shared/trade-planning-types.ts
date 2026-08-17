@@ -27,6 +27,10 @@
  *   TradePlanningConstraints are USER-SELECTED PLANNING PREFERENCES.
  *   They are NOT: risk tolerance, risk capacity, suitability, or financial advice.
  *   No income, net worth, age, tax bracket, employment, or household data collected.
+ *
+ * Sprint 2.8.7 BI-004:
+ *   PlanningCapitalContext added — user-defined hypothetical capital for research
+ *   risk sizing. NEVER authorizes execution. Never represents broker buying power.
  */
 
 import type {
@@ -155,6 +159,63 @@ export interface ExpressionFamilyResult {
  * No income, net worth, age, tax bracket, employment, or household data collected.
  * These are used ONLY to construct research scenarios.
  */
+// ============================================================================
+// Planning Capital Context (Sprint 2.8.7 BI-004)
+// ============================================================================
+
+/**
+ * Derived planning capital context — computed from user-entered percentage-based
+ * constraints and embedded in TradePlanPlanningSnapshot.
+ *
+ * SAFETY INVARIANTS (permanent):
+ *   - source MUST be "USER_DEFINED_PLANNING_CAPITAL" — never "BROKER" or anything else
+ *   - This NEVER authorizes execution, order preparation, or broker submission
+ *   - This NEVER represents actual broker buying power
+ *   - overallStatus NEVER becomes PASS due to planning capital alone
+ *   - executionAvailable NEVER becomes true due to planning capital
+ */
+export interface PlanningCapitalContext {
+  /** User-entered total planning capital (from capitalAvailable constraint). */
+  capitalAmount:         number;
+  /** User-entered max risk per trade as a percentage (0–100). */
+  maxRiskPercent:        number;
+  /** Derived: capitalAmount × maxRiskPercent / 100. Research use only. */
+  maxRiskDollars:        number;
+  /** User-entered max position allocation as a percentage (0–100). */
+  maxAllocationPercent:  number;
+  /** Derived: capitalAmount × maxAllocationPercent / 100. Research use only. */
+  maxAllocationDollars:  number;
+  /** Always "USER_DEFINED_PLANNING_CAPITAL" — never broker-sourced. */
+  source:                "USER_DEFINED_PLANNING_CAPITAL";
+  /** ISO timestamp when this context was computed. */
+  capturedAt:            string;
+}
+
+/**
+ * Compute PlanningCapitalContext from raw user inputs.
+ * Returns null when inputs are insufficient or invalid.
+ * Pure function — no side effects.
+ */
+export function computePlanningCapitalContext(
+  capitalAmount: number | null | undefined,
+  maxRiskPercent: number | null | undefined,
+  maxAllocationPercent: number | null | undefined,
+  now?: string,
+): PlanningCapitalContext | null {
+  if (!capitalAmount || capitalAmount <= 0) return null;
+  if (maxRiskPercent == null || maxRiskPercent < 0 || maxRiskPercent > 100) return null;
+  if (maxAllocationPercent == null || maxAllocationPercent < 0 || maxAllocationPercent > 100) return null;
+  return {
+    capitalAmount,
+    maxRiskPercent,
+    maxRiskDollars: Math.round(capitalAmount * maxRiskPercent / 100 * 100) / 100,
+    maxAllocationPercent,
+    maxAllocationDollars: Math.round(capitalAmount * maxAllocationPercent / 100 * 100) / 100,
+    source: "USER_DEFINED_PLANNING_CAPITAL",
+    capturedAt: now ?? new Date().toISOString(),
+  };
+}
+
 export interface TradePlanningConstraints {
   /** Total capital the user wants to consider for this planning scenario. */
   capitalAvailable?:      number;
@@ -162,6 +223,16 @@ export interface TradePlanningConstraints {
   maxCapitalAtRisk?:      number;
   /** Maximum dollar loss the user wants to model per position. */
   maxLossPerPosition?:    number;
+  /**
+   * Sprint 2.8.7 BI-004: Maximum risk per trade as a percentage of planning capital (0–100).
+   * Used with capitalAvailable to derive maxRiskDollars. Research use only.
+   */
+  maxRiskPercent?:        number;
+  /**
+   * Sprint 2.8.7 BI-004: Maximum position allocation as a percentage of planning capital (0–100).
+   * Used with capitalAvailable to derive maxAllocationDollars. Research use only.
+   */
+  maxAllocationPercent?:  number;
   /** Preferred research horizon for this planning scenario. */
   preferredHoldingPeriod?: "short" | "medium" | "long" | "multi_year";
   /** Whether equity research is allowed in this session. Default: true */
@@ -472,6 +543,10 @@ export function validateConstraints(raw: unknown): TradePlanningConstraints {
                              ? c.maxCapitalAtRisk : undefined,
     maxLossPerPosition:    typeof c.maxLossPerPosition === "number" && c.maxLossPerPosition > 0
                              ? c.maxLossPerPosition : undefined,
+    maxRiskPercent:        typeof c.maxRiskPercent === "number" && c.maxRiskPercent >= 0 && c.maxRiskPercent <= 100
+                             ? c.maxRiskPercent : undefined,
+    maxAllocationPercent:  typeof c.maxAllocationPercent === "number" && c.maxAllocationPercent >= 0 && c.maxAllocationPercent <= 100
+                             ? c.maxAllocationPercent : undefined,
     preferredHoldingPeriod:["short","medium","long","multi_year"].includes(c.preferredHoldingPeriod as string)
                              ? (c.preferredHoldingPeriod as "short"|"medium"|"long"|"multi_year") : undefined,
     equityAllowed:   c.equityAllowed === false ? false : true,
@@ -488,6 +563,8 @@ export function constraintsFingerprint(c: TradePlanningConstraints): string {
     c.capitalAvailable ?? 0,
     c.maxCapitalAtRisk ?? 0,
     c.maxLossPerPosition ?? 0,
+    c.maxRiskPercent ?? 0,
+    c.maxAllocationPercent ?? 0,
     c.preferredHoldingPeriod ?? "",
     c.equityAllowed ? "1" : "0",
     c.optionsAllowed ? "1" : "0",

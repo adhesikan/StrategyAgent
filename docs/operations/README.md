@@ -43,6 +43,7 @@
 | [52](52-sprint-2.8.7b-brokerless-equity-market-data.md) | Sprint 2.8.7B — Broker-Independent Equity Market Data | PlanningQuoteData, planning-quote adapter, enriched PLANNING_MODE dim, 34 tests |
 | [53](53-sprint-2.8.7c-theoretical-options.md) | Sprint 2.8.7C — Theoretical Options Research | BSM engine, HV10/20/30/60/90, hypothetical strike grid, execution safety invariants, 85 tests |
 | [54](54-independent-options-market-data-research.md) | Independent Options Market Data — Provider Research | Audit C compatibility, Twelve Data / MarketData.app / Polygon / ThetaData evaluation, licensing, OPRA, cost model, architecture, vendor questions |
+| [55](55-sprint-2.8.7-bi004-planning-capital.md) | Sprint 2.8.7 BI-004 — Planning Capital & Risk Sizing | Broker-independent planning capital, dim-7 PLANNING_MODE, 39 safety invariant tests |
 | [manifest](system-manifest.yaml) | System Manifest | Machine-readable service/job/flag catalog |
 
 ---

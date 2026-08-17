@@ -1,0 +1,327 @@
+SPRINT 2.8.7 — BI-004 / TASK #161
+BROKER-INDEPENDENT PLANNING CAPITAL & RISK SIZING
+
+We have completed the V1 brokerless options scope decision.
+
+The next approved broker-independence backlog item is:
+
+BI-004 / Task #161:
+Allow users to enter hypothetical/user-defined available planning capital
+so risk sizing and Trade Plan Readiness can operate without a broker.
+
+This resolves CON-004.
+
+IMPORTANT:
+This is PLANNING capital, NOT broker buying power.
+It must never authorize execution.
+
+============================================================
+STEP 0 — REUSE AUDIT FIRST
+============================================================
+
+Before changing code, inspect the existing implementation for:
+
+- planningSnapshot
+- riskSnapshot
+- capital constraints
+- position sizing
+- max risk per trade
+- portfolio allocation
+- buying power validation
+- Execution Preflight dim 7
+- Trade Plan Readiness
+- Broker Execution Readiness
+- existing user preferences/settings
+- manual portfolio data
+- any existing hypothetical-capital fields
+
+Report what can be reused.
+
+DO NOT create duplicate sizing/risk engines.
+
+If an existing canonical capital/risk model exists, extend it.
+
+============================================================
+OBJECTIVE
+============================================================
+
+A user without a broker connection should be able to provide planning
+assumptions such as:
+
+Planning Capital: $25,000
+Maximum Risk Per Trade: 2%
+Maximum Position Allocation: 10%
+
+VCP Trader AI can then calculate:
+
+Maximum Risk Dollars = $500
+
+Maximum Position Allocation = $2,500
+
+and use these values for RESEARCH / PLANNING risk analysis.
+
+These are hypothetical planning constraints.
+
+They are NOT actual broker buying power.
+
+============================================================
+DATA MODEL
+============================================================
+
+First determine whether the existing planningSnapshot/riskSnapshot can
+store these values without a schema migration.
+
+Prefer existing JSONB structures if semantically appropriate.
+
+Suggested conceptual model:
+
+PlanningCapitalContext {
+  capitalAmount
+  maxRiskPercent
+  maxRiskDollars
+  maxAllocationPercent
+  maxAllocationDollars
+  source: "USER_DEFINED_PLANNING_CAPITAL"
+  capturedAt
+}
+
+Do not use this exact type if an existing canonical model already covers it.
+
+============================================================
+NO-BROKER BEHAVIOR
+============================================================
+
+When no broker is connected:
+
+Trade Plan Readiness should be able to use user-defined planning capital.
+
+Example:
+
+Planning Capital       $25,000
+Max Risk / Trade       2%
+Maximum Risk           $500
+Max Allocation         10%
+Maximum Position       $2,500
+
+Dim 7 must NOT pretend this is broker buying power.
+
+Use planning semantics such as:
+
+PLANNING_MODE
+
+and clearly identify:
+
+"Using user-defined planning capital"
+
+BrokerExecutionReadiness remains:
+
+NOT_CONNECTED
+
+executionAvailable remains:
+
+false
+
+overallStatus must NEVER become PASS merely because planning capital exists.
+
+============================================================
+BROKER-CONNECTED BEHAVIOR
+============================================================
+
+When a broker is connected:
+
+Preserve user-defined planning capital as a planning assumption.
+
+Broker actual buying power remains independently evaluated for execution.
+
+DO NOT overwrite planning capital with broker buying power.
+
+Conceptually:
+
+PLAN:
+User-defined planning capital = $25,000
+
+EXECUTION:
+Broker buying power = $43,750
+
+Both may coexist.
+
+The planning engine uses the planning assumption.
+
+Execution readiness uses actual broker account data.
+
+============================================================
+RISK SIZING
+============================================================
+
+Reuse the existing risk/position-sizing engine wherever possible.
+
+For equity planning, calculate appropriate position sizing using:
+
+- planning capital
+- max allocation
+- max risk
+- planned entry
+- stop/risk distance where available
+
+For theoretical options:
+
+Theoretical premiums may be used ONLY for hypothetical scenario/risk
+research consistent with Invariant C1.
+
+They must not become executable prices.
+
+If sufficient inputs do not exist:
+
+return NOT_CONFIRMED / UNAVAILABLE as appropriate.
+
+Never fabricate missing values.
+
+============================================================
+UX
+============================================================
+
+Find the best existing Trade Plan / planning surface for these inputs.
+
+Do not create a new standalone workflow unless necessary.
+
+Suggested UX:
+
+Planning Capital
+[$25,000]
+
+Maximum Risk Per Trade
+[2.0] %
+
+Maximum Position Allocation
+[10.0] %
+
+Then show derived values:
+
+Max Risk: $500
+Max Position: $2,500
+
+Clearly label:
+
+"Planning assumptions — not broker buying power."
+
+If a broker is connected, do not hide these settings.
+
+============================================================
+PERSISTENCE
+============================================================
+
+Planning capital must persist with the Trade Plan or canonical planning
+context so:
+
+- page refresh preserves it
+- lifecycle monitoring can use it
+- readiness can use it
+- reopening the Trade Plan preserves it
+
+Do not store it only in React state.
+
+============================================================
+PREFLIGHT / READINESS
+============================================================
+
+Update dim 7 semantics carefully.
+
+NO BROKER + planning capital:
+
+Trade Plan Readiness:
+PLANNING_MODE
+
+Broker Execution Readiness:
+NOT_CONNECTED
+
+BROKER CONNECTED:
+
+Trade Plan Readiness:
+uses planning capital
+
+Broker Execution Readiness:
+uses actual broker buying power
+
+The two must never be conflated.
+
+============================================================
+SAFETY INVARIANTS
+============================================================
+
+Add permanent tests proving:
+
+1. User-defined planning capital works without broker.
+2. Planning capital persists.
+3. Planning capital can contribute to Trade Plan Readiness.
+4. Planning capital can NEVER make overallStatus PASS without broker.
+5. Planning capital can NEVER make executionAvailable true.
+6. Planning capital is never represented as broker buying power.
+7. Broker connection does not overwrite planning capital.
+8. Broker buying power does not overwrite planning capital.
+9. Broker Execution Readiness uses actual broker buying power.
+10. Order Preparation still requires execution-grade broker readiness.
+11. Broker Submission gates remain unchanged.
+12. Theoretical option values remain THEORETICAL_ONLY.
+13. Missing inputs produce explicit unavailable/not-confirmed states.
+14. No fabricated capital, price or risk values.
+
+============================================================
+UAT
+============================================================
+
+Design UAT that does NOT depend on a naturally qualified opportunity if
+an existing Trade Plan can be used.
+
+We currently have zero naturally qualified opportunities, so avoid
+unnecessarily blocking this sprint's UAT on Opportunity Intelligence.
+
+============================================================
+DOCUMENTATION
+============================================================
+
+Update:
+
+Doc 15
+Doc 17
+Doc 46
+
+and create/update the appropriate Sprint 2.8.7 implementation document.
+
+Mark BI-004 complete only after implementation + tests.
+
+Also correct Doc 53 status if necessary:
+
+Theoretical Options:
+IMPLEMENTATION / AUTOMATED VALIDATION PASS
+PRODUCTION VISUAL UAT PENDING NEXT NATURALLY QUALIFIED OPPORTUNITY
+
+Do not call that visual UAT PASS unless it was actually performed.
+
+============================================================
+STOP BEFORE DEPLOY
+============================================================
+
+Implement and test locally.
+
+DO NOT push/deploy automatically.
+
+Return:
+
+1. Reuse audit
+2. Architecture chosen
+3. Files changed
+4. Data/persistence model
+5. Brokerless behavior
+6. Broker-connected behavior
+7. Dim-7 behavior
+8. Position/risk sizing behavior
+9. UI location
+10. Safety invariants
+11. Tests added
+12. Test results
+13. TypeScript/build results
+14. Documentation changes
+15. UAT procedure
+16. READY_FOR_DEPLOY / NOT_READY
+
+STOP BEFORE PUSH/DEPLOY.

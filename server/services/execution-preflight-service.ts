@@ -627,9 +627,27 @@ function buildBuyingPowerDimension(
   warnings: PreflightWarning[],
   brokerConnected: boolean
 ): ValidationDimension {
-  // ── Sprint 2.8.7A: Broker absent → NOT_CONFIRMED, not a plan blocker ──
+  // ── Sprint 2.8.7A/BI-004: Broker absent path ──
   if (!brokerConnected) {
-    return { status: "NOT_CONFIRMED", label: "Buying Power Availability", note: "Broker connection required for buying power verification." };
+    // Sprint 2.8.7 BI-004: PLANNING_MODE when user-defined planning capital present.
+    // SAFETY INVARIANTS:
+    //   - PLANNING_MODE never authorizes execution
+    //   - overallStatus never becomes PASS from this alone
+    //   - executionAvailable never becomes true from this
+    //   - source must be "USER_DEFINED_PLANNING_CAPITAL"
+    const pc = plan.planningSnapshot?.planningCapital as {
+      source?: string; capitalAmount?: number;
+      maxRiskPercent?: number; maxRiskDollars?: number;
+      maxAllocationPercent?: number; maxAllocationDollars?: number;
+    } | undefined;
+    if (pc && pc.source === "USER_DEFINED_PLANNING_CAPITAL" && typeof pc.capitalAmount === "number" && pc.capitalAmount > 0) {
+      return {
+        status: "PLANNING_MODE",
+        label: "Buying Power Availability",
+        note: `Using user-defined planning capital — $${pc.capitalAmount.toLocaleString("en-US")} (research only). Not broker buying power.`,
+      };
+    }
+    return { status: "NOT_CONFIRMED", label: "Buying Power Availability", note: "Broker connection required for buying power verification. Add planning capital for a research-only estimate." };
   }
 
   if (!bp || !bp.available) {

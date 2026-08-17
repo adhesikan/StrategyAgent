@@ -1,5 +1,37 @@
 # Sprint Change Log
 
+## Doc 54 — Independent Options Market Data Research (2026-08-17)
+**Status:** RESEARCH COMPLETE — Licensing confirmation required before implementation
+
+**Scope:** Architecture decision research. No application code changed.
+
+**Deliverables (all 20 items):**
+1. Audit C compatibility confirmed — existing types and interfaces reuse verbatim
+2. Twelve Data options capability: ALL fields UNCLEAR_REQUIRES_VENDOR_CONFIRMATION (current integration is OHLCV-only)
+3. Twelve Data licensing: UNCLEAR — options data may be governed by OPRA (different from equity license)
+4. MarketData.app capability: ALL required fields CONFIRMED (expirations, chain, OCC symbols, bid/ask, last, volume, OI, IV, Greeks)
+5. MarketData.app licensing: Self-service plans prohibit redistribution; Commercial Use Addendum required
+6. Other providers: Polygon.io (CONFIRMED, SaaS-ready); ThetaData (not suitable for SaaS V1 — Terminal required, retail plans prohibit redistribution); Intrinio (viable at scale)
+7. Feature comparison table
+8. Licensing comparison including OPRA analysis
+9. Real-time vs delayed: **RECOMMEND 15-MINUTE DELAYED** for research; execution uses broker data
+10. Cost model: MarketData.app commercial pricing UNKNOWN; Polygon.io ~$29-199+/mo; OPRA overlay TBD
+11. Provider-neutral architecture: Audit C §11 interface reused verbatim; `IndependentOptionsProvider` + adapter pattern
+12. Existing code reuse map: all filtering, analytics, risk scenarios, and strategy matching unchanged
+13. Contract Research integration: remove 409 NO_BROKER; wire Level 1 provider; broker enhances but doesn't replace
+14. Market-vs-model integration: `OptionsResearchValue.market` slot populated from provider; `derivedComparison` when both present
+15. Caching: 5-min server TTL during market hours; OI = delayedByDesign
+16. Primary provider: **B. MARKETDATA_APP** — full API confirmed, Commercial Use Addendum pathway exists
+17. Backup provider: **Polygon.io** — established SaaS redistribution, strong OPRA engagement
+18. Vendor questions: complete email scripts for MarketData.app and Twelve Data
+19. Risks: OPRA fee scaling, commercial term negotiation, ThetaData Terminal incompatibility
+20. Next sprint: **Sprint 2.8.7D** — after Commercial Use Addendum signed
+
+**File:** `docs/operations/54-independent-options-market-data-research.md`  
+**App code changed:** NO
+
+---
+
 ## Sprint 2.8.7C — UAT Mounting Fix (2026-08-17)
 **Status:** COMPLETE
 

@@ -42,6 +42,7 @@
 | [51](51-sprint-2.8.7a-brokerless-readiness.md) | Sprint 2.8.7A — Brokerless Trade Plan Readiness | Two-layer preflight split, TPR/BER model, safety invariants, UAT criteria |
 | [52](52-sprint-2.8.7b-brokerless-equity-market-data.md) | Sprint 2.8.7B — Broker-Independent Equity Market Data | PlanningQuoteData, planning-quote adapter, enriched PLANNING_MODE dim, 34 tests |
 | [53](53-sprint-2.8.7c-theoretical-options.md) | Sprint 2.8.7C — Theoretical Options Research | BSM engine, HV10/20/30/60/90, hypothetical strike grid, execution safety invariants, 85 tests |
+| [54](54-independent-options-market-data-research.md) | Independent Options Market Data — Provider Research | Audit C compatibility, Twelve Data / MarketData.app / Polygon / ThetaData evaluation, licensing, OPRA, cost model, architecture, vendor questions |
 | [manifest](system-manifest.yaml) | System Manifest | Machine-readable service/job/flag catalog |
 
 ---

@@ -1,0 +1,514 @@
+VCP TRADER AI — INDEPENDENT OPTIONS MARKET DATA
+PROVIDER & LICENSING DECISION
+
+THIS IS A RESEARCH / ARCHITECTURE DECISION ONLY.
+
+DO NOT CHANGE APPLICATION CODE.
+DO NOT ADD AN API PROVIDER.
+DO NOT PURCHASE A SERVICE.
+DO NOT CHANGE EXECUTION LOGIC.
+
+============================================================
+CONTEXT
+============================================================
+
+Completed:
+
+Sprint 2.8.7A
+Broker-independent Trade Plan Readiness
+
+Sprint 2.8.7B
+Broker-independent equity planning market data using Twelve Data
+
+Sprint 2.8.7C
+UNDERLYING_ONLY_THEORETICAL_MODE:
+- HV10/HV20/HV30/HV60/HV90
+- Black-Scholes-Merton theoretical values
+- modeled Greeks
+- hypothetical strike/DTE grids
+- strict THEORETICAL_ONLY execution separation
+
+Next objective:
+
+Add ACTUAL OBSERVED OPTIONS MARKET DATA without requiring a broker connection.
+
+This must complement theoretical research, not replace it.
+
+============================================================
+1. AUDIT C FIRST
+============================================================
+
+Read the completed Audit C / Amendment C1 documentation before proposing
+anything.
+
+Identify the previously approved provider-neutral architecture and reuse it.
+
+Do not redesign the theoretical-options architecture.
+
+============================================================
+2. REQUIRED OBSERVED OPTIONS DATA
+============================================================
+
+For V1 we need, ideally:
+
+REQUIRED:
+- underlying symbol
+- OCC contract symbol
+- call/put
+- actual listed expiration
+- strike
+- bid
+- ask
+- last if available
+- timestamp/as-of
+- data delay/freshness
+- source/provider
+
+HIGH VALUE:
+- volume
+- open interest
+- implied volatility
+
+OPTIONAL IF WE CAN DERIVE OURSELVES:
+- delta
+- gamma
+- theta
+- vega
+- rho
+
+We already have our own Black-Scholes implementation.
+
+Therefore provider-supplied Greeks are NOT mandatory if reliable market
+premium + IV inputs allow us to derive research Greeks safely.
+
+============================================================
+3. EVALUATE TWELVE DATA
+============================================================
+
+Inspect:
+
+- existing Twelve Data integration
+- current account/plan assumptions
+- public Twelve Data documentation available to the project
+
+Determine whether Twelve Data currently provides U.S. listed options data
+suitable for:
+
+- expirations
+- option chains
+- actual OCC contracts
+- bid/ask
+- last
+- volume
+- open interest
+- implied volatility
+- Greeks
+
+For every field classify:
+
+CONFIRMED
+NOT_AVAILABLE
+UNCLEAR_REQUIRES_VENDOR_CONFIRMATION
+
+Do not infer availability merely because Twelve Data supports "derivatives."
+
+============================================================
+4. TWELVE DATA LICENSING
+============================================================
+
+Determine separately:
+
+A. API technical availability
+
+B. internal commercial use
+
+C. display to authenticated VCP Trader AI customers
+
+D. redistribution rights
+
+E. delayed options-data rights
+
+F. real-time options-data rights
+
+G. exchange/OPRA requirements
+
+H. whether user-level exchange entitlement is required
+
+Do NOT assume our existing Twelve Data subscription permits options data
+display to customers.
+
+Produce exact questions we must send Twelve Data sales/support.
+
+============================================================
+5. EVALUATE MARKETDATA.APP
+============================================================
+
+Evaluate MarketData.app as an independent options provider.
+
+Confirm current support for:
+
+- expirations
+- chains
+- OCC symbols
+- bid/ask
+- last
+- volume
+- open interest
+- implied volatility
+- Greeks
+- delayed data
+- real-time data
+- historical chains
+
+Evaluate API economics.
+
+Important:
+Distinguish self-service/internal plans from customer-facing commercial
+redistribution.
+
+Determine what commercial agreement would be required for VCP Trader AI.
+
+Determine OPRA implications for:
+
+- delayed display
+- real-time display
+- backend/non-display calculations
+
+============================================================
+6. EVALUATE 2–3 ADDITIONAL PROVIDERS
+============================================================
+
+Evaluate other realistic providers only if they materially fit our architecture.
+
+Examples may include:
+
+Polygon/Massive
+Intrinio
+ThetaData
+or another suitable provider.
+
+Do not produce a giant vendor list.
+
+We want a shortlist.
+
+For each evaluate:
+
+DATA:
+- chain
+- expirations
+- bid/ask
+- volume
+- OI
+- IV
+- Greeks
+- timestamps
+- delayed vs real-time
+
+PRODUCT:
+- API quality
+- filtering
+- rate limits
+- historical options
+- reliability
+
+COMMERCIAL:
+- approximate API cost
+- redistribution/display rights
+- OPRA requirements
+- startup suitability
+
+============================================================
+7. REAL-TIME VS DELAYED DECISION
+============================================================
+
+Explicitly analyze whether VCP Trader AI actually needs real-time independent
+options data for RESEARCH.
+
+Remember:
+
+Direct execution already uses broker execution-grade data.
+
+Therefore consider this architecture:
+
+RESEARCH:
+15-minute delayed observed options market data
+
+EXECUTION:
+broker live execution-grade options data
+
+THEORETICAL:
+our existing HV/Black-Scholes engine
+
+Analyze whether this significantly reduces licensing/OPRA cost while providing
+enough value for research users.
+
+============================================================
+8. TARGET ARCHITECTURE
+============================================================
+
+Evaluate this hierarchy:
+
+OPTIONS RESEARCH
+
+Level 1:
+Independent observed options provider
+→ OPTION_MARKET_OBSERVED
+
+Level 2:
+UNDERLYING_ONLY_THEORETICAL_MODE
+→ THEORETICAL_ONLY
+
+Level 3:
+Broker connected
+→ execution-grade enrichment
+
+Execution must remain:
+
+BROKER EXECUTION DATA ONLY
+
+Do not allow an independent research provider to silently become an
+execution provider.
+
+============================================================
+9. NORMALIZED CONTRACT MODEL
+============================================================
+
+Review the existing:
+
+NormalizedOptionContract
+
+and Audit C provider-neutral model.
+
+Determine whether observed independent-provider data can map cleanly into
+the existing research model.
+
+If modifications are needed, propose additive changes.
+
+Do NOT create another contract model unless technically unavoidable.
+
+============================================================
+10. MARKET VS MODEL COMPARISON
+============================================================
+
+The existing 2.8.7C architecture preserves:
+
+OptionsResearchValue {
+  theoretical
+  market
+  derivedComparison
+}
+
+Determine how observed market data would populate:
+
+market:
+- bid
+- ask
+- midpoint
+- volume
+- openInterest
+- impliedVolatility
+- market/provider Greeks if available
+
+Then allow:
+
+derivedComparison:
+- theoretical vs market difference
+- IV vs HV spread
+
+Do NOT generate recommendation-oriented conclusions.
+
+============================================================
+11. CONTRACT RESEARCH
+============================================================
+
+Determine how the existing ContractResearchPanel and LiveContractResolver
+can consume independent observed options data.
+
+Desired brokerless flow:
+
+Theoretical Options Research
++
+Observed Options Market Research
++
+Contract Research
+
+WITHOUT broker.
+
+Broker connection then adds:
+
+account-aware execution validation
++
+live execution quotes
++
+order preparation/submission
+
+============================================================
+12. COST MODEL
+============================================================
+
+Create approximate costs for:
+
+100 users
+500 users
+1,000 users
+5,000 users
+
+Assume reasonable research usage and caching.
+
+Compare:
+
+A. delayed research data
+B. real-time research data
+
+Include known/likely:
+
+- API subscription
+- exchange fees
+- OPRA implications
+- redistribution licensing
+- non-display licensing where applicable
+
+Clearly mark unknown/vendor-quote costs as UNKNOWN.
+
+Do not fabricate pricing.
+
+============================================================
+13. CACHING STRATEGY
+============================================================
+
+Evaluate whether observed options research can use:
+
+symbol + expiration cached snapshots
+
+for a short period.
+
+Goal:
+
+avoid one full-chain provider request per user.
+
+Analyze:
+
+- 1 minute
+- 5 minute
+- 15 minute
+
+cache strategies depending on data entitlement/delay.
+
+Do not implement yet.
+
+============================================================
+14. PROVIDER ABSTRACTION
+============================================================
+
+Propose/reuse an interface conceptually similar to:
+
+OptionsMarketDataProvider
+
+getExpirations(symbol)
+
+getChain(symbol, expiration, filters?)
+
+getContract(contractSymbol)
+
+getProviderMetadata()
+
+Capabilities should declare:
+
+supportsRealtime
+supportsDelayed
+supportsGreeks
+supportsIV
+supportsOpenInterest
+supportsVolume
+supportsHistorical
+dataDelay
+licenseMode
+
+Do not implement unless already present.
+
+============================================================
+15. PROVIDER FAILURE BEHAVIOR
+============================================================
+
+Design graceful fallback:
+
+Observed provider available
+→ show observed + theoretical
+
+Observed provider unavailable
+→ theoretical research remains available
+
+Broker unavailable
+→ research remains available
+
+Everything unavailable
+→ explicit unavailable state
+
+Never fabricate market data.
+
+============================================================
+16. FINAL DECISION
+============================================================
+
+Return one recommendation:
+
+A. TWELVE_DATA
+B. MARKETDATA_APP
+C. OTHER_PROVIDER
+D. MULTI_PROVIDER
+E. DEFER_OBSERVED_OPTIONS_DATA
+
+Give:
+
+PRIMARY PROVIDER
+BACKUP/FUTURE PROVIDER
+
+and explain why.
+
+============================================================
+17. REQUIRED VENDOR QUESTIONS
+============================================================
+
+Produce a concise email/question list for the recommended provider covering:
+
+- commercial customer-facing application
+- authenticated end-user display
+- delayed options data
+- real-time options data
+- OPRA requirements
+- redistribution rights
+- non-display calculations
+- expected user count
+- caching
+- derived analytics
+- storage/history
+- pricing
+
+============================================================
+18. DELIVERABLE
+============================================================
+
+Return:
+
+1. Audit C compatibility
+2. Twelve Data technical capability
+3. Twelve Data licensing assessment
+4. MarketData.app capability
+5. MarketData.app licensing assessment
+6. Other providers considered
+7. Feature comparison table
+8. Licensing comparison
+9. Real-time vs delayed recommendation
+10. Cost comparison
+11. Provider-neutral architecture
+12. Existing code reuse map
+13. Contract Research integration approach
+14. Market-vs-model integration
+15. Caching recommendation
+16. Recommended primary provider
+17. Backup provider
+18. Vendor questions/email
+19. Risks
+20. Recommended next implementation sprint
+
+DO NOT CHANGE CODE.

@@ -1,0 +1,339 @@
+OPPORTUNITY INTELLIGENCE — ZERO QUALIFICATION FUNNEL AUDIT
+
+AUDIT ONLY. DO NOT CHANGE QUALIFICATION THRESHOLDS OR APPLICATION BEHAVIOR.
+
+Production continues to show:
+
+- Opportunity Engine successfully running
+- market data available
+- 0 ranked qualified opportunities
+- watchlist candidates exist
+- today AAPL and TSLA appear in Top Watchlist
+- TSLA entered ranking at approximately score 48
+- market is open
+- dashboard market tone currently Defensive
+- scanner/regime indicator shows strong_bull
+- prior production cycle also produced 0 qualified candidates
+
+We previously classified the first occurrence as HEALTHY_ZERO_OPPORTUNITIES.
+
+Because zero qualified opportunities has now persisted across multiple production
+cycles/trading sessions, perform a deeper funnel audit.
+
+============================================================
+1. TRACE THE COMPLETE QUALIFICATION FUNNEL
+============================================================
+
+Trace:
+
+Universe
+→ symbol eligibility
+→ market data availability
+→ MCP rank_market_trade_candidates
+→ pre-confluence exclusions
+→ rejectionSummary
+→ watchCandidates
+→ candidates
+→ topGrowth / topIncome
+→ ranking score
+→ dashboard
+
+Document EVERY gate that can prevent a symbol from reaching candidates[].
+
+For each gate provide:
+
+- condition
+- threshold
+- source file/function
+- input data required
+- whether failure produces:
+    exclusion
+    rejection
+    watchlist
+    candidate
+- whether the threshold is configurable or hardcoded
+
+DO NOT modify anything.
+
+============================================================
+2. GET PRODUCTION FUNNEL COUNTS
+============================================================
+
+Use available production logs/snapshot diagnostics.
+
+For the latest completed production scan determine:
+
+Universe count
+Eligible count
+Market-data-complete count
+MCP reviewed count
+Excluded count
+Rejected count
+Watch candidate count
+Qualified candidate count
+
+The counts should reconcile.
+
+If production DB access is unavailable, add TEMPORARY READ-ONLY diagnostic
+logging/code only if necessary and STOP before deploy.
+
+Do not infer counts when they can be measured.
+
+============================================================
+3. SYMBOL-LEVEL DISPOSITION
+============================================================
+
+For representative symbols:
+
+AAPL
+TSLA
+NVDA
+AMD
+MU
+META
+MSFT
+AVGO
+
+determine their exact latest disposition:
+
+QUALIFIED
+WATCH
+REJECTED
+EXCLUDED
+DATA_INCOMPLETE
+NOT_REVIEWED
+
+For every non-qualified symbol report the exact reason(s).
+
+For AAPL and TSLA specifically identify:
+
+- technical score
+- institutional score
+- fundamental score
+- risk score
+- regime score
+- composite score
+- missing confirmations
+- exact condition preventing promotion from watchCandidates → candidates
+
+Do not describe these merely as "weak signals."
+
+Identify the actual failed predicates.
+
+============================================================
+4. WATCH → CANDIDATE PROMOTION LOGIC
+============================================================
+
+Locate the exact MCP logic controlling:
+
+watchCandidates[]
+versus
+candidates[]
+
+Answer:
+
+What EXACTLY must AAPL or TSLA satisfy to move into candidates[]?
+
+Determine whether qualification depends on:
+
+- VCP detection
+- contraction depth
+- contraction count
+- pivot proximity
+- breakout
+- volume confirmation
+- trend compatibility
+- relative strength
+- liquidity
+- earnings proximity
+- volatility
+- risk/reward
+- regime compatibility
+- fundamental/institutional conditions
+- minimum score
+- other predicates
+
+Separate HARD GATES from ranking weights.
+
+============================================================
+5. IMPORTANT — CHECK FOR DOUBLE GATING
+============================================================
+
+Determine whether candidates are being filtered twice:
+
+MCP qualification
+AND
+application ranking qualification.
+
+For example:
+
+MCP:
+symbol must pass strict VCP/technical qualification
+
+THEN application:
+Technical × 40%
+Institutional × 20%
+Fundamental × 15%
+Risk × 15%
+Regime × 10%
+
+Determine whether the architecture unintentionally requires both a highly
+restrictive MCP setup AND another high composite threshold.
+
+Report whether ranking is:
+
+A) ranking already-qualified candidates
+
+or
+
+B) acting as another qualification gate.
+
+Do not change it yet.
+
+============================================================
+6. REGIME CONSISTENCY
+============================================================
+
+Today's dashboard shows approximately:
+
+Scanner: strong_bull
+Market tone: Defensive
+Market regime: Trending
+SPY negative
+QQQ significantly negative
+IWM negative
+
+Determine whether different subsystems are using different regime definitions.
+
+Trace:
+
+scanner regime
+dashboard market regime
+opportunity ranking regime score
+MCP regime input
+
+Answer whether conflicting regime classifications can suppress candidates.
+
+Do NOT force them to agree unless they are actually intended to represent the
+same concept.
+
+============================================================
+7. DATA COMPLETENESS
+============================================================
+
+Previous production logs showed:
+
+opportunity_ranking institutional fetch failed
+Ranking will proceed without institutional data.
+
+Investigate this carefully.
+
+Determine:
+
+- why institutional data fetch is failing
+- whether Institutional = missing, zero, neutral, or excluded from weighting
+- whether missing institutional data reduces composite score
+- whether this can prevent otherwise valid opportunities from qualifying
+- whether Fundamental or Risk data have similar fallback behavior
+
+This is particularly important because Institutional carries 20% weight.
+
+Do not silently treat missing data as bearish/zero unless that is explicitly
+the intended methodology.
+
+============================================================
+8. HISTORICAL ZERO RATE
+============================================================
+
+Using persisted opportunity snapshots if available, inspect recent scans.
+
+Report for at least the most recent 10 completed scans:
+
+timestamp
+universe reviewed
+qualified count
+watch count
+rejected/excluded count
+top candidate score
+market regime
+
+Calculate:
+
+% scans with zero qualified opportunities.
+
+We need to distinguish:
+
+NORMAL SELECTIVITY
+
+from
+
+SYSTEMATIC OVER-FILTERING.
+
+============================================================
+9. SANITY TEST WITH KNOWN HISTORICAL SETUPS
+============================================================
+
+Without modifying production criteria, run the current qualification logic
+against several historical periods/symbols where strong technical setups are
+known to have existed in stored data.
+
+Purpose:
+
+Determine whether the engine CAN produce candidates[] under its current rules.
+
+This is NOT backtest optimization.
+
+We only need to establish:
+
+current algorithm → candidate generation is reachable.
+
+If no historical sample can qualify, flag that as a major methodological or
+implementation concern.
+
+============================================================
+10. DO NOT OPTIMIZE FOR DASHBOARD POPULATION
+============================================================
+
+A zero-opportunity day is acceptable.
+
+Do NOT:
+
+- lower thresholds
+- fabricate opportunities
+- automatically promote watch candidates
+- weaken risk controls
+- change VCP definitions
+- change ranking weights
+- bypass MCP
+- create fallback recommendations
+
+The purpose is to determine whether zero is TRUE SELECTIVITY or ACCIDENTAL
+OVER-FILTERING.
+
+============================================================
+RETURN AUDIT REPORT
+============================================================
+
+Return:
+
+1. Complete funnel architecture
+2. Every qualification gate and threshold
+3. Latest production funnel counts
+4. AAPL exact disposition/reasons
+5. TSLA exact disposition/reasons
+6. NVDA/AMD/MU/META/MSFT/AVGO dispositions
+7. Watch → candidate promotion rules
+8. Hard gates vs scoring weights
+9. Double-gating assessment
+10. Regime consistency assessment
+11. Institutional-data failure impact
+12. Last 10 scan qualification history
+13. Historical reachability test
+14. HEALTHY_SELECTIVITY / OVER_FILTERING / DATA_QUALITY_PROBLEM /
+    LOGIC_DEFECT / INSUFFICIENT_EVIDENCE classification
+15. Recommended action
+
+DO NOT IMPLEMENT CHANGES.
+DO NOT ALTER THRESHOLDS.
+DO NOT DEPLOY.
+STOP AFTER AUDIT.

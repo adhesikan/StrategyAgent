@@ -52,6 +52,13 @@ export interface ReferenceSnapshot {
   freshnessStatus: FreshnessStatus;
   /** Trade date of the most recent stored bar (YYYY-MM-DD), or null. */
   latestBarDate: string | null;
+  /**
+   * How the bars were obtained.
+   *   "stored"           — from PostgreSQL (no provider request)
+   *   "external_refresh" — fetched live from Twelve Data and persisted
+   *   "stored_stale"     — stored bars exist but are stale; refresh unavailable/failed
+   */
+  sourceType: "stored" | "external_refresh" | "stored_stale" | "unavailable";
 }
 
 async function isAllowed(userId: string, feature: string): Promise<boolean> {
@@ -116,11 +123,13 @@ export async function getReferenceSnapshot(
     ]);
   }
   let bars: NormalizedDailyBar[] = [];
+  let barSourceType: ReferenceSnapshot["sourceType"] = "unavailable";
   try {
     const result = await getHistoricalBars({
       symbol, outputSize: opts.barLimit ?? 60, purpose: "user", caller: "reference_snapshot",
     });
     bars = result.bars;
+    barSourceType = result.sourceType as ReferenceSnapshot["sourceType"];
   } catch (err: any) {
     console.warn(`[ReferenceSnapshot] stored bars unavailable for ${symbol}:`, err?.message ?? err);
   }
@@ -140,6 +149,7 @@ export async function getReferenceSnapshot(
     prevClose: realtime?.previousClose ?? (realtime ? lastBar?.close ?? null : prevBar?.close ?? null),
     freshnessStatus,
     latestBarDate,
+    sourceType: realtime ? "stored" : barSourceType,
   };
 }
 
@@ -147,11 +157,19 @@ export async function getReferenceSnapshot(
  * Bulk stored-bars snapshots for multi-symbol scans (Radar / Best Picks).
  * NEVER touches the real-time /quote endpoint — zero provider credits.
  * One license-gate check for the whole batch; empty map when denied.
+ *
+ * `allowExternalRefresh` (default false):
+ *   When true, stale or missing symbols are refreshed from Twelve Data via
+ *   getHistoricalBars Phase 3. The provider's inFlight deduplication collapses
+ *   concurrent requests for the same symbol to one network call, and
+ *   persistValidatedBars ensures subsequent callers read fresh stored bars.
+ *   Keep false for large scans (100+ symbols) to avoid credit exhaustion.
+ *   Safe to set true for small fixed-symbol widgets (≤10 symbols).
  */
 export async function getReferenceSnapshotsBulk(
   userId: string,
   symbols: string[],
-  opts: { feature?: string; barLimit?: number } = {},
+  opts: { feature?: string; barLimit?: number; allowExternalRefresh?: boolean } = {},
 ): Promise<Map<string, ReferenceSnapshot>> {
   const out = new Map<string, ReferenceSnapshot>();
   if (symbols.length === 0) return out;
@@ -165,18 +183,28 @@ export async function getReferenceSnapshotsBulk(
       while (queue.length > 0) {
         const symbol = queue.shift()!;
         try {
+          const allowRefresh = opts.allowExternalRefresh ?? false;
           const result = await getHistoricalBars({
-            symbol, outputSize: limit, purpose: "scan", caller: "reference_snapshot_bulk",
-            allowExternalRefresh: false,
-          }).catch(() => ({ bars: [] as NormalizedDailyBar[], freshnessStatus: "unavailable" as FreshnessStatus, latestBarDate: null as string | null }));
+            symbol,
+            outputSize: limit,
+            purpose: "scan",
+            caller: "reference_snapshot_bulk",
+            allowExternalRefresh: allowRefresh,
+          }).catch(() => ({
+            bars: [] as NormalizedDailyBar[],
+            freshnessStatus: "unavailable" as FreshnessStatus,
+            latestBarDate: null as string | null,
+            sourceType: "unavailable" as ReferenceSnapshot["sourceType"],
+          }));
           const { bars } = result;
           if (bars.length === 0) continue;
           const lastBar = bars[bars.length - 1];
           const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
           const latestBarDate: string | null = result.latestBarDate ?? lastBar.tradeDate;
-          // Propagate freshnessStatus from getHistoricalBars so callers can detect stale data.
           const freshnessStatus: FreshnessStatus =
-            (result as any).freshnessStatus ?? checkFreshness(latestBarDate, "scan");
+            result.freshnessStatus ?? checkFreshness(latestBarDate, "scan");
+          const sourceType: ReferenceSnapshot["sourceType"] =
+            (result.sourceType as ReferenceSnapshot["sourceType"]) ?? "stored";
           out.set(symbol, {
             symbol,
             realtime: null,
@@ -186,6 +214,7 @@ export async function getReferenceSnapshotsBulk(
             prevClose: prevBar?.close ?? null,
             freshnessStatus,
             latestBarDate,
+            sourceType,
           });
         } catch (err: any) {
           console.warn(`[ReferenceSnapshot] bulk bars failed for ${symbol}:`, err?.message ?? err);

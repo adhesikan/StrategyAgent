@@ -1,0 +1,201 @@
+VCP TRADER AI — AI INFRA WATCH DATA REFRESH FOLLOW-UP
+
+The AI Infrastructure Watch price-integrity defect has been fixed and
+37 tests pass.
+
+DO NOT revert any part of that fix.
+
+Before deploying, address the remaining operational issue:
+
+The widget currently calls:
+
+getReferenceSnapshotsBulk(..., { allowExternalRefresh: false })
+
+Therefore stale/missing stored daily bars cannot self-heal and the
+production dashboard may display "—" indefinitely until another ingestion
+process refreshes market_daily_bars.
+
+OBJECTIVE
+
+Make AI Infrastructure Watch reliably obtain current canonical daily
+market data while preserving all stale-data safety behavior.
+
+============================================================
+1. AUDIT EXISTING REFRESH ARCHITECTURE FIRST
+============================================================
+
+Before changing code, inspect:
+
+- getHistoricalBars
+- getReferenceSnapshotsBulk
+- Twelve Data refresh paths
+- daily market data ingestion scheduler
+- cache/freshness policies
+- API credit/rate-limit protections
+- batch capabilities
+- market-open vs market-closed freshness semantics
+- any existing background refresh jobs
+
+Determine WHY AI Infrastructure Watch currently passes:
+
+allowExternalRefresh: false
+
+Was this intentionally protecting API credits/performance, or is it an
+unnecessary restriction?
+
+Do not simply flip the flag until this is understood.
+
+============================================================
+2. DESIRED DATA FLOW
+============================================================
+
+The desired semantic is:
+
+A. Stored daily bar is fresh
+   → use stored bar
+   → no external API request
+
+B. Stored daily bar is stale
+   → attempt canonical Twelve Data refresh
+   → persist refreshed bar
+   → return refreshed price if successful
+
+C. No stored data
+   → attempt canonical Twelve Data refresh
+   → persist
+   → return price if successful
+
+D. Refresh fails / rate limited / provider unavailable
+   → preserve existing safety behavior
+   → last = null
+   → freshness = stale/unavailable
+   → UI displays "—"
+   → NEVER display stale value as current
+
+============================================================
+3. DO NOT CREATE A NEW MARKET-DATA PIPELINE
+============================================================
+
+Reuse the existing canonical:
+
+Twelve Data
+→ daily-market-data service
+→ market_daily_bars
+→ ReferenceSnapshot
+→ AI Infrastructure Watch
+
+No direct Twelve Data call from ai-infra-watch.ts.
+
+No duplicate quote client.
+
+No broker dependency.
+
+============================================================
+4. API USAGE / RATE LIMITING
+============================================================
+
+This widget currently contains 8 symbols.
+
+Do not create uncontrolled provider requests on every dashboard render.
+
+Reuse existing caching/deduplication/bulk mechanisms.
+
+Determine the appropriate refresh strategy.
+
+For example, the architecture may be:
+
+Dashboard request
+→ inspect stored freshness
+→ only stale/missing symbols require refresh
+→ deduplicate concurrent refresh requests
+→ persist successful results
+→ subsequent users consume stored fresh values
+
+Use the existing infrastructure where available.
+
+Do not invent a parallel cache.
+
+============================================================
+5. MARKET-CLOSED SEMANTICS
+============================================================
+
+It is currently after market close.
+
+Confirm that the freshness policy correctly understands trading dates.
+
+"Latest daily close" should mean the latest completed U.S. trading
+session, not necessarily today's calendar date.
+
+Weekends and market holidays must not make Friday's/latest trading
+session close appear stale simply because calendar time advanced.
+
+If the existing checkFreshness() already handles this correctly, reuse it.
+
+If not, report the issue before modifying broad shared freshness logic.
+
+============================================================
+6. OBSERVABILITY
+============================================================
+
+Add enough diagnostic logging to distinguish:
+
+STORED_FRESH
+REFRESH_SUCCESS
+REFRESH_FAILED
+STALE_FALLBACK_SUPPRESSED
+NO_DATA
+
+Do not log API keys or sensitive provider data.
+
+============================================================
+7. TESTS
+============================================================
+
+Preserve the existing 37 tests.
+
+Add tests proving:
+
+1. Fresh stored bar causes no provider refresh.
+2. Stale stored bar triggers refresh.
+3. Missing stored bar triggers refresh.
+4. Successful refresh returns new canonical close.
+5. Successful refresh persists/reuses data.
+6. Failed refresh returns null, never stale numeric price.
+7. Concurrent requests do not cause unnecessary duplicate refreshes
+   if existing infrastructure supports deduplication.
+8. One symbol refresh failure does not corrupt other symbols.
+9. Weekend/latest-trading-session freshness behaves correctly.
+10. Existing stale/unavailable UI contract remains intact.
+
+============================================================
+8. IMPORTANT SCOPE BOUNDARY
+============================================================
+
+Do NOT implement Market Watchlists yet.
+
+BI-MarketWatchlist remains backlog.
+
+Do NOT modify Opportunity Intelligence.
+
+Do NOT modify BI-004 / Task #161.
+
+This is completion of the existing dashboard price correctness defect.
+
+============================================================
+RETURN BEFORE DEPLOY
+============================================================
+
+Return:
+
+1. Why allowExternalRefresh was false
+2. Existing refresh architecture
+3. Chosen refresh behavior
+4. API/rate-limit implications
+5. Market-closed/weekend behavior
+6. Files changed
+7. Tests added
+8. Test results
+9. Expected production behavior for AMD/MU after deployment
+10. READY_FOR_DEPLOY / NOT_READY
+
+STOP BEFORE DEPLOY.

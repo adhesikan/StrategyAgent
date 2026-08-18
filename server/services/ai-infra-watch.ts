@@ -136,6 +136,42 @@ export interface AiInfraWatchUnavailable {
   status: "unavailable";
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Observability — structured JSON events distinguishing data-path states.
+//
+// States:
+//   STORED_FRESH           — stored bar was fresh; no provider request made
+//   REFRESH_SUCCESS        — stored bar was stale/missing; Twelve Data refresh
+//                            succeeded; result persisted for subsequent callers
+//   STALE_FALLBACK_SUPPRESSED — stored bar was stale; refresh attempted but
+//                            failed (or skipped by config); price suppressed (null)
+//   NO_DATA                — no stored bars and no refresh result available
+//
+// Never log API keys or provider credentials.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type AiInfraObsState =
+  | "STORED_FRESH"
+  | "REFRESH_SUCCESS"
+  | "STALE_FALLBACK_SUPPRESSED"
+  | "NO_DATA";
+
+function emitAiInfraEvent(
+  symbol: string,
+  state: AiInfraObsState,
+  asOf: string | null,
+): void {
+  process.stdout.write(
+    JSON.stringify({
+      event: "ai_infra_watch_symbol",
+      symbol,
+      state,
+      asOf,
+      ts: new Date().toISOString(),
+    }) + "\n",
+  );
+}
+
 /**
  * Build a fresh no-data ticker for a symbol when bars are unavailable.
  * Always uses `last: null` and `freshness: "unavailable"` — never fabricates.
@@ -165,11 +201,25 @@ export async function buildAiInfraWatch(
   userId: string,
 ): Promise<AiInfraWatchResult | AiInfraWatchUnavailable> {
   try {
-    // 1. Stored daily bars — zero credits, concurrent fetch
+    // 1. Stored daily bars — with external refresh enabled for this fixed 8-symbol widget.
+    //
+    //    Why allowExternalRefresh: true here:
+    //    The AI Infrastructure Watch has exactly 8 symbols. Unlike the Opportunity Engine
+    //    (100+ symbols, allowExternalRefresh: false to prevent request storms), 8 symbols
+    //    is small enough that selective refresh is safe.
+    //
+    //    Rate-limit safety:
+    //    - TwelveDataDailyProvider.inFlight Map deduplicates concurrent requests for the
+    //      same symbol, so 100 simultaneous dashboard renders trigger at most 1 API call
+    //      per stale symbol.
+    //    - persistValidatedBars stores the result, so all subsequent callers hit Phase 2
+    //      (stored fresh bars, zero credits) until the next staleness cycle.
+    //    - Credit manager enforces 7/min and 750/day safety caps atomically.
+    //    - Maximum credit cost per staleness event: 8 symbols × 1 credit = 8 credits.
     const snapshots = await getReferenceSnapshotsBulk(
       userId,
       [...AI_INFRA_SYMBOLS],
-      { feature: "ai-infra-watch", barLimit: 60 },
+      { feature: "ai-infra-watch", barLimit: 60, allowExternalRefresh: true },
     );
 
     if (snapshots.size === 0) {
@@ -204,11 +254,14 @@ export async function buildAiInfraWatch(
       }
 
       const freshness = snap.freshnessStatus;
+      const sourceType = snap.sourceType;
 
       // STALENESS GATE: never display a stale price as if it were current.
+      // With allowExternalRefresh: true, freshnessStatus === "stale" means
+      // the refresh was attempted but failed (or was disabled by env flags).
       if (freshness === "stale") {
-        // Technical score can still be computed from stored bars — useful for trend direction
-        // even when price staleness disqualifies the actual close value.
+        // sourceType === "stored_stale" confirms stale fallback was used
+        emitAiInfraEvent(sym, "STALE_FALLBACK_SUPPRESSED", snap.latestBarDate);
         const { trend, label: trendLabel } = deriveTrend(snap);
         const technicalScore = computeTechnicalScore(snap);
         return {
@@ -218,7 +271,7 @@ export async function buildAiInfraWatch(
           trendLabel,
           sentiment,
           technicalScore,
-          last: null,         // null — do not display stale price
+          last: null,         // null — never display stale price
           changePercent: null,
           asOf: snap.latestBarDate,
           freshness: "stale",
@@ -228,10 +281,16 @@ export async function buildAiInfraWatch(
 
       // UNAVAILABLE gate
       if (freshness === "unavailable") {
+        emitAiInfraEvent(sym, "NO_DATA", snap.latestBarDate);
         return buildUnavailableTicker(sym, sentiment, snap.latestBarDate, "unavailable");
       }
 
-      // FRESH: price is safe to display
+      // FRESH: price is safe to display.
+      // Distinguish stored-fresh from just-refreshed for observability.
+      const obsState: AiInfraObsState =
+        sourceType === "external_refresh" ? "REFRESH_SUCCESS" : "STORED_FRESH";
+      emitAiInfraEvent(sym, obsState, snap.latestBarDate);
+
       const { trend, label: trendLabel } = deriveTrend(snap);
       const technicalScore = computeTechnicalScore(snap);
       const last = snap.lastPrice;

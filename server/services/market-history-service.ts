@@ -34,7 +34,7 @@
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "../db";
 import { marketDataSymbols, marketDailyBars } from "@shared/schema";
-import { loadStoredBars, persistValidatedBars } from "./daily-market-data/ingestion";
+import { loadStoredBars, persistValidatedBars, isExpectedTradingDay } from "./daily-market-data/ingestion";
 import { validateBar } from "./daily-market-data/validation";
 import { TwelveDataDailyProvider } from "./daily-market-data/twelve-data-client";
 import { MarketDataProviderError, type NormalizedDailyBar } from "./daily-market-data/types";
@@ -251,8 +251,13 @@ function getETDateInfo(date: Date): {
  *       → return the most recent prior weekday date.
  *
  * The grace period absorbs provider ingestion lag after market close.
- * Market holidays are not tracked; callers rely on the refresh path to
- * discover a missing bar and fall through to the stale/unavailable state.
+ * Uses isExpectedTradingDay() from ingestion.ts (full NYSE algorithmic calendar:
+ * New Year, MLK, Presidents', Good Friday, Memorial, Juneteenth, Independence,
+ * Labor Day, Thanksgiving, Christmas — all with observed-date adjustment).
+ *
+ * On a market holiday, walks back to the prior actual trading session:
+ *   Labor Day Monday at 5 PM ET  → Friday is the expected session
+ *   Thanksgiving Thursday at 5 PM → Wednesday is the expected session
  */
 export function mostRecentExpectedTradingSession(
   refDate = new Date(),
@@ -268,17 +273,27 @@ export function mostRecentExpectedTradingSession(
   const graceCutoffMinutes = closeHour * 60 + graceMin;
   const isWeekday = et.weekday >= 1 && et.weekday <= 5;
 
-  // Today's bar is expected when today is a weekday and we're past the grace cutoff.
+  // Today's bar is expected when: weekday + past grace cutoff + confirmed trading day.
+  // Use noon-UTC ("T12:00:00Z") to probe isExpectedTradingDay without timezone
+  // ambiguity — noon UTC is always 7–8 AM ET, safely within the same calendar day.
   if (isWeekday && etMinuteOfDay >= graceCutoffMinutes) {
-    return et.dateStr;
+    const todayNoonUTC = new Date(et.dateStr + "T12:00:00Z");
+    if (isExpectedTradingDay(todayNoonUTC)) {
+      return et.dateStr;
+    }
+    // Holiday: fall through to walk-back below.
   }
 
-  // Not yet past the grace cutoff (or weekend) — walk back to the previous weekday.
+  // Walk back to the most recent actual trading session.
+  // 14-day window covers long holiday runs (Thanksgiving week, Christmas/New Year).
   const d = new Date(refDate);
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 14; i++) {
     d.setUTCDate(d.getUTCDate() - 1);
     const info = getETDateInfo(d);
-    if (info.weekday >= 1 && info.weekday <= 5) return info.dateStr;
+    if (info.weekday >= 1 && info.weekday <= 5) {
+      const dayNoonUTC = new Date(info.dateStr + "T12:00:00Z");
+      if (isExpectedTradingDay(dayNoonUTC)) return info.dateStr;
+    }
   }
   // Fallback — should never reach here for valid dates.
   return et.dateStr;

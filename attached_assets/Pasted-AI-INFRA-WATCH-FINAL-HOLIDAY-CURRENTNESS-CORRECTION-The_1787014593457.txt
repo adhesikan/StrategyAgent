@@ -1,0 +1,134 @@
+AI INFRA WATCH — FINAL HOLIDAY CURRENTNESS CORRECTION
+
+The Aug 14 → Aug 17 production regression is correctly fixed.
+
+Do NOT redesign the session-aware architecture.
+Do NOT modify SCAN_STALE_WEEKDAYS.
+Do NOT change API refresh behavior.
+
+There is one remaining correctness issue before deployment.
+
+CURRENT HOLIDAY TEST IS WRONG
+
+The report currently says:
+
+Labor Day Monday Sep 7 at 5 PM
+→ expected session = 2026-09-07
+→ no bar exists
+→ refresh fails
+→ last=null
+
+For a "Latest daily close" surface, that is incorrect.
+
+If Monday is a confirmed U.S. market holiday, Friday Sep 4 remains the latest
+completed trading session for the entire holiday Monday.
+
+Expected:
+
+Labor Day Monday Sep 7, 5 PM
+→ expectedLatestCompletedSession = Friday Sep 4
+→ Friday bar remains current
+→ no unnecessary provider refresh
+→ display Friday close as Latest daily close
+
+============================================================
+FIRST: AUDIT EXISTING MARKET CALENDAR SUPPORT
+============================================================
+
+Inspect the codebase for an existing:
+
+- NYSE/Nasdaq holiday calendar
+- trading-session calendar
+- market-hours service
+- market-open/closed utility
+- exchange calendar
+- holiday service
+
+REUSE IT if present.
+
+Do not create another calendar implementation if one already exists.
+
+============================================================
+IF HOLIDAY-AWARE SUPPORT EXISTS
+============================================================
+
+Update mostRecentExpectedTradingSession() so it resolves the most recent
+actual U.S. trading session, not merely the most recent weekday.
+
+Examples:
+
+Regular Monday after 4:30 PM ET
+→ Monday expected
+
+Saturday
+→ Friday expected
+
+Sunday
+→ Friday expected
+
+Market holiday Monday
+→ prior Friday expected
+
+Thanksgiving Thursday
+→ Wednesday expected
+
+Christmas observed holiday
+→ prior trading session expected
+
+============================================================
+IF NO HOLIDAY CALENDAR EXISTS
+============================================================
+
+STOP and report that limitation before introducing a large new dependency.
+
+Propose the smallest safe implementation.
+
+Do not pretend weekday-only logic is exchange-calendar aware.
+
+At minimum, document the limitation explicitly and determine whether deployment
+can safely proceed with holiday dates producing an unavailable state.
+
+Do not silently call holiday Monday a completed trading session.
+
+============================================================
+REGRESSION TESTS
+============================================================
+
+Preserve all existing 92 tests.
+
+Correct/add tests:
+
+1. Regular Monday after 4:30 PM + Friday stored bar
+   → Monday expected → refresh required
+
+2. Labor Day Monday after 4:30 PM + Friday stored bar
+   → Friday remains expected/current
+
+3. Thanksgiving Thursday after 4:30 PM
+   → Wednesday remains expected/current
+
+4. Weekend
+   → Friday remains expected/current
+
+5. First trading day after holiday after 4:30 PM
+   → that day's new bar expected
+
+6. Exact production case:
+   Aug 17 2026 after close + Aug 14 bar
+   → refresh required
+
+Do not alter the working Aug 17 production fix.
+
+============================================================
+RETURN
+============================================================
+
+1. Existing holiday-calendar capability found
+2. Exact holiday correction
+3. Files changed
+4. Tests added
+5. Aug 17 regression still passing
+6. Holiday regressions
+7. READY_FOR_DEPLOY / NOT_READY
+
+STOP BEFORE DEPLOY.

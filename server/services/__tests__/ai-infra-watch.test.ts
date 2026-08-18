@@ -1022,10 +1022,11 @@ describe("§AW-S4 — Weekend: Friday bar is the expected session (fresh)", () =
   });
 });
 
-describe("§AW-S5 — Market holiday (Monday holiday): policy and safe fallback", () => {
-  // Labor Day 2026 = Monday Sep 7. Market is closed.
-  // The policy is NOT holiday-aware; after grace on Sep 7 it expects a Sep 7 bar.
-  // The refresh will attempt Sep 7, find no bar, fall through to stale → "—".
+describe("§AW-S5 — Market holiday (Monday holiday): Friday stays current all day", () => {
+  // Labor Day 2026 = Monday Sep 7. Market is closed all day.
+  // mostRecentExpectedTradingSession() uses isExpectedTradingDay() from ingestion.ts,
+  // which includes the full NYSE calendar. After 4:30 PM ET on a holiday, the
+  // holiday is not a confirmed trading day → walk back to Friday Sep 4.
 
   it("Friday Sep 4 bar is fresh on Saturday Sep 5 (before holiday Monday)", () => {
     const saturday = etDate(2026, 9, 5, 10, 0);
@@ -1039,11 +1040,23 @@ describe("§AW-S5 — Market holiday (Monday holiday): policy and safe fallback"
     expect(checkSessionFreshness("2026-09-04", holidayMorning)).toBe("fresh");
   });
 
-  it("after 4:30 PM ET on holiday Monday, Sep 7 bar is expected (refresh will fail → stale → '—')", () => {
+  it("after 4:30 PM ET on holiday Monday, Friday Sep 4 REMAINS the expected session", () => {
+    // CORRECTION from prior wrong test: holiday Monday does NOT become the expected
+    // session after grace period. isExpectedTradingDay("2026-09-07") = false → walk
+    // back → Friday Sep 4 is still the latest completed trading session.
     const holidayEvening = etDate(2026, 9, 7, 17, 0);
-    expect(mostRecentExpectedTradingSession(holidayEvening)).toBe("2026-09-07");
-    // Friday bar is stale; refresh fails; last=null → "—" (correct safe behavior)
-    expect(checkSessionFreshness("2026-09-04", holidayEvening)).toBe("stale");
+    expect(mostRecentExpectedTradingSession(holidayEvening)).toBe("2026-09-04");
+    expect(checkSessionFreshness("2026-09-04", holidayEvening)).toBe("fresh");
+  });
+
+  it("Friday Sep 4 bar displayed correctly all of Labor Day (never '—')", () => {
+    // Throughout the entire Labor Day holiday — morning, afternoon, evening —
+    // the Friday Sep 4 close is the canonical latest completed trading session.
+    for (const hour of [8, 10, 12, 15, 17, 21]) {
+      const t = etDate(2026, 9, 7, hour, 0);
+      expect(mostRecentExpectedTradingSession(t)).toBe("2026-09-04");
+      expect(checkSessionFreshness("2026-09-04", t)).toBe("fresh");
+    }
   });
 });
 
@@ -1135,5 +1148,74 @@ describe("§AW-S8 — Failed post-close refresh: last=null, stale price suppress
     }
     const allFailed = Array(8).fill({ freshness: "stale" as const });
     expect(deriveBadge(allFailed)).toBe("Stale data");
+  });
+});
+
+describe("§AW-S9 — Thanksgiving Thursday: Wednesday remains the expected session", () => {
+  // Thanksgiving 2026 = Thursday Nov 26 (4th Thursday of November).
+  // usMarketHolidays(2026).has("2026-11-26") = true → full market closure.
+  // Wednesday Nov 25 is the last full trading day before Thanksgiving.
+  // Friday Nov 27 has an early close (1 PM ET) but is NOT a full holiday —
+  // isExpectedTradingDay("2026-11-27") = true (early-close days are still trading days).
+
+  it("Wednesday Nov 25 bar is fresh on Thanksgiving morning (Nov 26, 9 AM ET)", () => {
+    const thanksgivingMorning = etDate(2026, 11, 26, 9, 0, -5); // EST in November
+    expect(mostRecentExpectedTradingSession(thanksgivingMorning)).toBe("2026-11-25");
+    expect(checkSessionFreshness("2026-11-25", thanksgivingMorning)).toBe("fresh");
+  });
+
+  it("Wednesday Nov 25 bar is fresh all Thanksgiving afternoon (Nov 26, 5 PM ET)", () => {
+    // After 4:30 PM ET on Thanksgiving: isExpectedTradingDay("2026-11-26") = false
+    // → walk back → Wednesday Nov 25 is the most recent trading session
+    const thanksgivingEvening = etDate(2026, 11, 26, 17, 0, -5); // EST
+    expect(mostRecentExpectedTradingSession(thanksgivingEvening)).toBe("2026-11-25");
+    expect(checkSessionFreshness("2026-11-25", thanksgivingEvening)).toBe("fresh");
+  });
+
+  it("Wednesday Nov 25 bar is NOT stale at any hour on Thanksgiving", () => {
+    // Throughout all of Thanksgiving day, Wednesday is the expected session.
+    for (const hour of [0, 6, 9, 12, 16, 17, 20, 23]) {
+      const t = etDate(2026, 11, 26, hour, 0, -5);
+      expect(mostRecentExpectedTradingSession(t)).toBe("2026-11-25");
+      expect(checkSessionFreshness("2026-11-25", t)).toBe("fresh");
+    }
+  });
+});
+
+describe("§AW-S10 — First trading day after holiday: new bar becomes expected", () => {
+  // Tuesday Sep 8, 2026 = first trading day after Labor Day.
+  // Before 4:30 PM ET: Monday Sep 7 was the most recent WEEKDAY, but it was a
+  //   holiday → walk back → Friday Sep 4 is still the expected session.
+  // After 4:30 PM ET: Tuesday Sep 8 is a trading day → Sep 8 bar is expected.
+
+  it("before 4:30 PM ET Tuesday Sep 8, Friday Sep 4 is still the expected session", () => {
+    const tuesdayMorning = etDate(2026, 9, 8, 10, 0);
+    expect(mostRecentExpectedTradingSession(tuesdayMorning)).toBe("2026-09-04");
+    expect(checkSessionFreshness("2026-09-04", tuesdayMorning)).toBe("fresh");
+  });
+
+  it("after 4:30 PM ET Tuesday Sep 8, Sep 8 bar is the expected session", () => {
+    // First trading day after Labor Day completed: Sep 8 bar now expected.
+    const tuesdayEvening = etDate(2026, 9, 8, 18, 0);
+    expect(mostRecentExpectedTradingSession(tuesdayEvening)).toBe("2026-09-08");
+    // Sep 4 (Friday) bar is now stale — Sep 8 is the latest completed session
+    expect(checkSessionFreshness("2026-09-04", tuesdayEvening)).toBe("stale");
+    // Sep 8 bar (if present after refresh) would be fresh
+    expect(checkSessionFreshness("2026-09-08", tuesdayEvening)).toBe("fresh");
+  });
+
+  it("spec case 5: first trading day after holiday after 4:30 PM → that day's new bar expected", () => {
+    // Canonical spec requirement verified: Sep 8 at 6 PM ET → Sep 8 expected
+    const t = etDate(2026, 9, 8, 18, 0);
+    expect(mostRecentExpectedTradingSession(t)).toBe("2026-09-08");
+  });
+
+  it("spec case 6: Aug 17 2026 after close + Aug 14 bar → refresh required (production case)", () => {
+    // The original production bug: Aug 14 (Friday) bar shown as "fresh" on Aug 17
+    // (Monday) after market close. With session-aware logic, Aug 17 is expected.
+    const mondayAfterClose = etDate(2026, 8, 17, 23, 0);
+    expect(mostRecentExpectedTradingSession(mondayAfterClose)).toBe("2026-08-17");
+    expect(checkSessionFreshness("2026-08-14", mondayAfterClose)).toBe("stale");
+    // Confirms refresh is required — Aug 14 bar must not be shown as current
   });
 });

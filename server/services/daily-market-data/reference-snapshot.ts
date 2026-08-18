@@ -13,7 +13,13 @@
 // module returns null and never leaks data past the gate.
 
 import { canAccessTwelveDataBackedAnalysis } from "./access-control";
-import { getHistoricalBars, checkFreshness, type FreshnessStatus } from "../market-history-service";
+import {
+  getHistoricalBars,
+  checkFreshness,
+  checkSessionFreshness,
+  mostRecentExpectedTradingSession,
+  type FreshnessStatus,
+} from "../market-history-service";
 import { ema, rsi, atr } from "./indicators";
 import { getRealtimeQuoteForUser, type RealTimeQuote } from "./realtime-quote";
 import type { NormalizedDailyBar } from "./types";
@@ -165,17 +171,38 @@ export async function getReferenceSnapshot(
  *   persistValidatedBars ensures subsequent callers read fresh stored bars.
  *   Keep false for large scans (100+ symbols) to avoid credit exhaustion.
  *   Safe to set true for small fixed-symbol widgets (≤10 symbols).
+ *
+ * `sessionAware` (default false):
+ *   When true (and allowExternalRefresh is also true), passes the current
+ *   mostRecentExpectedTradingSession() date to getHistoricalBars as
+ *   expectedSessionDate. This ensures Phase 2 only fires when the stored bar
+ *   covers the latest completed U.S. trading session — not merely within
+ *   the weekday-distance tolerance. Use for widgets that must show the
+ *   canonical daily close (e.g. AI Infra Watch), never for broad scans.
  */
 export async function getReferenceSnapshotsBulk(
   userId: string,
   symbols: string[],
-  opts: { feature?: string; barLimit?: number; allowExternalRefresh?: boolean } = {},
+  opts: {
+    feature?: string;
+    barLimit?: number;
+    allowExternalRefresh?: boolean;
+    /** Use session-aware (ET market-close aware) freshness instead of weekday distance. */
+    sessionAware?: boolean;
+  } = {},
 ): Promise<Map<string, ReferenceSnapshot>> {
   const out = new Map<string, ReferenceSnapshot>();
   if (symbols.length === 0) return out;
   if (!(await isAllowed(userId, opts.feature ?? "reference_snapshot_bulk"))) return out;
 
   const limit = opts.barLimit ?? 60;
+  const allowRefresh = opts.allowExternalRefresh ?? false;
+  // Compute the expected session date ONCE for the whole batch when sessionAware.
+  // mostRecentExpectedTradingSession() is a pure function of the current time —
+  // safe to call once and reuse across all symbols in the batch.
+  const expectedSessionDate: string | undefined =
+    opts.sessionAware && allowRefresh ? mostRecentExpectedTradingSession() : undefined;
+
   const CONCURRENCY = 8;
   const queue = symbols.map((s) => s.trim().toUpperCase());
   await Promise.all(
@@ -183,13 +210,13 @@ export async function getReferenceSnapshotsBulk(
       while (queue.length > 0) {
         const symbol = queue.shift()!;
         try {
-          const allowRefresh = opts.allowExternalRefresh ?? false;
           const result = await getHistoricalBars({
             symbol,
             outputSize: limit,
             purpose: "scan",
             caller: "reference_snapshot_bulk",
             allowExternalRefresh: allowRefresh,
+            expectedSessionDate,
           }).catch(() => ({
             bars: [] as NormalizedDailyBar[],
             freshnessStatus: "unavailable" as FreshnessStatus,
@@ -201,8 +228,14 @@ export async function getReferenceSnapshotsBulk(
           const lastBar = bars[bars.length - 1];
           const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
           const latestBarDate: string | null = result.latestBarDate ?? lastBar.tradeDate;
-          const freshnessStatus: FreshnessStatus =
-            result.freshnessStatus ?? checkFreshness(latestBarDate, "scan");
+
+          // Session-aware mode: use checkSessionFreshness for defense-in-depth.
+          // This ensures that even if getHistoricalBars somehow returned a Phase 2
+          // result that doesn't meet the session requirement, we still gate it.
+          const freshnessStatus: FreshnessStatus = opts.sessionAware
+            ? checkSessionFreshness(latestBarDate)
+            : (result.freshnessStatus ?? checkFreshness(latestBarDate, "scan"));
+
           const sourceType: ReferenceSnapshot["sourceType"] =
             (result.sourceType as ReferenceSnapshot["sourceType"]) ?? "stored";
           out.set(symbol, {

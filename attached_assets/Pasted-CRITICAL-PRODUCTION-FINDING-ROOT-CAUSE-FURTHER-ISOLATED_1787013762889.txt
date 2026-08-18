@@ -1,0 +1,91 @@
+CRITICAL PRODUCTION FINDING — ROOT CAUSE FURTHER ISOLATED
+
+We inspected the live GET /dashboard response.
+
+The AI Infrastructure Watch payload itself contains:
+
+AMD:
+  last: 514.39
+  asOf: "2026-08-14"
+  freshness: "fresh"
+  source: "stored_daily_bar"
+
+MU:
+  last: 971.66
+  asOf: "2026-08-14"
+  freshness: "fresh"
+  source: "stored_daily_bar"
+
+Production date is 2026-08-17 and the regular U.S. trading session has
+already completed.
+
+Therefore the client is NOT incorrectly rendering stale/null data.
+
+The backend freshness classification itself is wrong.
+
+The previously implemented invariant:
+
+freshness !== "fresh" → last = null
+
+is functioning as designed, but is not activating because
+checkFreshness()/the daily-bar freshness policy incorrectly classifies an
+Aug 14 bar as fresh after the Aug 17 market session has completed.
+
+Investigate specifically:
+
+1. checkFreshness(latestBarDate, "user")
+2. daily-bar expected-trading-date calculation
+3. weekend handling
+4. market-open vs market-closed cutoffs
+5. timezone used for market-session determination
+6. whether the policy allows previous-session close during current session
+7. whether that grace period incorrectly continues after market close
+8. whether Aug 17 ingestion has run
+9. why market_daily_bars still ends at Aug 14 for AMD/MU
+
+DESIRED SEMANTICS:
+
+Before Monday market opens:
+Friday Aug 14 close may be FRESH.
+
+During Monday regular session:
+Friday close may be considered latest completed daily close, depending on
+the documented policy, but must be labeled accurately.
+
+After Monday Aug 17 regular session closes and the daily bar should be
+available:
+Aug 14 must NOT remain FRESH indefinitely.
+
+The service should attempt external refresh for the Aug 17 daily bar.
+
+If refresh succeeds:
+persist Aug 17
+→ freshness fresh
+→ display Aug 17 close.
+
+If refresh fails:
+Aug 14 must be stale
+→ last = null
+→ display "—"
+→ never claim "Latest daily close."
+
+Do not solve this by simply increasing a calendar-day freshness threshold.
+
+Use U.S. trading-session-aware semantics.
+
+Also verify the dashboard's other current-price path is NOT reused as a
+daily close unless it represents the completed official/canonical daily
+bar according to our market-data contract.
+
+Add deterministic tests for:
+
+- Friday close before Monday open
+- Friday close during Monday session
+- Friday close after Monday close
+- weekend
+- market holiday
+- after-close ingestion delay/grace period
+- successful post-close refresh
+- failed post-close refresh
+
+Include this production evidence in the completion report.

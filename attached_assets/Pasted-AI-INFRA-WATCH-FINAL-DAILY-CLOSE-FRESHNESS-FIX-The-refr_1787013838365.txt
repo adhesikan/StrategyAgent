@@ -1,0 +1,226 @@
+AI INFRA WATCH — FINAL DAILY-CLOSE FRESHNESS FIX
+
+The refresh infrastructure is correct, but production evidence and the
+completion report reveal one remaining defect.
+
+DO NOT DEPLOY YET.
+
+ROOT ISSUE
+
+Global checkFreshness() uses:
+
+SCAN_STALE_WEEKDAYS = 3
+
+Therefore:
+
+Friday Aug 14 bar
+→ Monday Aug 17 after market close
+→ weekdayDistance = 1
+→ freshness = "fresh"
+
+This prevents Phase 3 external refresh from running.
+
+Production already confirmed exactly this:
+
+AMD:
+  asOf: 2026-08-14
+  freshness: "fresh"
+
+MU:
+  asOf: 2026-08-14
+  freshness: "fresh"
+
+even after the Aug 17 regular session completed.
+
+The AI Infrastructure Watch is specifically labeled "Latest daily close",
+so its freshness requirement must be stricter than the Opportunity Engine's
+multi-day scanner tolerance.
+
+============================================================
+IMPORTANT ARCHITECTURE RULE
+============================================================
+
+DO NOT change the global:
+
+SCAN_STALE_WEEKDAYS = 3
+
+policy.
+
+That policy is used by scanning/research infrastructure and may intentionally
+tolerate older bars.
+
+Instead introduce/reuse a DAILY_CLOSE_CURRENTNESS policy specifically for
+user-facing latest-close surfaces.
+
+============================================================
+DESIRED SEMANTICS
+============================================================
+
+For AI Infrastructure Watch:
+
+The stored bar is current ONLY if it represents the latest completed U.S.
+trading session, subject to a short post-close ingestion grace period.
+
+Examples:
+
+FRIDAY AFTER CLOSE:
+Friday bar = current
+
+SATURDAY:
+Friday bar = current
+
+SUNDAY:
+Friday bar = current
+
+MONDAY BEFORE MARKET OPEN:
+Friday bar = current
+
+MONDAY DURING REGULAR SESSION:
+Friday bar may remain the latest completed DAILY bar
+
+MONDAY AFTER REGULAR CLOSE + ingestion grace period:
+Monday bar expected
+
+If latest stored bar is still Friday:
+→ attempt external refresh
+
+If refresh succeeds:
+→ persist Monday bar
+→ display Monday close
+→ Latest daily close
+
+If refresh fails:
+→ last = null
+→ freshness = stale
+→ display "—"
+
+Never continue displaying Friday's price as a current Monday daily close after
+the Monday session has completed and the grace period has expired.
+
+============================================================
+1. AUDIT EXISTING MARKET CALENDAR UTILITIES
+============================================================
+
+Before coding inspect existing utilities for:
+
+- U.S. market timezone
+- regular-session close
+- weekends
+- market holidays
+- latest completed trading session
+- trading calendar
+- post-close ingestion grace period
+
+Reuse existing utilities.
+
+Do not implement a simplistic Monday-Friday-only calendar if a holiday-aware
+utility already exists.
+
+If the codebase lacks holiday awareness, document that limitation rather than
+pretending weekday logic is a full exchange calendar.
+
+============================================================
+2. SEPARATE TWO CONCEPTS
+============================================================
+
+Preserve:
+
+SCAN FRESHNESS
+→ tolerant multi-day policy
+→ Opportunity Engine / technical analysis
+
+Add/reuse:
+
+LATEST DAILY CLOSE CURRENTNESS
+→ latest completed trading session policy
+→ AI Infrastructure Watch and equivalent user-facing latest-close surfaces
+
+Do not conflate them.
+
+============================================================
+3. REFRESH DECISION
+============================================================
+
+buildAiInfraWatch should request external refresh when:
+
+latestStoredBarDate < expectedLatestCompletedSessionDate
+
+after any configured post-close grace period.
+
+This refresh decision must NOT depend solely on SCAN_STALE_WEEKDAYS.
+
+The existing getHistoricalBars pipeline may still be reused, but if its Phase 2
+"fresh" decision prevents the required refresh, add the smallest explicit
+refresh/currentness mechanism at the daily-market-data service layer.
+
+Do NOT call Twelve Data directly from ai-infra-watch.ts.
+
+============================================================
+4. API CREDIT SAFETY
+============================================================
+
+Preserve:
+
+- 7/min safety cap
+- 750/day cap
+- inFlight deduplication
+- persistence
+- 8-symbol bounded watch set
+
+Fresh current bars must still cost zero external credits.
+
+============================================================
+5. TESTS
+============================================================
+
+Add deterministic tests for:
+
+1. Friday after close + Friday bar → current
+2. Saturday + Friday bar → current
+3. Sunday + Friday bar → current
+4. Monday premarket + Friday bar → current
+5. Monday regular session + Friday bar → documented expected behavior
+6. Monday after close but inside ingestion grace period
+7. Monday after close + grace expired + Friday bar → refresh required
+8. Monday after close + grace expired + Monday bar → no refresh
+9. refresh succeeds → Monday bar displayed
+10. refresh fails → Friday price suppressed, last=null
+11. scanner freshness can still call Friday bar "fresh" while
+    DAILY_CLOSE_CURRENTNESS independently requires refresh
+12. market holiday behavior if calendar utility supports it
+
+============================================================
+6. PRODUCTION CASE TEST
+============================================================
+
+Add the exact production fixture:
+
+now = 2026-08-17 after regular U.S. market close + grace period
+latestBarDate = 2026-08-14
+
+Expected:
+
+dailyCloseCurrent = false
+refreshRequired = true
+
+If refresh fails:
+
+last = null
+
+This exact case must be a permanent regression test.
+
+============================================================
+RETURN
+
+1. Why global scanner freshness was insufficient
+2. Daily-close currentness design
+3. Expected latest-session calculation
+4. Post-close grace-period behavior
+5. Files changed
+6. API credit behavior
+7. Tests added
+8. Exact Aug 14 → Aug 17 regression result
+9. Expected AMD/MU production behavior
+10. READY_FOR_DEPLOY / NOT_READY
+
+STOP BEFORE DEPLOY.

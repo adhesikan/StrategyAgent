@@ -219,7 +219,15 @@ export async function buildAiInfraWatch(
     const snapshots = await getReferenceSnapshotsBulk(
       userId,
       [...AI_INFRA_SYMBOLS],
-      { feature: "ai-infra-watch", barLimit: 60, allowExternalRefresh: true },
+      {
+        feature: "ai-infra-watch",
+        barLimit: 60,
+        allowExternalRefresh: true,
+        // sessionAware: use ET market-session semantics instead of weekday-distance.
+        // Ensures a Friday bar is stale after Monday's session has closed — not just
+        // "within 3 weekdays". This was the root cause of the AMD/MU price defect.
+        sessionAware: true,
+      },
     );
 
     if (snapshots.size === 0) {

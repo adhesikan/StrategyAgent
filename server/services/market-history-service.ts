@@ -182,6 +182,135 @@ export function checkFreshness(
 }
 
 // ---------------------------------------------------------------------------
+// Session-aware freshness — U.S. trading session semantics
+//
+// checkFreshness() uses weekday distance, which correctly absorbs weekend gaps
+// and single-day holidays. However it cannot distinguish "Friday bar during
+// in-progress Monday session" (fresh — Friday IS the latest completed session)
+// from "Friday bar after Monday close" (stale — Monday bar should now exist).
+//
+// For surfaces that must display the canonical daily close (AI Infra Watch),
+// use checkSessionFreshness() instead. A bar is fresh iff it is dated on the
+// most recently EXPECTED completed trading session.
+//
+// "Expected" uses a post-close grace period (default 30 min) to absorb
+// Twelve Data's ingestion lag. Before 4:30 PM ET on a weekday, today's bar
+// is not yet expected — yesterday's bar is the latest completed session.
+// After 4:30 PM ET, today's bar is expected; any bar older is stale.
+//
+// Market holidays are NOT tracked — a holiday Monday produces a 1-weekday gap
+// which the grace period and the retry path handle gracefully (refresh will
+// fail to find a Monday bar and fall through to stale, showing "—").
+// ---------------------------------------------------------------------------
+
+/** Minimum config for the ET market-session semantics. */
+export const SESSION_POLICY = {
+  /** Regular-session close hour in ET (4 PM). */
+  MARKET_CLOSE_HOUR_ET: 16,
+  /** Minutes of post-close grace period for provider ingestion lag. */
+  POST_CLOSE_GRACE_MINUTES: 30,
+} as const;
+
+/**
+ * ET time parts derived from a UTC instant via IANA timezone.
+ * Uses Intl.DateTimeFormat — handles DST automatically.
+ */
+function getETDateInfo(date: Date): {
+  dateStr: string;    // "YYYY-MM-DD" in ET
+  hour: number;       // 0–23 in ET
+  minute: number;     // 0–59 in ET
+  weekday: number;    // 0=Sun, 1=Mon … 6=Sat in ET
+} {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", weekday: "short",
+    hour12: false,
+  });
+  const parts: Record<string, string> = {};
+  for (const p of fmt.formatToParts(date)) parts[p.type] = p.value;
+  // hour12:false can emit "24" for midnight in some runtimes
+  const hour = parseInt(parts.hour === "24" ? "0" : parts.hour, 10);
+  const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.weekday);
+  return {
+    dateStr: `${parts.year}-${parts.month}-${parts.day}`,
+    hour,
+    minute: parseInt(parts.minute, 10),
+    weekday: weekdayIndex >= 0 ? weekdayIndex : new Date(date).getUTCDay(),
+  };
+}
+
+/**
+ * Return the YYYY-MM-DD date of the most recently EXPECTED completed U.S.
+ * trading session, as of `refDate` (defaults to now).
+ *
+ * Rules (all times ET):
+ *   - If refDate is a weekday AND past (marketCloseHourET + graceMinutes):
+ *       → today's bar is expected; return today.
+ *   - Otherwise (weekend, or weekday before/during session + grace window):
+ *       → return the most recent prior weekday date.
+ *
+ * The grace period absorbs provider ingestion lag after market close.
+ * Market holidays are not tracked; callers rely on the refresh path to
+ * discover a missing bar and fall through to the stale/unavailable state.
+ */
+export function mostRecentExpectedTradingSession(
+  refDate = new Date(),
+  opts: {
+    marketCloseHourET?: number;
+    postCloseGraceMinutes?: number;
+  } = {},
+): string {
+  const closeHour = opts.marketCloseHourET ?? SESSION_POLICY.MARKET_CLOSE_HOUR_ET;
+  const graceMin  = opts.postCloseGraceMinutes ?? SESSION_POLICY.POST_CLOSE_GRACE_MINUTES;
+  const et = getETDateInfo(refDate);
+  const etMinuteOfDay = et.hour * 60 + et.minute;
+  const graceCutoffMinutes = closeHour * 60 + graceMin;
+  const isWeekday = et.weekday >= 1 && et.weekday <= 5;
+
+  // Today's bar is expected when today is a weekday and we're past the grace cutoff.
+  if (isWeekday && etMinuteOfDay >= graceCutoffMinutes) {
+    return et.dateStr;
+  }
+
+  // Not yet past the grace cutoff (or weekend) — walk back to the previous weekday.
+  const d = new Date(refDate);
+  for (let i = 0; i < 8; i++) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const info = getETDateInfo(d);
+    if (info.weekday >= 1 && info.weekday <= 5) return info.dateStr;
+  }
+  // Fallback — should never reach here for valid dates.
+  return et.dateStr;
+}
+
+/**
+ * Session-aware freshness check for surfaces that must display the canonical
+ * latest-daily-close price (e.g. AI Infrastructure Watch).
+ *
+ * A bar is "fresh" iff latestBarDate >= mostRecentExpectedTradingSession().
+ * A bar for an older session is "stale" — the caller should attempt refresh.
+ *
+ * Use this instead of checkFreshness() when the display contract is
+ * "show today's completed close or nothing", not "tolerate N weekday lag".
+ */
+export function checkSessionFreshness(
+  latestBarDate: string | null,
+  refDate = new Date(),
+  opts: {
+    marketCloseHourET?: number;
+    postCloseGraceMinutes?: number;
+  } = {},
+): FreshnessStatus {
+  if (!latestBarDate) return "unavailable";
+  const expectedSession = mostRecentExpectedTradingSession(refDate, opts);
+  // A bar that is on or after the expected session is fresh.
+  // A bar from a previous session is stale (a newer completed session exists).
+  if (latestBarDate >= expectedSession) return "fresh";
+  return "stale";
+}
+
+// ---------------------------------------------------------------------------
 // Disallowed provider guard
 // ---------------------------------------------------------------------------
 
@@ -237,6 +366,17 @@ export async function getHistoricalBars(params: {
   freshnessRequirement?: "strict" | "relaxed";
   /** When false, no external provider is called even if bars are stale/missing. */
   allowExternalRefresh?: boolean;
+  /**
+   * Session-aware gate (optional).
+   * When provided, Phase 2 only fires if the latest stored bar is dated on or
+   * after this date string (YYYY-MM-DD). Bars that are "weekday-fresh" but
+   * from an older trading session will be treated as stale and will proceed to
+   * Phase 3 (external refresh) when allowExternalRefresh is true.
+   *
+   * Compute via mostRecentExpectedTradingSession() — never pass a hardcoded date.
+   * Leave undefined to use the default weekday-distance freshness policy.
+   */
+  expectedSessionDate?: string;
   caller?: string;
 }): Promise<HistoricalBarsResult> {
   const symbol = params.symbol.trim().toUpperCase();
@@ -283,7 +423,17 @@ export async function getHistoricalBars(params: {
   const hasEnoughBars = trimmedStored.length >= Math.min(outputSize, HISTORY_DEPTH.MINIMUM);
 
   // ── Phase 2: Return stored bars if sufficient ─────────────────────────────
-  if (hasEnoughBars && storedFreshness === "fresh") {
+  //
+  // Session gate: when expectedSessionDate is set, the stored bar must be dated
+  // on or after that date to qualify as "fresh". This prevents a Friday bar
+  // from satisfying Phase 2 on a post-close Monday when the Monday bar should
+  // now be available. The weekday-distance check (storedFreshness) is still
+  // required in addition — both conditions must hold simultaneously.
+  const meetsSessionDate =
+    !params.expectedSessionDate ||
+    (latestStored !== null && latestStored >= params.expectedSessionDate);
+
+  if (hasEnoughBars && storedFreshness === "fresh" && meetsSessionDate) {
     emitHistoryEvent("market_history_stored_hit", {
       symbol, purpose: params.purpose, barCount: trimmedStored.length,
       latestBarDate: latestStored, provider: trimmedStored[0]?.provider ?? "twelve_data",

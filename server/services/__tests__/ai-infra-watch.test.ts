@@ -902,3 +902,238 @@ describe("§AW-R10 — existing stale/unavailable UI contract unchanged after re
     expect(deriveBadge([])).toBe("Unavailable");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION-AWARE FRESHNESS SCENARIO TESTS (§AW-S1 … §AW-S8)
+//
+// Production evidence:
+//   GET /api/dashboard returned AMD last:514.39, asOf:"2026-08-14", freshness:"fresh"
+//   on Monday 2026-08-17 after market close.
+//
+//   Root cause: checkFreshness("2026-08-14", "scan") at 11PM ET on Mon Aug 17
+//     weekdayDistance("2026-08-14","2026-08-17") = 1 ≤ SCAN_STALE_WEEKDAYS(3) → "fresh"
+//     Phase 2 fired, Phase 3 (allowExternalRefresh) never ran.
+//
+//   Fix: mostRecentExpectedTradingSession() + checkSessionFreshness() use ET
+//     market-session semantics: after 4:30PM ET on a weekday, today's bar is
+//     expected. An Aug-14 bar is stale when Aug-17 session has completed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  mostRecentExpectedTradingSession,
+  checkSessionFreshness,
+  SESSION_POLICY,
+} from "../market-history-service";
+
+// Helper: build a Date at a specific ET wall-clock time by converting to UTC.
+// EDT (summer) = UTC-4, EST (winter) = UTC-5.
+function etDate(
+  year: number, month: number, day: number,
+  hourET: number, minuteET = 0,
+  etOffsetHours = -4, // EDT (Aug/Sep), use -5 for Jan
+): Date {
+  const utcHour = hourET - etOffsetHours; // 9AM ET + 4 = 13:00 UTC
+  return new Date(Date.UTC(year, month - 1, day, utcHour, minuteET, 0, 0));
+}
+
+describe("§AW-S1 — Friday close before Monday open: bar is fresh", () => {
+  // Aug 14, 2026 = Friday; Aug 17, 2026 = Monday.
+  // At 9:00 AM ET Monday (before market open), the Friday bar is still the
+  // latest completed session. checkSessionFreshness must return "fresh".
+
+  it("Aug 14 bar is fresh at 9:00 AM ET Monday Aug 17 (before open)", () => {
+    const mondayBeforeOpen = etDate(2026, 8, 17, 9, 0);
+    const expectedSession = mostRecentExpectedTradingSession(mondayBeforeOpen);
+    expect(expectedSession).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-14", mondayBeforeOpen)).toBe("fresh");
+  });
+
+  it("mostRecentExpectedTradingSession returns Friday at 8:30 AM ET Monday", () => {
+    const mondayMorning = etDate(2026, 8, 17, 8, 30);
+    expect(mostRecentExpectedTradingSession(mondayMorning)).toBe("2026-08-14");
+  });
+});
+
+describe("§AW-S2 — Friday close during Monday session: bar is fresh", () => {
+  // During the Monday regular session (11 AM ET), the Friday bar is still
+  // the latest completed daily close. Monday's bar is not done yet.
+
+  it("Aug 14 bar is fresh at 11:00 AM ET Monday Aug 17 (mid-session)", () => {
+    const mondayMidSession = etDate(2026, 8, 17, 11, 0);
+    expect(mostRecentExpectedTradingSession(mondayMidSession)).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-14", mondayMidSession)).toBe("fresh");
+  });
+
+  it("Aug 14 bar is fresh at 4:29 PM ET Monday (last minute before grace cutoff)", () => {
+    const justBeforeGrace = etDate(2026, 8, 17, 16, 29);
+    expect(mostRecentExpectedTradingSession(justBeforeGrace)).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-14", justBeforeGrace)).toBe("fresh");
+  });
+});
+
+describe("§AW-S3 — Friday close after Monday close: bar is stale (PRODUCTION BUG)", () => {
+  // THE PRODUCTION BUG: at 11 PM ET Monday Aug 17, the Aug 14 bar was
+  // classified as "fresh" by checkFreshness() (weekday distance = 1 ≤ 3).
+  // checkSessionFreshness must return "stale" instead.
+
+  it("Aug 14 bar is STALE at 11:00 PM ET Monday Aug 17 (after close+grace)", () => {
+    const mondayEvening = etDate(2026, 8, 17, 23, 0);
+    expect(mostRecentExpectedTradingSession(mondayEvening)).toBe("2026-08-17");
+    expect(checkSessionFreshness("2026-08-14", mondayEvening)).toBe("stale");
+  });
+
+  it("stale gate suppresses AMD stale price $514.39", () => {
+    const mondayEvening = etDate(2026, 8, 17, 23, 0);
+    const freshness = checkSessionFreshness("2026-08-14", mondayEvening);
+    const displayed = freshness === "fresh" ? 514.39 : null;
+    expect(displayed).toBeNull();
+  });
+
+  it("Aug 14 bar is stale at exactly the grace cutoff (4:30 PM ET Monday)", () => {
+    const graceExact = etDate(2026, 8, 17, SESSION_POLICY.MARKET_CLOSE_HOUR_ET,
+                              SESSION_POLICY.POST_CLOSE_GRACE_MINUTES);
+    expect(mostRecentExpectedTradingSession(graceExact)).toBe("2026-08-17");
+    expect(checkSessionFreshness("2026-08-14", graceExact)).toBe("stale");
+  });
+
+  it("Aug 17 bar is fresh after Monday close", () => {
+    const mondayEvening = etDate(2026, 8, 17, 18, 0);
+    expect(checkSessionFreshness("2026-08-17", mondayEvening)).toBe("fresh");
+  });
+});
+
+describe("§AW-S4 — Weekend: Friday bar is the expected session (fresh)", () => {
+  it("Saturday morning: Aug 14 bar is fresh", () => {
+    const saturdayMorning = etDate(2026, 8, 15, 9, 0);
+    expect(mostRecentExpectedTradingSession(saturdayMorning)).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-14", saturdayMorning)).toBe("fresh");
+  });
+
+  it("Sunday evening: Aug 14 bar is still fresh", () => {
+    const sundayEvening = etDate(2026, 8, 16, 20, 0);
+    expect(mostRecentExpectedTradingSession(sundayEvening)).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-14", sundayEvening)).toBe("fresh");
+  });
+
+  it("Thursday Aug 13 bar is stale on Saturday (Friday is the expected session)", () => {
+    const saturdayMorning = etDate(2026, 8, 15, 9, 0);
+    expect(mostRecentExpectedTradingSession(saturdayMorning)).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-13", saturdayMorning)).toBe("stale");
+  });
+});
+
+describe("§AW-S5 — Market holiday (Monday holiday): policy and safe fallback", () => {
+  // Labor Day 2026 = Monday Sep 7. Market is closed.
+  // The policy is NOT holiday-aware; after grace on Sep 7 it expects a Sep 7 bar.
+  // The refresh will attempt Sep 7, find no bar, fall through to stale → "—".
+
+  it("Friday Sep 4 bar is fresh on Saturday Sep 5 (before holiday Monday)", () => {
+    const saturday = etDate(2026, 9, 5, 10, 0);
+    expect(mostRecentExpectedTradingSession(saturday)).toBe("2026-09-04");
+    expect(checkSessionFreshness("2026-09-04", saturday)).toBe("fresh");
+  });
+
+  it("Friday Sep 4 bar is fresh on holiday Monday Sep 7 before 4:30 PM ET", () => {
+    const holidayMorning = etDate(2026, 9, 7, 9, 0);
+    expect(mostRecentExpectedTradingSession(holidayMorning)).toBe("2026-09-04");
+    expect(checkSessionFreshness("2026-09-04", holidayMorning)).toBe("fresh");
+  });
+
+  it("after 4:30 PM ET on holiday Monday, Sep 7 bar is expected (refresh will fail → stale → '—')", () => {
+    const holidayEvening = etDate(2026, 9, 7, 17, 0);
+    expect(mostRecentExpectedTradingSession(holidayEvening)).toBe("2026-09-07");
+    // Friday bar is stale; refresh fails; last=null → "—" (correct safe behavior)
+    expect(checkSessionFreshness("2026-09-04", holidayEvening)).toBe("stale");
+  });
+});
+
+describe("§AW-S6 — After-close ingestion delay / grace period", () => {
+  it("at 4:01 PM ET Monday, Friday bar is still fresh (within grace)", () => {
+    const justAfterClose = etDate(2026, 8, 17, 16, 1);
+    expect(mostRecentExpectedTradingSession(justAfterClose)).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-14", justAfterClose)).toBe("fresh");
+  });
+
+  it("at 4:29 PM ET Monday, Friday bar is still fresh (last minute of grace)", () => {
+    const lastGraceMinute = etDate(2026, 8, 17, 16, 29);
+    expect(mostRecentExpectedTradingSession(lastGraceMinute)).toBe("2026-08-14");
+    expect(checkSessionFreshness("2026-08-14", lastGraceMinute)).toBe("fresh");
+  });
+
+  it("SESSION_POLICY constants are correct defaults", () => {
+    expect(SESSION_POLICY.MARKET_CLOSE_HOUR_ET).toBe(16);
+    expect(SESSION_POLICY.POST_CLOSE_GRACE_MINUTES).toBe(30);
+  });
+
+  it("grace period configurable — 0-minute grace triggers stale immediately at 4:00 PM ET", () => {
+    const exactClose = etDate(2026, 8, 17, 16, 0);
+    const withNoGrace = mostRecentExpectedTradingSession(exactClose, {
+      marketCloseHourET: 16, postCloseGraceMinutes: 0,
+    });
+    expect(withNoGrace).toBe("2026-08-17");
+    expect(checkSessionFreshness("2026-08-14", exactClose, { postCloseGraceMinutes: 0 })).toBe("stale");
+  });
+});
+
+describe("§AW-S7 — Successful post-close refresh: Aug 17 bar is displayed", () => {
+  it("expectedSessionDate gate: Aug 14 fails, Aug 17 passes", () => {
+    const expectedSessionDate = "2026-08-17";
+    expect("2026-08-14" >= expectedSessionDate).toBe(false); // Phase 2 skipped
+    expect("2026-08-17" >= expectedSessionDate).toBe(true);  // After refresh: Phase 2 hits
+  });
+
+  it("Aug 17 bar is session-fresh after Monday close", () => {
+    const mondayEvening = etDate(2026, 8, 17, 23, 0);
+    expect(checkSessionFreshness("2026-08-17", mondayEvening)).toBe("fresh");
+  });
+
+  it("REFRESH_SUCCESS obs state derives from sourceType=external_refresh + freshness=fresh", () => {
+    type ObsState = "STORED_FRESH" | "REFRESH_SUCCESS" | "STALE_FALLBACK_SUPPRESSED" | "NO_DATA";
+    function obsState(
+      sourceType: "stored" | "external_refresh" | "stored_stale" | "unavailable",
+      freshness: "fresh" | "stale" | "unavailable",
+    ): ObsState {
+      if (freshness === "stale") return "STALE_FALLBACK_SUPPRESSED";
+      if (freshness === "unavailable") return "NO_DATA";
+      return sourceType === "external_refresh" ? "REFRESH_SUCCESS" : "STORED_FRESH";
+    }
+    expect(obsState("external_refresh", "fresh")).toBe("REFRESH_SUCCESS");
+    expect(obsState("stored", "fresh")).toBe("STORED_FRESH"); // next render: zero credits
+  });
+});
+
+describe("§AW-S8 — Failed post-close refresh: last=null, stale price suppressed", () => {
+  it("Phase 4 stale fallback: Aug 14 bar is session-stale at 11 PM ET Monday", () => {
+    const mondayEvening = etDate(2026, 8, 17, 23, 0);
+    expect(checkSessionFreshness("2026-08-14", mondayEvening)).toBe("stale");
+  });
+
+  it("staleness gate suppresses AMD stale price $514.39 (never displayed)", () => {
+    const staleFreshness = checkSessionFreshness("2026-08-14", etDate(2026, 8, 17, 23, 0));
+    const displayed = staleFreshness === "fresh" ? 514.39 : null;
+    expect(displayed).toBeNull();
+  });
+
+  it("staleness gate suppresses MU stale price $971.66 (never displayed)", () => {
+    const staleFreshness = checkSessionFreshness("2026-08-14", etDate(2026, 8, 17, 23, 0));
+    const displayed = staleFreshness === "fresh" ? 971.66 : null;
+    expect(displayed).toBeNull();
+  });
+
+  it("unavailable (null bar date) → freshness=unavailable → last=null", () => {
+    expect(checkSessionFreshness(null)).toBe("unavailable");
+    const displayed = checkSessionFreshness(null) === "fresh" ? 100 : null;
+    expect(displayed).toBeNull();
+  });
+
+  it("badge is 'Stale data' when all symbols stale (not 'Latest daily close')", () => {
+    function deriveBadge(tickers: Array<{ freshness: "fresh" | "stale" | "unavailable" }>): string {
+      if (!tickers.length) return "Unavailable";
+      if (tickers.every(t => t.freshness === "fresh")) return "Latest daily close";
+      if (tickers.some(t => t.freshness === "unavailable")) return "Unavailable";
+      return "Stale data";
+    }
+    const allFailed = Array(8).fill({ freshness: "stale" as const });
+    expect(deriveBadge(allFailed)).toBe("Stale data");
+  });
+});

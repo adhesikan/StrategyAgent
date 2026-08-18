@@ -1,0 +1,223 @@
+OPPORTUNITY ENGINE — PRODUCTION SNAPSHOT DIAGNOSTIC
+
+DIAGNOSTIC ONLY.
+DO NOT CHANGE CODE, THRESHOLDS, SCORING, MCP LOGIC OR DATABASE DATA.
+DO NOT DEPLOY.
+
+The Zero Qualification Funnel Audit established that candidate membership
+is controlled by MCP and that the application does not apply a second
+candidate qualification gate.
+
+We now need production evidence to determine why qualified_count remains 0.
+
+Use the Railway PRODUCTION PostgreSQL database.
+
+============================================================
+1. READ THE LAST 10 COMPLETED OPPORTUNITY SNAPSHOTS
+============================================================
+
+Query opportunity_scan_snapshots.
+
+Return for the last 10 completed scans:
+
+- id
+- status
+- started_at
+- completed_at
+- reviewed_count
+- qualified_count
+- watch_count
+- rejected_count
+- excluded_count
+- unavailable_count
+- groupedCandidateCount if present in result_payload
+- marketRegime
+- exclusionSummary
+- rejectionSummary
+
+Do not modify any records.
+
+============================================================
+2. INSPECT THE LATEST FULL result_payload
+============================================================
+
+For the latest successful/valid production scan extract:
+
+candidates[]
+watchCandidates[]
+exclusionSummary
+rejectionSummary
+marketRegime
+
+For every watch candidate return:
+
+symbol
+strategy
+score/rank if present
+setupStatus if present
+missingConfirmation
+direction
+confidence
+rewardRisk
+any other qualification-related fields returned by MCP
+
+We especially need:
+
+AAPL
+TSLA
+
+Do NOT infer missingConfirmation.
+Report the exact stored MCP value.
+
+============================================================
+3. DETERMINE THE FUNNEL
+============================================================
+
+Produce:
+
+reviewed
+→ excluded
+→ grouped
+→ rejected
+→ watch
+→ qualified
+
+Reconcile the counts as far as the MCP payload permits.
+
+Identify the dominant point where symbols disappear.
+
+Examples:
+
+mostly STALE exclusions
+mostly NOT_ACTIONABLE_NO_TRIGGER
+groupedCandidateCount = 0
+large rejection count
+large watch count but zero qualified
+reviewedCount = 0
+
+============================================================
+4. CLASSIFY AAPL AND TSLA
+============================================================
+
+For AAPL and TSLA provide:
+
+Disposition:
+WATCH / REJECTED / EXCLUDED / QUALIFIED / NOT_REVIEWED
+
+Exact MCP missingConfirmation or rejection reason.
+
+Do not substitute application-side score explanations for MCP qualification
+reasons.
+
+============================================================
+5. ZERO RATE
+============================================================
+
+From the latest 10 production scans calculate:
+
+number of scans with qualified_count = 0
+percentage of zero-qualified scans
+average reviewed_count
+average watch_count
+average qualified_count
+
+Also report whether qualified candidates have EVER appeared in available
+production opportunity_scan_snapshots.
+
+If history extends sufficiently far, report:
+
+most recent scan with qualified_count > 0
+highest qualified_count observed
+highest watch_count observed
+
+============================================================
+6. CHECK DATA QUALITY SIGNAL
+============================================================
+
+Analyze exclusionSummary across these scans.
+
+Specifically quantify exclusions caused by:
+
+STALE
+NOT_ACTIONABLE_NO_TRIGGER
+DIRECTION_MISMATCH
+INVALID_SETUP
+SIMULATED_DATA_NOT_ELIGIBLE
+other reasons
+
+If STALE is materially responsible for the zero-candidate condition,
+classify DATA_QUALITY_PROBLEM rather than over-filtering.
+
+============================================================
+7. INSTITUTIONAL TABLE — READ ONLY
+============================================================
+
+Because production logged:
+
+opportunity_ranking_institutional_fetch_failed
+
+determine read-only:
+
+Does institutional_symbol_signals exist?
+
+If yes:
+- row count
+- latest timestamp
+- number of distinct symbols
+
+If query itself fails, capture the exact PostgreSQL error.
+
+DO NOT create/fix/migrate the table in this task.
+
+============================================================
+8. FINAL CLASSIFICATION
+============================================================
+
+Choose exactly one primary classification:
+
+HEALTHY_SELECTIVITY
+SYSTEMATIC_OVER_FILTERING
+DATA_QUALITY_PROBLEM
+MCP_INPUT_PIPELINE_PROBLEM
+LOGIC_DEFECT
+INSUFFICIENT_EVIDENCE
+
+Support it with production numbers.
+
+Important:
+
+Zero opportunities alone is NOT evidence of over-filtering.
+
+AAPL/TSLA being WATCH rather than CANDIDATE may be entirely correct if
+their MCP missingConfirmation indicates that an actionable trigger has
+not occurred.
+
+============================================================
+9. RETURN REPORT
+============================================================
+
+Return:
+
+1. Last 10 scan table
+2. Funnel counts
+3. Exclusion reason distribution
+4. Rejection reason distribution
+5. Latest watchCandidates table
+6. Exact AAPL missingConfirmation
+7. Exact TSLA missingConfirmation
+8. Zero-qualified scan rate
+9. Most recent historical qualified opportunity
+10. Institutional table status
+11. Primary classification
+12. Recommended next action
+
+If direct production DB access is unavailable from Claude Code:
+
+DO NOT modify the application merely to obtain this information.
+
+Instead return the exact Railway CLI / psql read-only command I should run
+to retrieve the required data.
+
+STOP AFTER DIAGNOSTIC.
+NO IMPLEMENTATION.
+NO DEPLOYMENT.

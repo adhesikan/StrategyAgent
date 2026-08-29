@@ -13,6 +13,10 @@ import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
 import {
+  filterByCohortManagerIds,
+  getActiveManagerIdsForCohort,
+} from "../manager-cohort-service";
+import {
   loadAllStockInstitutionalHoldings,
 } from "./stock-analytics-repository";
 import type {
@@ -143,12 +147,19 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
           desc(institutional13fFilings.filingDate),
           desc(institutional13fFilings.accessionNumber),
         );
-      const filings = selectEffectiveTrendFilings(
+      const cohortManagerIds = await getActiveManagerIdsForCohort(
+        query.options.cohort,
+      );
+      const eligibleFilingRows = filterByCohortManagerIds(
         filingRows.map((row) => ({
           ...row,
           periodOfReport: dateText(row.periodOfReport),
           filingDate: dateText(row.filingDate),
         })),
+        cohortManagerIds,
+      );
+      const filings = selectEffectiveTrendFilings(
+        eligibleFilingRows,
         periods,
       );
       const availablePeriods = periods.filter(

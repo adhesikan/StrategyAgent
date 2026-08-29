@@ -20,6 +20,15 @@ import { z } from "zod";
 import { isIngestionConfigured } from "../services/institutional/config";
 import { runInstitutionalIngestion } from "../services/institutional/ingestion-service";
 import { getPipelineStatus } from "../services/institutional/pipeline-status";
+import {
+  INSTITUTIONAL_MANAGER_COHORTS,
+  MANAGER_COHORT_STATUSES,
+} from "../services/institutional/manager-cohort-types";
+import {
+  listManagerCohorts,
+  managerCohortSeedInputSchema,
+  seedManagerCohorts,
+} from "../services/institutional/manager-cohort-service";
 
 const MAX_ADMIN_QUARTERS = 8;
 const MIN_ADMIN_QUARTERS = 1;
@@ -29,11 +38,71 @@ const runBodySchema = z.object({
   quarters: z.number().int().min(MIN_ADMIN_QUARTERS).max(MAX_ADMIN_QUARTERS).default(2),
 });
 
+const cohortSeedBodySchema = z.object({
+  records: z.array(managerCohortSeedInputSchema).min(1).max(500),
+});
+
+const cohortListQuerySchema = z.object({
+  managerId: z.string().trim().regex(/^\d{1,10}$/).optional(),
+  cohort: z.enum(INSTITUTIONAL_MANAGER_COHORTS).optional(),
+  status: z.enum(MANAGER_COHORT_STATUSES).optional(),
+});
+
 export function registerInstitutionalAdminRoutes(
   app: Express,
   isAuthenticated: RequestHandler,
   isAdmin: RequestHandler,
 ): void {
+  app.post(
+    "/api/admin/institutional/manager-cohorts/seed",
+    isAuthenticated,
+    isAdmin,
+    async (req, res) => {
+      const parsed = cohortSeedBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid manager cohort seed",
+          details: parsed.error.flatten().fieldErrors,
+        });
+      }
+      try {
+        const records = await seedManagerCohorts(parsed.data.records);
+        return res.json({ count: records.length, records });
+      } catch (error) {
+        console.error(
+          "[InstitutionalAdmin] Manager cohort seed error:",
+          error instanceof Error ? error.message : "Unknown error",
+        );
+        return res.status(400).json({ error: "Unable to seed manager cohorts" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/admin/institutional/manager-cohorts",
+    isAuthenticated,
+    isAdmin,
+    async (req, res) => {
+      const parsed = cohortListQuerySchema.safeParse(req.query ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid manager cohort query",
+          details: parsed.error.flatten().fieldErrors,
+        });
+      }
+      try {
+        const records = await listManagerCohorts(parsed.data);
+        return res.json({ count: records.length, records });
+      } catch (error) {
+        console.error(
+          "[InstitutionalAdmin] Manager cohort list error:",
+          error instanceof Error ? error.message : "Unknown error",
+        );
+        return res.status(500).json({ error: "Unable to list manager cohorts" });
+      }
+    },
+  );
+
   /**
    * POST /api/admin/institutional/run
    * Body: { quarters?: number }  (default 2)

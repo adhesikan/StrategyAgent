@@ -16,6 +16,10 @@ import {
 import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
+import {
+  filterByCohortManagerIds,
+  getActiveManagerIdsForCohort,
+} from "../manager-cohort-service";
 import type {
   EffectiveFundFiling,
   StockInstitutionalAnalyticsSource,
@@ -248,12 +252,19 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
         desc(institutional13fFilings.accessionNumber),
       );
 
-    const selected = selectEffectiveStockFilings(
+    const cohortManagerIds = await getActiveManagerIdsForCohort(
+      query.options.cohort,
+    );
+    const eligibleFilingRows = filterByCohortManagerIds(
       filingRows.map((row) => ({
         ...row,
         periodOfReport: dateText(row.periodOfReport),
         filingDate: dateText(row.filingDate),
       })),
+      cohortManagerIds,
+    );
+    const selected = selectEffectiveStockFilings(
+      eligibleFilingRows,
       query.quarter,
     );
     if (!selected) return null;

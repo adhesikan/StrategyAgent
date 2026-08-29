@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, integer, real, boolean, timestamp, jsonb, numeric, time, date, bigint, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, integer, real, boolean, timestamp, jsonb, numeric, time, date, bigint, uniqueIndex, index, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -2933,6 +2933,64 @@ export const institutional13fFilings = pgTable("institutional_13f_filings", {
 
 export type Institutional13fFiling = typeof institutional13fFilings.$inferSelect;
 export type InsertInstitutional13fFiling = typeof institutional13fFilings.$inferInsert;
+
+/**
+ * Curated many-to-many manager cohort memberships.
+ * No cohort may be inferred from a manager name or filing without a separately
+ * registered deterministic rule.
+ */
+export const institutionalManagerCohorts = pgTable("institutional_manager_cohorts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** SEC filer CIK normalized to 10 digits. */
+  managerId: text("manager_id").notNull(),
+  cohort: text("cohort").notNull(),
+  /** MANUAL | VERIFIED | RULE_BASED */
+  classificationMethod: text("classification_method").notNull(),
+  /** 0–100 when supplied; null means no numeric confidence claim. */
+  confidence: integer("confidence"),
+  /** ACTIVE | INACTIVE | NEEDS_REVIEW */
+  status: text("status").notNull().default("ACTIVE"),
+  source: text("source"),
+  notes: text("notes"),
+  /** Required registry key for RULE_BASED records. */
+  ruleId: text("rule_id"),
+  lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  idxManagerCohortUnique: uniqueIndex("idx_institutional_manager_cohorts_unique").on(
+    t.managerId, t.cohort,
+  ),
+  idxManagerCohortsManager: index("idx_institutional_manager_cohorts_manager").on(
+    t.managerId,
+  ),
+  idxManagerCohortsCohortStatus: index("idx_institutional_manager_cohorts_cohort_status").on(
+    t.cohort, t.status,
+  ),
+  managerCohortAllowed: check(
+    "institutional_manager_cohorts_cohort",
+    sql`${t.cohort} IN ('hedge_fund', 'pension', 'sovereign', 'endowment', 'asset_manager', 'quantitative', 'technology_specialist', 'healthcare_specialist', 'concentrated', 'broad_diversified')`,
+  ),
+  managerCohortMethodAllowed: check(
+    "institutional_manager_cohorts_method",
+    sql`${t.classificationMethod} IN ('MANUAL', 'VERIFIED', 'RULE_BASED')`,
+  ),
+  managerCohortStatusAllowed: check(
+    "institutional_manager_cohorts_status",
+    sql`${t.status} IN ('ACTIVE', 'INACTIVE', 'NEEDS_REVIEW')`,
+  ),
+  managerCohortConfidenceRange: check(
+    "institutional_manager_cohorts_confidence",
+    sql`${t.confidence} IS NULL OR (${t.confidence} >= 0 AND ${t.confidence} <= 100)`,
+  ),
+  managerCohortRuleRequired: check(
+    "institutional_manager_cohorts_rule",
+    sql`${t.classificationMethod} <> 'RULE_BASED' OR ${t.ruleId} IS NOT NULL`,
+  ),
+}));
+
+export type InstitutionalManagerCohortRecord = typeof institutionalManagerCohorts.$inferSelect;
+export type InsertInstitutionalManagerCohort = typeof institutionalManagerCohorts.$inferInsert;
 
 /**
  * One row per holding line in an InfoTable.

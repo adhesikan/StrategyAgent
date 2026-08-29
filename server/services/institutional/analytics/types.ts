@@ -14,6 +14,9 @@
 
 import { parseQuarterIdentifier } from "../quarter-utils";
 import type { SecurityPositionType } from "./security-types";
+import type { InstitutionalManagerCohort } from "../manager-cohort-types";
+
+export type { InstitutionalManagerCohort } from "../manager-cohort-types";
 
 export const INSTITUTIONAL_ANALYTICS_LAYER = "institutional-analytics" as const;
 
@@ -174,6 +177,8 @@ export interface StockInstitutionalAnalyticsOptions {
   positionType?: SecurityPositionType;
   /** Bounds each returned holder/change list. Defaults to 20. */
   topN?: number;
+  /** Restrict effective filing managers to an active curated cohort. */
+  cohort?: InstitutionalManagerCohort;
 }
 
 export interface InstitutionalBreadth {
@@ -529,6 +534,8 @@ export interface InstitutionalActivityRankingOptions {
   sortDirection?: "asc" | "desc";
   limit?: number;
   offset?: number;
+  /** Restrict effective filing managers to an active curated cohort. */
+  cohort?: InstitutionalManagerCohort;
 }
 
 export interface InstitutionalActivityRankingItem {
@@ -578,6 +585,8 @@ export interface InstitutionalRotationOptions {
   quarter?: FundPortfolioXRayQuarterSelector;
   /** Defaults to COMMON_EQUITY; options remain independently selectable. */
   positionType?: SecurityPositionType;
+  /** Restrict effective filing managers to an active curated cohort. */
+  cohort?: InstitutionalManagerCohort;
 }
 
 export interface InstitutionalRotationClassification {
@@ -616,6 +625,8 @@ export interface StockInstitutionalTrendOptions {
   historyQuarters?: number;
   /** Defaults to COMMON_EQUITY; PUT and CALL remain separate. */
   positionType?: SecurityPositionType;
+  /** Restrict effective filing managers to an active curated cohort. */
+  cohort?: InstitutionalManagerCohort;
 }
 
 export interface StockInstitutionalTrendQuarter {
@@ -668,7 +679,7 @@ export interface TrendAnalyticsQuery extends InstitutionalAnalyticsQuery {
 }
 
 export interface CohortAnalyticsQuery extends InstitutionalAnalyticsQuery {
-  cohortId: string;
+  cohortId: InstitutionalManagerCohort;
 }
 
 /**

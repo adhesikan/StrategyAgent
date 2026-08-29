@@ -42,6 +42,7 @@ export type {
   InstitutionalBreadth,
   InstitutionalChangeType,
   InstitutionalMappingCoverage,
+  InstitutionalManagerCohort,
   InstitutionalQuarter,
   InstitutionalQuarterLabel,
   InstitutionalQuarterNumber,
@@ -203,3 +204,28 @@ export {
   scoreInstitutionalAccumulationComponent,
   scoreStockInstitutionalAccumulation,
 } from "./scoring";
+export {
+  INSTITUTIONAL_MANAGER_COHORTS,
+  MANAGER_COHORT_CLASSIFICATION_METHODS,
+  MANAGER_COHORT_STATUSES,
+} from "../manager-cohort-types";
+export type {
+  ManagerCohortClassificationMethod,
+  ManagerCohortMembership,
+  ManagerCohortSeedInput,
+  ManagerCohortStatus,
+} from "../manager-cohort-types";
+export {
+  filterByCohortManagerIds,
+  getActiveManagerIdsForCohort,
+  listManagerCohorts,
+  managerCohortSeedInputSchema,
+  normalizeManagerId,
+  REGISTERED_MANAGER_COHORT_RULES,
+  seedManagerCohorts,
+  validateManagerCohortSeedInput,
+} from "../manager-cohort-service";
+export type {
+  ManagerCohortListFilters,
+  ManagerCohortStore,
+} from "../manager-cohort-service";

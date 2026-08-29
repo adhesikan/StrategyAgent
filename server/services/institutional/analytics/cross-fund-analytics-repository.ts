@@ -12,6 +12,10 @@ import { institutional13fFilings } from "@shared/schema";
 import { parseQuarterIdentifier } from "../quarter-utils";
 import { selectEffectiveStockFilings, loadAllStockInstitutionalHoldings } from "./stock-analytics-repository";
 import { createInstitutionalQuarter } from "./types";
+import {
+  filterByCohortManagerIds,
+  getActiveManagerIdsForCohort,
+} from "../manager-cohort-service";
 import type {
   CrossFundInstitutionalAnalyticsSource,
   CrossFundInstitutionalRepository,
@@ -83,12 +87,19 @@ export const crossFundInstitutionalRepository: CrossFundInstitutionalRepository 
         desc(institutional13fFilings.filingDate),
         desc(institutional13fFilings.accessionNumber),
       );
-    const selected = selectEffectiveStockFilings(
+    const cohortManagerIds = await getActiveManagerIdsForCohort(
+      query.options.cohort,
+    );
+    const eligibleFilingRows = filterByCohortManagerIds(
       filingRows.map((row) => ({
         ...row,
         periodOfReport: dateText(row.periodOfReport),
         filingDate: dateText(row.filingDate),
       })),
+      cohortManagerIds,
+    );
+    const selected = selectEffectiveStockFilings(
+      eligibleFilingRows,
       query.quarter,
     );
     if (!selected) return null;

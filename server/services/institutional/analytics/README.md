@@ -178,5 +178,27 @@ component to be absent. Portfolio-weight change is unavailable unless a
 reliable prior comparison is supplied. Manager-quality weighting is excluded
 from this version.
 
+## Manager cohorts
+
+Manager cohorts are curated many-to-many memberships keyed by normalized SEC
+CIK. A manager may belong to several cohorts. Supported cohort identifiers are
+`hedge_fund`, `pension`, `sovereign`, `endowment`, `asset_manager`,
+`quantitative`, `technology_specialist`, `healthcare_specialist`,
+`concentrated`, and `broad_diversified`.
+
+Every membership records its method (`MANUAL`, `VERIFIED`, or `RULE_BASED`),
+optional numeric confidence, lifecycle status, source/notes, and review time.
+Verified records require a source. Rule-based records require a rule ID from
+the explicit deterministic rule registry; the initial registry is
+intentionally empty, so no manager is automatically classified from a name or
+unsupported heuristic.
+
+Stock holder analytics, cross-fund activity rankings, classification rotation,
+and multi-quarter stock trends accept an optional `cohort` filter. The
+repository resolves active cohort manager IDs before selecting effective
+filings, ensuring both current and comparison holdings use the same manager
+universe. Admin-only seed/list endpoints provide bounded, validated curation
+without exposing cohort mutation publicly.
+
 Route integration, StockMetrics migration, external APIs, and dashboards
 remain outside this layer.

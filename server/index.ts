@@ -16,6 +16,7 @@ import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { ensureInstitutionalSecurityEnrichmentSchema } from "./services/institutional/security-enrichment-migration";
+import { ensureInstitutionalManagerCohortSchema } from "./services/institutional/manager-cohort-migration";
 
 // ── Global process survival handlers ────────────────────────────────────────
 // Express 4 async handlers that throw without try/catch produce unhandled
@@ -337,6 +338,7 @@ async function runStartupMigrations() {
     `);
 
     await ensureInstitutionalSecurityEnrichmentSchema();
+    await ensureInstitutionalManagerCohortSchema();
 
     const skipCleanup = await db.execute(sql`
       DELETE FROM agent_decisions WHERE action = 'SKIP'

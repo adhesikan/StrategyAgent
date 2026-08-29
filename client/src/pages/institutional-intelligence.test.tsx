@@ -55,6 +55,25 @@ describe("Institutional Intelligence hub", () => {
     expect(symbolQueryOpensStock("AAPL")).toBe(true);
   });
 
+  it("renders stock-level fields from server-ranked analytics without client sorting", () => {
+    for (const field of [
+      "reportedHolderCount",
+      "holderCountChange",
+      "dataAsOf",
+      "largestReportedShareIncreases",
+      "largestReportedShareReductions",
+      "Largest Reported Increases",
+      "Largest Reported Reductions",
+      "No reported increases are available for this symbol.",
+      "No reported reductions are available for this symbol.",
+    ]) {
+      expect(pageSource).toContain(field);
+    }
+    expect(pageSource).not.toContain("largestReportedShareIncreases.sort");
+    expect(pageSource).not.toContain("largestReportedShareReductions.sort");
+    expect(pageSource).toContain('data?.dataAsOf ? formatDate(data.dataAsOf) : "Unavailable"');
+  });
+
   it("does not introduce prohibited promotional or transaction language", () => {
     const normalized = pageSource.toLowerCase();
     for (const phrase of [

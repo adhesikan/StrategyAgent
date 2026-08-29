@@ -1,0 +1,299 @@
+TASK 19 FIX — COMPLETE MISSING STOCK-LEVEL UI FIELDS ONLY
+
+Objective:
+Bring Task 19 from FAIL / FIX REQUIRED to PASS by fixing only the missing
+Institutional Intelligence stock-level fields identified in verification.
+
+IMPORTANT:
+
+Do NOT refactor unrelated code.
+Do NOT attempt to fix the repository-wide 276 TypeScript baseline errors.
+Do NOT modify Trader Brain, scanner, trade planning, execution, glossary,
+or other unrelated modules.
+
+The existing production build passes and the Task 19 files themselves have
+no reported TypeScript errors.
+
+Scope this task ONLY to the Institutional Intelligence page and its directly
+related tests/types if necessary.
+
+Current missing items:
+
+1. Reported holder count
+2. Holder-count change
+3. Explicit server-provided data-as-of date
+4. Distinct largest reported increases view
+5. Distinct largest reported reductions view
+
+--------------------------------------------------
+PART 1 — REPORTED HOLDER COUNT
+--------------------------------------------------
+
+The v1 stock institutional response already contains:
+
+reportedHolderCount
+
+Render it prominently in the Stock Institutional Intelligence summary.
+
+Preferred label:
+
+Reported Holders
+
+or:
+
+Reporting Managers
+
+Use the actual server-provided reportedHolderCount value.
+
+Do NOT derive this count from client arrays.
+
+--------------------------------------------------
+PART 2 — HOLDER-COUNT CHANGE
+--------------------------------------------------
+
+The response already contains:
+
+holderCountChange
+
+Display it adjacent to the reported holder count.
+
+Examples:
+
+Reporting Managers
+183
++14 QoQ
+
+or equivalent UI consistent with the existing design.
+
+Use the server-provided value.
+
+Do NOT calculate it client-side from current and previous arrays.
+
+Use neutral Form 13F language.
+
+--------------------------------------------------
+PART 3 — DATA-AS-OF
+--------------------------------------------------
+
+The v1 response contains a server-provided:
+
+dataAsOf
+
+Render this explicitly in the stock Institutional Intelligence view.
+
+Preferred wording:
+
+Data as of: <date>
+
+or:
+
+13F data as of <date>
+
+Do NOT derive this date from the browser clock.
+
+Do NOT substitute filing date if dataAsOf is available.
+
+If dataAsOf is missing, use the existing unavailable-data presentation rather
+than inventing a date.
+
+--------------------------------------------------
+PART 4 — LARGEST REPORTED INCREASES
+--------------------------------------------------
+
+Add a distinct visible section/table/card labeled:
+
+Largest Reported Increases
+
+Use the server-provided stock analytics response if it already contains a list
+such as:
+
+largestReportedShareIncreases
+
+or equivalent.
+
+Before coding, inspect the actual StockAnalytics response/domain type and use
+the canonical existing field name.
+
+Do NOT calculate ranking/order in React.
+
+The server must determine which positions are the largest reported increases.
+
+Display useful fields where available:
+
+manager name
+reported shares
+previous shares
+share change
+share change %
+portfolio weight
+
+Keep the list bounded, for example top 5 or top 10, based on server response.
+
+If the current v1 endpoint does NOT expose the required list:
+
+STOP before inventing frontend logic.
+
+Instead make the smallest server/API change necessary to expose the already
+calculated domain result through:
+
+GET /api/v1/institutional/stocks/:symbol
+
+Preserve backward compatibility.
+
+--------------------------------------------------
+PART 5 — LARGEST REPORTED REDUCTIONS
+--------------------------------------------------
+
+Add a separate visible section/table/card labeled:
+
+Largest Reported Reductions
+
+Use the canonical server-provided list such as:
+
+largestReportedShareReductions
+
+or equivalent.
+
+Again:
+
+Do NOT calculate ranking/order in React.
+
+Display useful fields where available:
+
+manager name
+reported shares
+previous shares
+share change
+share change %
+portfolio weight
+
+Use neutral reported-position terminology.
+
+--------------------------------------------------
+PART 6 — UI PLACEMENT
+--------------------------------------------------
+
+Keep the stock page easy to scan.
+
+Suggested stock summary order:
+
+1. Reporting Managers
+2. Holder Count Change
+3. Reported Share Change
+4. Quarterly Activity
+5. Institutional Accumulation Score
+6. Multi-Quarter Trend
+7. Largest Reported Holders
+8. Largest Reported Increases
+9. Largest Reported Reductions
+10. Data Quality / Data As Of / Disclosure
+
+Adapt this to the existing layout rather than redesigning the entire page.
+
+Do NOT alter the Institutional Trends, Rotation, Discovery, or Multibagger
+views unless required by shared types.
+
+--------------------------------------------------
+PART 7 — FORM 13F LANGUAGE
+--------------------------------------------------
+
+Continue using:
+
+Reported Holders
+Reporting Managers
+Increased Reported Position
+Reduced Reported Position
+Largest Reported Increases
+Largest Reported Reductions
+
+Do NOT use:
+
+Buying
+Selling
+Bought
+Sold
+Smart Money
+Conviction Buy
+Buy Signal
+Sell Signal
+
+Preserve the current disclosure:
+
+"Form 13F disclosures are periodic and delayed. They reflect quarter-end
+reported holdings, may be filed up to 45 days after quarter-end, and cover
+tracked reporting managers—not all institutional activity or current positions."
+
+--------------------------------------------------
+PART 8 — TESTS
+--------------------------------------------------
+
+Update/add tests verifying:
+
+1. reportedHolderCount renders from the server response
+2. holderCountChange renders from the server response
+3. dataAsOf renders explicitly
+4. largest reported increases section renders
+5. largest reported reductions section renders
+6. increase/reduction ranking is not performed client-side
+7. missing dataAsOf is handled safely
+8. empty increase/reduction lists render a clean empty state
+9. existing delayed-data disclosure remains visible
+10. prohibited terminology is not introduced
+
+Run:
+
+npx vitest run --root . \
+client/src/pages/institutional-intelligence.test.tsx \
+client/src/components/research/institutional/InstitutionalIntelligence.test.tsx \
+server/routes/__tests__/institutional-api-v1.test.ts \
+server/routes/__tests__/multibagger-api-v1.test.ts
+
+Run:
+
+npm run build
+
+Also run:
+
+npm run check
+
+BUT IMPORTANT:
+
+The repository currently has a known baseline of approximately 276 unrelated
+TypeScript errors across 47 files.
+
+Do NOT attempt to repair those errors in this task.
+
+Report:
+
+- total check errors
+- whether any errors originate from files changed by this task
+
+Task acceptance requires zero NEW TypeScript errors in changed files,
+not a clean repository-wide baseline.
+
+--------------------------------------------------
+PART 9 — FINAL VERIFICATION
+--------------------------------------------------
+
+At completion return:
+
+1. files changed
+2. exact stock fields added
+3. API/domain fields consumed
+4. whether any server/API change was required
+5. tests run
+6. exact test results
+7. production build result
+8. TypeScript baseline result
+9. confirmation that no changed Task 19 file introduces new TypeScript errors
+10. git diff --stat
+
+Give final status:
+
+PASS
+or
+FAIL / FIX REQUIRED
+
+STOP.
+
+Do not start Task 20.

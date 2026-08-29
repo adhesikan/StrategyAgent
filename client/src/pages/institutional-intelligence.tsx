@@ -74,6 +74,29 @@ interface StockAnalytics {
     reportedShares: number | null;
     previousReportedShares: number | null;
     reportedShareChange: number | null;
+    reportedShareChangePct: number | null;
+    reportedValueDollars: number | null;
+    portfolioWeight: number | null;
+    changeType: string | null;
+  }>;
+  largestReportedShareIncreases: Array<{
+    managerId: string;
+    managerName: string;
+    reportedShares: number | null;
+    previousReportedShares: number | null;
+    reportedShareChange: number | null;
+    reportedShareChangePct: number | null;
+    reportedValueDollars: number | null;
+    portfolioWeight: number | null;
+    changeType: string | null;
+  }>;
+  largestReportedShareReductions: Array<{
+    managerId: string;
+    managerName: string;
+    reportedShares: number | null;
+    previousReportedShares: number | null;
+    reportedShareChange: number | null;
+    reportedShareChangePct: number | null;
     reportedValueDollars: number | null;
     portfolioWeight: number | null;
     changeType: string | null;
@@ -422,6 +445,73 @@ function Metric({ label, value, detail, valueClass }: { label: string; value: Re
   );
 }
 
+function ReportedChangeCard({
+  title,
+  rows,
+  emptyMessage,
+  valueClass,
+}: {
+  title: string;
+  rows: StockAnalytics["largestReportedShareIncreases"];
+  emptyMessage: string;
+  valueClass: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="pb-2">Manager</th>
+                  <th className="pb-2 text-right">Reported shares</th>
+                  <th className="pb-2 text-right">Previous shares</th>
+                  <th className="pb-2 text-right">Share change</th>
+                  <th className="pb-2 text-right">Change %</th>
+                  <th className="pb-2 text-right">Portfolio weight</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((holder) => (
+                  <tr
+                    key={`${holder.managerId}-${holder.managerName}`}
+                    className="border-b last:border-0"
+                  >
+                    <td className="max-w-[220px] truncate py-2 pr-3 font-medium">
+                      {holder.managerName}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {formatNumber(holder.reportedShares)}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {formatNumber(holder.previousReportedShares)}
+                    </td>
+                    <td className={cn("py-2 text-right tabular-nums", valueClass)}>
+                      {formatNumber(holder.reportedShareChange)}
+                    </td>
+                    <td className={cn("py-2 text-right tabular-nums", valueClass)}>
+                      {formatPct(holder.reportedShareChangePct)}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {formatPct(holder.portfolioWeight)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function StockView({
   symbol,
   onOpenMultibagger,
@@ -515,19 +605,24 @@ function StockView({
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Accumulation score" value={score == null ? "Unavailable" : score} detail={signalQuery.data?.label ?? "Requires sufficient history"} valueClass={scoreColor(score)} />
-        <Metric label="Reporting managers" value={data?.reportingManagerCount ?? legacy?.summary?.reportingManagerCount ?? "—"} detail="Tracked 13F filers" />
+        <Metric
+          label="Reported holders"
+          value={data?.reportedHolderCount ?? "—"}
+          detail={
+            data?.holderCountChange == null
+              ? `Tracked 13F managers: ${data?.reportingManagerCount ?? "—"}`
+              : `${data.holderCountChange >= 0 ? "+" : ""}${data.holderCountChange} QoQ · ${data.reportingManagerCount} tracked managers`
+          }
+        />
         <Metric label="Reported shares" value={formatNumber(data?.aggregateReportedShares ?? legacy?.summary?.aggregateReportedShares)} detail={formatPct(reportedShareChangePercent)} valueClass={toneForDirection(reportedShareChangePercent)} />
         <Metric label="Mapping coverage" value={data?.mappingCoverage?.coveragePercent == null ? "—" : `${data.mappingCoverage.coveragePercent.toFixed(0)}%`} detail={`Quality: ${quality}`} />
       </div>
 
-      {legacy?.freshness && (
-        <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          <span><strong className="text-foreground">Period:</strong> {formatDate(legacy.periodOfReport)}</span>
-          <span><strong className="text-foreground">Latest filing:</strong> {formatDate(legacy.latestFilingDate)}</span>
-          <span><strong className="text-foreground">Freshness:</strong> {legacy.freshness.status.replace("_", " ")}</span>
-          <span><strong className="text-foreground">Signal:</strong> {signalQuery.data?.status ?? "Unavailable"}</span>
-        </div>
-      )}
+      <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+        <span><strong className="text-foreground">Data as of:</strong> {data?.dataAsOf ? formatDate(data.dataAsOf) : "Unavailable"}</span>
+        {legacy?.freshness && <><span><strong className="text-foreground">Period:</strong> {formatDate(legacy.periodOfReport)}</span><span><strong className="text-foreground">Latest filing:</strong> {formatDate(legacy.latestFilingDate)}</span><span><strong className="text-foreground">Freshness:</strong> {legacy.freshness.status.replace("_", " ")}</span></>}
+        <span><strong className="text-foreground">Signal:</strong> {signalQuery.data?.status ?? "Unavailable"}</span>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -603,6 +698,21 @@ function StockView({
           )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReportedChangeCard
+          title="Largest Reported Increases"
+          rows={data?.largestReportedShareIncreases ?? []}
+          emptyMessage="No reported increases are available for this symbol."
+          valueClass="text-emerald-600 dark:text-emerald-400"
+        />
+        <ReportedChangeCard
+          title="Largest Reported Reductions"
+          rows={data?.largestReportedShareReductions ?? []}
+          emptyMessage="No reported reductions are available for this symbol."
+          valueClass="text-rose-600 dark:text-rose-400"
+        />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

@@ -61,6 +61,7 @@ function holdingInput(row: EnrichedHoldingRow): EnrichmentHoldingInput {
     periodOfReport: row.holding.periodOfReport,
     reportedValueDollars: row.holding.reportedValue,
     reportedShares: row.holding.reportedShares,
+    sharesPrnType: row.holding.sharesPrnType,
     securityPositionType: classifySecurityPositionType(row.holding.putCall),
     putCall: row.holding.putCall,
   };

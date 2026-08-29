@@ -85,6 +85,7 @@ export interface EnrichmentHoldingInput {
   periodOfReport: string;
   reportedValueDollars: number | null;
   reportedShares: number | null;
+  sharesPrnType?: string | null;
   securityPositionType: string | null;
   putCall: string | null;
 }

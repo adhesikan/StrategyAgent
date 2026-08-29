@@ -231,6 +231,8 @@ export interface EnrichedInstitutionalHolding {
   periodOfReport: string;
   reportedValueDollars: number | null;
   reportedShares: number | null;
+  /** SH = shares; PRN = principal amount and is not common equity. */
+  sharesPrnType?: string | null;
   securityPositionType: string | null;
   putCall: string | null;
   mappingResolution: EnrichmentMappingResolution;
@@ -240,6 +242,110 @@ export interface EnrichedInstitutionalHolding {
   unclassifiedReason: "unmapped" | "ambiguous" | "metadata_unavailable" | null;
   metadata: InstitutionalSecurityMetadata | null;
   themes: InstitutionalThemeMembership[];
+}
+
+export type FundPortfolioXRayQuarterSelector =
+  | InstitutionalQuarter
+  | InstitutionalQuarterLabel
+  | "latest";
+
+export interface FundPortfolioXRayOptions {
+  /** Defaults to COMMON_EQUITY. PUT and CALL remain independently selectable. */
+  positionType?: SecurityPositionType;
+  /** Bounds each returned largest-* list. Defaults to 20. */
+  topN?: number;
+}
+
+export interface FundPortfolioAllocation {
+  /** Sector, industry, or theme display name. */
+  name: string;
+  /** Canonical reported US dollars; null when any contributing value is unavailable. */
+  reportedValue: number | null;
+  /** Percentage of the reported portfolio value, not a fraction. */
+  portfolioWeight: number | null;
+  /** Distinct CUSIP positions contributing to this allocation. */
+  positionCount: number;
+  /** Present on industry allocations to preserve sector context. */
+  sector?: string | null;
+  /** Present on theme allocations to identify the normalized theme. */
+  themeId?: string;
+}
+
+export interface FundPortfolioPositionAnalytics {
+  cusip: string;
+  symbol: string | null;
+  name: string;
+  issuerName: string;
+  reportedShares: number | null;
+  reportedValue: number | null;
+  portfolioWeight: number | null;
+  previousReportedShares: number | null;
+  reportedShareChange: number | null;
+  previousPortfolioWeight: number | null;
+  portfolioWeightChange: number | null;
+  changeType: InstitutionalChangeType | null;
+  sector: string | null;
+  industry: string | null;
+  themeIds: string[];
+  themes: Array<{ themeId: string; name: string }>;
+}
+
+export interface FundPortfolioMappingCoverage {
+  totalPositionCount: number;
+  mappedPositionCount: number;
+  unmappedPositionCount: number;
+  ambiguousPositionCount: number;
+  coveragePercent: number;
+}
+
+export interface FundPortfolioClassificationCoverage {
+  totalPositionCount: number;
+  classifiedPositionCount: number;
+  unclassifiedPositionCount: number;
+  coveragePercent: number;
+  sectorClassifiedPositionCount: number;
+  industryClassifiedPositionCount: number;
+  themeClassifiedPositionCount: number;
+}
+
+export interface FundPortfolioXRayAnalytics {
+  managerId: string;
+  managerName: string | null;
+  quarter: InstitutionalQuarter;
+  positionType: SecurityPositionType;
+  reportedPortfolioValue: number | null;
+  reportedPositionCount: number;
+  top5Weight: number | null;
+  top10Weight: number | null;
+  top20Weight: number | null;
+  sectorAllocation: FundPortfolioAllocation[];
+  industryAllocation: FundPortfolioAllocation[];
+  /**
+   * Theme exposure is intentionally overlapping: one security can contribute
+   * its full reported value to multiple themes, so theme weights may sum above
+   * 100%. Sector and industry allocations are mutually exclusive buckets.
+   */
+  themeAllocation: FundPortfolioAllocation[];
+  newlyReportedCount: number;
+  increasedReportedCount: number;
+  reducedReportedCount: number;
+  noLongerReportedCount: number;
+  largestPortfolioWeights: FundPortfolioPositionAnalytics[];
+  largestReportedShareIncreases: FundPortfolioPositionAnalytics[];
+  largestReportedShareReductions: FundPortfolioPositionAnalytics[];
+  largestWeightIncreases: FundPortfolioPositionAnalytics[];
+  largestWeightDecreases: FundPortfolioPositionAnalytics[];
+  mappingCoverage: FundPortfolioMappingCoverage;
+  classificationCoverage: FundPortfolioClassificationCoverage;
+  previousQuarter: InstitutionalQuarter | null;
+  dataQuality: AnalyticsDataQuality;
+  modelVersion: ModelVersion;
+}
+
+export interface FundPortfolioXRayQuery {
+  managerId: string;
+  quarter?: FundPortfolioXRayQuarterSelector;
+  options?: FundPortfolioXRayOptions;
 }
 
 export interface EnrichedInstitutionalHoldingsQuery {

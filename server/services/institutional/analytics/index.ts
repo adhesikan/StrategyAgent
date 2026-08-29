@@ -15,7 +15,15 @@ export type {
   EnrichedInstitutionalHoldingsQuery,
   EnrichmentMetadataResolution,
   FundPortfolioAnalytics,
+  FundPortfolioAllocation,
+  FundPortfolioClassificationCoverage,
+  FundPortfolioMappingCoverage,
+  FundPortfolioPositionAnalytics,
   FundPortfolioQuery,
+  FundPortfolioXRayAnalytics,
+  FundPortfolioXRayOptions,
+  FundPortfolioXRayQuery,
+  FundPortfolioXRayQuarterSelector,
   IndustryAllocation,
   InstitutionalAnalyticsQuery,
   InstitutionalBreadth,
@@ -61,6 +69,10 @@ export type {
   StockInstitutionalSourceSnapshot,
   TrendInstitutionalSourceSnapshot,
   InstitutionalEnrichmentRepository,
+  EffectiveFundFiling,
+  FundPortfolioXRayRepository,
+  FundPortfolioXRayRepositoryQuery,
+  FundPortfolioXRaySource,
 } from "./repository";
 
 export {
@@ -75,7 +87,20 @@ export type {
 } from "./security-enrichment";
 
 export type { FundAnalyticsService } from "./fund-analytics";
-export { createFundPortfolioAnalytics } from "./fund-analytics";
+export {
+  computeFundPortfolioXRay,
+  createFundPortfolioAnalytics,
+  getFundPortfolioAnalytics,
+} from "./fund-analytics";
+export type {
+  FundPortfolioXRayCalculationInput,
+  FundPortfolioXRayService,
+} from "./fund-analytics";
+export {
+  fundPortfolioXRayRepository,
+  selectEffectiveFundFilings,
+} from "./fund-analytics-repository";
+export type { EffectiveFundFilingCandidate } from "./fund-analytics-repository";
 export type { StockAnalyticsService } from "./stock-analytics";
 export { createStockInstitutionalAnalytics } from "./stock-analytics";
 export type { MarketAnalyticsService } from "./market-analytics";

@@ -27,6 +27,8 @@ import type {
   TrendAnalyticsQuery,
   EnrichedInstitutionalHolding,
   EnrichedInstitutionalHoldingsQuery,
+  FundPortfolioXRayQuarterSelector,
+  FundPortfolioXRayOptions,
   InstitutionalMappingCoverage,
 } from "./types";
 
@@ -77,4 +79,38 @@ export interface InstitutionalEnrichmentRepository {
   getInstitutionalMappingCoverage(
     query?: Omit<EnrichedInstitutionalHoldingsQuery, "limit" | "offset">,
   ): Promise<InstitutionalMappingCoverage>;
+}
+
+export interface EffectiveFundFiling {
+  accessionNumber: string;
+  managerId: string;
+  managerName: string;
+  periodOfReport: string;
+  filingDate: string;
+  isEffective: boolean;
+}
+
+export interface FundPortfolioXRaySource {
+  managerId: string;
+  managerName: string;
+  currentFiling: EffectiveFundFiling;
+  currentHoldings: EnrichedInstitutionalHolding[];
+  previousFiling: EffectiveFundFiling | null;
+  previousHoldings: EnrichedInstitutionalHolding[];
+}
+
+export interface FundPortfolioXRayRepositoryQuery {
+  managerId: string;
+  quarter: FundPortfolioXRayQuarterSelector;
+  options: FundPortfolioXRayOptions;
+}
+
+/**
+ * The X-ray service reads a selected effective filing and its immediately
+ * preceding effective filing. Implementations must not fetch SEC data here.
+ */
+export interface FundPortfolioXRayRepository {
+  getFundPortfolioSource(
+    query: FundPortfolioXRayRepositoryQuery,
+  ): Promise<FundPortfolioXRaySource | null>;
 }

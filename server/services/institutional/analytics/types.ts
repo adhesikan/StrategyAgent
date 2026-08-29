@@ -406,6 +406,7 @@ export interface EnrichedInstitutionalHoldingsQuery {
   accessionNumber?: string;
   accessionNumbers?: string[];
   periodOfReport?: string;
+  periodOfReports?: string[];
   /** Restrict the SQL candidate set to evidence that may resolve to this symbol. */
   symbol?: string;
   limit?: number;
@@ -437,6 +438,78 @@ export interface FundPortfolioQuery extends InstitutionalAnalyticsQuery {
 
 export interface StockAnalyticsQuery extends InstitutionalAnalyticsQuery {
   symbol: string;
+}
+
+export type InstitutionalActivityRankingMode =
+  | "ACCUMULATION"
+  | "REDUCTION"
+  | "NEWLY_REPORTED"
+  | "NO_LONGER_REPORTED";
+
+export type InstitutionalActivityRankingSort =
+  | "netHolderIncrease"
+  | "newHolderCount"
+  | "increasedHolderCount"
+  | "aggregateShareIncreasePct"
+  | "aggregateShareIncrease"
+  | "reportedValue";
+
+export interface InstitutionalActivityRankingOptions {
+  quarter?: FundPortfolioXRayQuarterSelector;
+  sector?: string;
+  industry?: string;
+  theme?: string;
+  marketCapMin?: number;
+  marketCapMax?: number;
+  /** Minimum managers in the selected activity category/categories. */
+  minManagers?: number;
+  minReportedValue?: number;
+  positionType?: SecurityPositionType;
+  sortBy?: InstitutionalActivityRankingSort;
+  sortDirection?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export interface InstitutionalActivityRankingItem {
+  symbol: string;
+  companyName: string | null;
+  sector: string | null;
+  industry: string | null;
+  marketCap: number | null;
+  currentReportedHolderCount: number;
+  previousReportedHolderCount: number | null;
+  holderCountChange: number | null;
+  newlyReportedHolderCount: number;
+  increasedReportedHolderCount: number;
+  reducedReportedHolderCount: number;
+  noLongerReportedHolderCount: number;
+  unchangedReportedHolderCount: number;
+  netHolderIncrease: number | null;
+  aggregateReportedShares: number | null;
+  previousAggregateReportedShares: number | null;
+  aggregateReportedShareChange: number | null;
+  aggregateReportedShareChangePct: number | null;
+  aggregateReportedValue: number | null;
+  increaseToReductionRatio: number | null;
+  /** Distinct CUSIPs retained while aggregating this symbol. */
+  cusips: string[];
+}
+
+export interface InstitutionalActivityRankingResult {
+  mode: InstitutionalActivityRankingMode;
+  quarter: InstitutionalQuarter;
+  previousQuarter: InstitutionalQuarter | null;
+  sortBy: InstitutionalActivityRankingSort;
+  sortDirection: "asc" | "desc";
+  items: InstitutionalActivityRankingItem[];
+  totalCount: number;
+  limit: number;
+  offset: number;
+  trackedManagerCount: number;
+  comparableManagerCount: number;
+  dataQuality: AnalyticsDataQuality;
+  modelVersion: ModelVersion;
 }
 
 export interface MarketAnalyticsQuery extends InstitutionalAnalyticsQuery {

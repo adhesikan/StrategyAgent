@@ -52,6 +52,11 @@ function buildConditions(query: EnrichedInstitutionalHoldingsQuery) {
   if (query.periodOfReport) {
     conditions.push(eq(institutional13fHoldings.periodOfReport, query.periodOfReport));
   }
+  if (query.periodOfReports && query.periodOfReports.length > 0) {
+    conditions.push(
+      inArray(institutional13fHoldings.periodOfReport, query.periodOfReports),
+    );
+  }
   if (query.symbol?.trim()) {
     const symbol = query.symbol.trim().toUpperCase();
     conditions.push(

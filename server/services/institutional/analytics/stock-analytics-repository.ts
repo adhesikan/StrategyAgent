@@ -64,7 +64,7 @@ type EnrichedHoldingsPageLoader = (
  */
 export async function loadAllStockInstitutionalHoldings(
   accessionNumbers: string[],
-  symbol: string,
+  symbol?: string,
   loadPage: EnrichedHoldingsPageLoader = getEnrichedInstitutionalHoldings,
   pageSize = 5_000,
 ): Promise<EnrichedInstitutionalHolding[]> {

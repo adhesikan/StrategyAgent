@@ -18,18 +18,24 @@ import {
   getInstitutionalMappingCoverage,
 } from "../analytics/security-enrichment-repository";
 
-function holdingQuery(rows: unknown[]) {
+function holdingQuery(
+  rows: unknown[],
+  captureWhere?: (condition: unknown) => void,
+) {
   return {
     from: () => ({
       leftJoin: () => ({
         leftJoin: () => ({
-          where: () => ({
-            orderBy: () => ({
-              limit: () => ({
-                offset: async () => rows,
+          where: (condition: unknown) => {
+            captureWhere?.(condition);
+            return {
+              orderBy: () => ({
+                limit: () => ({
+                  offset: async () => rows,
+                }),
               }),
-            }),
-          }),
+            };
+          },
         }),
       }),
     }),
@@ -194,5 +200,26 @@ describe("institutional enrichment PostgreSQL repository", () => {
     expect(rendered).toContain("WITH evidence AS");
     expect(rendered).toContain("COUNT(*) FILTER");
     expect(rendered).not.toContain("OFFSET");
+  });
+
+  it("can load adjacent periods in one set-based holdings query", async () => {
+    let whereCondition: unknown;
+    selectMock.mockReturnValue(
+      holdingQuery([], (condition) => {
+        whereCondition = condition;
+      }),
+    );
+
+    await getEnrichedInstitutionalHoldings({
+      periodOfReports: ["2026-06-30", "2026-03-31"],
+      limit: 1_000,
+      offset: 0,
+    });
+
+    expect(selectMock).toHaveBeenCalledTimes(1);
+    const rendered = new PgDialect().sqlToQuery(whereCondition as never);
+    expect(rendered.sql).toContain("period_of_report");
+    expect(rendered.sql.toUpperCase()).toContain(" IN ");
+    expect(rendered.params).toEqual(["2026-06-30", "2026-03-31"]);
   });
 });

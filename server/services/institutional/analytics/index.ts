@@ -26,6 +26,11 @@ export type {
   FundPortfolioXRayQuarterSelector,
   IndustryAllocation,
   InstitutionalAnalyticsQuery,
+  InstitutionalActivityRankingItem,
+  InstitutionalActivityRankingMode,
+  InstitutionalActivityRankingOptions,
+  InstitutionalActivityRankingResult,
+  InstitutionalActivityRankingSort,
   InstitutionalBreadth,
   InstitutionalChangeType,
   InstitutionalMappingCoverage,
@@ -73,6 +78,9 @@ export type {
   TrendInstitutionalSourceSnapshot,
   InstitutionalEnrichmentRepository,
   EffectiveFundFiling,
+  CrossFundInstitutionalAnalyticsSource,
+  CrossFundInstitutionalRepository,
+  CrossFundInstitutionalRepositoryQuery,
   FundPortfolioXRayRepository,
   FundPortfolioXRayRepositoryQuery,
   FundPortfolioXRaySource,
@@ -123,6 +131,20 @@ export {
   selectEffectiveStockFilings,
   stockInstitutionalRepository,
 } from "./stock-analytics-repository";
+export {
+  computeCrossFundActivityRanking,
+  crossFundActivityRankingService,
+  getInstitutionalActivityRanking,
+  getInstitutionalAccumulationRanking,
+  getInstitutionalReductionRanking,
+  getNewlyReportedRanking,
+  getNoLongerReportedRanking,
+} from "./cross-fund-analytics";
+export type {
+  CrossFundActivityCalculationInput,
+  CrossFundActivityRankingService,
+} from "./cross-fund-analytics";
+export { crossFundInstitutionalRepository } from "./cross-fund-analytics-repository";
 export type {
   EffectiveStockFilingCandidate,
   EffectiveStockFilingSelection,

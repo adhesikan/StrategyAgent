@@ -78,5 +78,40 @@ quality. These metrics describe delayed holdings reported by tracked Form 13F
 managers. They do not establish total institutional ownership and reported
 differences are not exact trading activity.
 
+## Cross-fund institutional activity rankings
+
+The four server-side ranking entry points report accumulation, reduction,
+newly reported, and no-longer-reported activity across tracked managers. They
+reuse persisted effective filings and compare only adjacent calendar quarters.
+When duplicate effective rows exist defensively, the later filing
+date/accession wins for that manager and quarter.
+
+Holdings are loaded in bounded, deterministic pages for all selected accessions
+rather than queried manager by manager. Calculations aggregate by trusted
+canonical symbol while retaining contributing CUSIPs internally. Filters cover
+quarter, sector, industry, normalized theme id/name, market-cap range, minimum
+managers in the selected activity category, minimum current reported value, and independently selectable
+common-equity, put, or call rows. PRN rows never enter common-equity rankings.
+
+Multiple deterministic sort metrics are available; no composite score is
+created. Missing adjacent manager history is never labeled as a new report or
+exit and causes affected aggregate comparison fields to fail closed to `null`.
+An increase-to-reduction ratio is also `null` when its reduction denominator is
+zero. These rankings describe delayed filing changes among tracked managers,
+not exact trades, total institutional ownership, recommendations, or trading
+conclusions.
+
+### Performance observation
+
+A read-only `EXPLAIN (ANALYZE, BUFFERS)` on the two-quarter accessions/holdings
+shape used existing indexes for effective filings, filing periods, accession
+holdings, CUSIP mappings, and security-master joins. The development database
+had no matching filing rows at measurement time, so the observed 1.34 ms
+execution is useful only for confirming plan shape, not production-volume
+latency. The repository therefore keeps deterministic 5,000-row paging to
+exhaustion and performs two all-manager holdings loads (current/prior), with no
+per-manager or per-symbol queries. No new index or precomputed table is
+justified by the available evidence.
+
 Route integration, StockMetrics migration, external APIs, and dashboards
 remain outside this layer.

@@ -6,7 +6,7 @@
 // Key correctness rules (NON-NEGOTIABLE):
 //   - Put/call rows are preserved with putCall field set — never mixed into common-stock totals.
 //   - PRN (principal amount) rows are preserved with sharesPrnType = "PRN" — not treated as shares.
-//   - reportedValue is in thousands of USD as reported.
+//   - reportedValue is normalized to the canonical database unit: US dollars.
 //   - Filing date vs period of report are never swapped.
 //   - Null values remain null; they are never converted to zero.
 //   - CUSIP is normalized to 9 characters.

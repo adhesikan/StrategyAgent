@@ -13,6 +13,7 @@ export type {
 } from "./types";
 export {
   formatShares,
+  formatReportedValueDollars,
   formatValueThousands,
   formatPctChange,
   formatConcentrationPct,

@@ -22,6 +22,11 @@
 
 import { db } from "../../db";
 import { sql } from "drizzle-orm";
+import {
+  normalizeQuarter,
+  periodEndDateToQuarter,
+  quarterToPeriodEndDate,
+} from "./quarter-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -196,6 +201,8 @@ export function normalizeManagerId(managerId: string): string {
  */
 export function dateToQuarterLabel(dateStr: string | null | undefined): string {
   if (!dateStr) return "Unknown";
+  const exactQuarter = periodEndDateToQuarter(dateStr);
+  if (exactQuarter) return exactQuarter;
   try {
     const parts = dateStr.split("T")[0].split("-");
     const year  = parseInt(parts[0], 10);
@@ -655,14 +662,21 @@ export async function getFundHoldings(
   let accessionNumber: string;
   let periodOfReport: string;
 
-  if (params.quarter) {
+  const normalizedQuarter = params.quarter
+    ? normalizeQuarter(params.quarter)
+    : "latest";
+  if (params.quarter && normalizedQuarter === null) return null;
+
+  if (normalizedQuarter !== "latest") {
+    const requestedPeriodEnd = quarterToPeriodEndDate(normalizedQuarter);
+    if (!requestedPeriodEnd) return null;
     // caller specified a quarter — find effective filing for that period
     const accRows = await rawQuery<AccRow>(sql`
       SELECT accession_number, period_of_report::text, filing_date::text
       FROM institutional_13f_filings
       WHERE is_effective = true
         AND filer_cik = ${managerId}
-        AND period_of_report::text = ${params.quarter}
+        AND period_of_report::text = ${requestedPeriodEnd}
       ORDER BY filing_date DESC
       LIMIT 1
     `);

@@ -16,6 +16,8 @@
 // Concentration metrics label: "Reported Holder Concentration"
 // Denominator: aggregate mapped eligible 13F-reported shares for that quarter.
 
+import { isCommonEquityPosition } from "./security-position";
+
 // ---------------------------------------------------------------------------
 // Input types
 // ---------------------------------------------------------------------------
@@ -110,7 +112,7 @@ export function isEligibleForAggregate(
   productionMode: boolean = true,
 ): boolean {
   // Exclude put/call (options)
-  if (holding.putCall !== null) return false;
+  if (!isCommonEquityPosition(holding.putCall)) return false;
   // Exclude PRN (principal amount, not shares)
   if (holding.sharesPrnType === "PRN") return false;
   // Must have positive shares

@@ -2955,7 +2955,7 @@ export const institutional13fHoldings = pgTable("institutional_13f_holdings", {
   cusip: text("cusip").notNull(),
   /** FIGI when supplied by the filer */
   figi: text("figi"),
-  /** Reported value in thousands of USD */
+  /** Canonical reported value in US dollars; consumers must not multiply by 1,000 */
   reportedValue: bigint("reported_value", { mode: "number" }),
   /** Reported share/principal amount */
   reportedShares: bigint("reported_shares", { mode: "number" }),
@@ -3044,7 +3044,7 @@ export const institutionalQuarterlyAggregates = pgTable("institutional_quarterly
   reportingManagerCount: integer("reporting_manager_count").notNull().default(0),
   /** Aggregate eligible common-stock reported shares (excludes put/call, PRN) */
   aggregateReportedShares: bigint("aggregate_reported_shares", { mode: "number" }),
-  /** Aggregate reported value in thousands USD */
+  /** Aggregate canonical reported value in US dollars */
   aggregateReportedValue: bigint("aggregate_reported_value", { mode: "number" }),
   /** Quarter-end date of the previous comparable quarter used for comparison */
   prevPeriodOfReport: date("prev_period_of_report"),

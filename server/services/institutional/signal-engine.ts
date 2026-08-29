@@ -82,11 +82,11 @@ export interface InstitutionalManagerChange {
   shareChange: number | null;
   /** Share change as fraction of previous shares; null when previous = 0 */
   shareChangePct: number | null;
-  /** Reported value in thousands USD in previous quarter */
+  /** Reported value in canonical US dollars in previous quarter */
   previousValue: number | null;
-  /** Reported value in thousands USD in latest quarter */
+  /** Reported value in canonical US dollars in latest quarter */
   latestValue: number | null;
-  /** Approximate value change in thousands USD (null when either value unavailable) */
+  /** Approximate value change in US dollars (null when either value unavailable) */
   valueChange: number | null;
   changeType: ManagerChangeType;
 }
@@ -712,7 +712,7 @@ export function buildInstitutionalSignal(
     confidence,
   );
 
-  // Metrics: value change (thousands USD)
+  // Metrics: value change in canonical US dollars
   const totalValueLatest = current.aggregateReportedValue ?? null;
   const totalValuePrevious = previous?.aggregateReportedValue ?? null;
   const valueChange =

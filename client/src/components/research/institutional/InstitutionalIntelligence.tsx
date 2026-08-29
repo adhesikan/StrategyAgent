@@ -37,7 +37,7 @@ import {
 } from "recharts";
 import type { InstitutionalData, LargestHolderEntry, HistoricalQuarterEntry } from "./types";
 import {
-  formatShares, formatValueThousands, formatPctChange, formatConcentrationPct,
+  formatShares, formatReportedValueDollars, formatPctChange, formatConcentrationPct,
   formatDate, formatPeriodOfReport, trendColorClass, alignmentColorClass,
   activityBadge, type TrendState,
 } from "./types";
@@ -352,7 +352,7 @@ function LargestHoldersSection({ data }: { data: InstitutionalData }) {
     <div className="space-y-2" data-testid="institutional-holders">
       <SectionLabel>Largest Reported Holders</SectionLabel>
       <p className="text-[10px] text-muted-foreground">
-        Reported value is the value as filed (thousands USD × 1,000), not necessarily current market value.
+        Reported value is shown in US dollars as filed and normalized by the data pipeline; it is not necessarily current market value.
         Filings reflect position at quarter end, not the filing date.
       </p>
 
@@ -402,7 +402,7 @@ function LargestHoldersSection({ data }: { data: InstitutionalData }) {
                     <p className="text-[9px] text-muted-foreground">CIK: {h.managerCik}</p>
                   </td>
                   <td className="py-1.5 text-right font-mono">{formatShares(h.reportedShares)}</td>
-                  <td className="py-1.5 text-right hidden sm:table-cell">{formatValueThousands(h.reportedValue)}</td>
+                  <td className="py-1.5 text-right hidden sm:table-cell">{formatReportedValueDollars(h.reportedValue)}</td>
                   <td className={cn("py-1.5 text-right font-mono", (h.quarterChangeShares ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400")}>
                     {h.quarterChangeShares != null
                       ? `${h.quarterChangeShares >= 0 ? "+" : ""}${formatShares(h.quarterChangeShares)}`

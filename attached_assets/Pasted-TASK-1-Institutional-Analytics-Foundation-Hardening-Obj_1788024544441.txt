@@ -1,0 +1,95 @@
+TASK 1 — Institutional Analytics Foundation Hardening
+
+Objective:
+Harden the existing 13F foundation before adding new analytics.
+
+Do not implement any new user-facing analytics yet.
+
+PART A — REPORTED VALUE UNIT SAFETY
+
+The application currently treats institutional reported_value as canonical
+US dollars.
+
+Audit all code, schema comments, queries, helpers, API types, tests and UI
+formatters involving reported_value.
+
+Requirements:
+
+1. Preserve canonical storage and API behavior:
+   DB reported_value = dollars
+   API reportedValue = dollars
+   UI performs display formatting only
+
+2. Remove or correct any misleading comments saying current reported_value
+   is stored in thousands.
+
+3. Do NOT add multiplication by 1,000 anywhere.
+
+4. Add regression tests protecting against accidental 1000x conversion.
+
+5. Verify representative portfolio totals remain unchanged.
+
+PART B — QUARTER NORMALIZATION UTILITY
+
+Create a reusable institutional quarter utility.
+
+Public/service-facing quarter identifiers should support:
+
+latest
+2026-Q1
+2026-Q2
+2026-Q3
+2026-Q4
+
+Internally the database may continue using period-end dates such as:
+2026-03-31
+
+Implement reusable functions similar to:
+
+parseQuarterIdentifier()
+quarterToPeriodEndDate()
+periodEndDateToQuarter()
+normalizeQuarter()
+
+Do NOT break existing endpoints that currently accept database dates.
+Backward compatibility must remain.
+
+PART C — SECURITY TYPE NORMALIZATION
+
+Create a reusable institutional security-position classification supporting:
+
+COMMON_EQUITY
+PUT
+CALL
+
+Do not merge these categories.
+
+Default future analytics should use COMMON_EQUITY unless explicitly requested.
+
+Audit how put_call is currently represented and implement the smallest clean
+normalization layer possible.
+
+TESTS
+
+Add unit tests for:
+- dollar unit handling
+- quarter parsing
+- latest handling where possible
+- quarter/date conversion
+- invalid quarter values
+- common-equity classification
+- put classification
+- call classification
+
+Do not alter UI except where required to preserve existing behavior.
+
+Run the full relevant test suite.
+
+At completion report:
+- files changed
+- behavior changed
+- compatibility considerations
+- tests/results
+- blockers
+
+STOP. Do not start another task.

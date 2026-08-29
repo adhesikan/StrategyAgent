@@ -102,14 +102,20 @@ export function formatShares(n: number | null | undefined): string {
   return String(n);
 }
 
-/** Format a reported value in thousands of USD. */
-export function formatValueThousands(n: number | null | undefined): string {
+/** Format a canonical reported value in US dollars for display. */
+export function formatReportedValueDollars(n: number | null | undefined): string {
   if (n == null) return "N/A";
-  const dollars = n * 1000;
-  if (dollars >= 1_000_000_000) return `$${(dollars / 1_000_000_000).toFixed(1)}B`;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(0)}K`;
-  return `$${dollars.toFixed(0)}`;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+/**
+ * @deprecated Use formatReportedValueDollars. Retained for import compatibility.
+ */
+export function formatValueThousands(n: number | null | undefined): string {
+  return formatReportedValueDollars(n);
 }
 
 /** Format a QoQ percent change with sign. */

@@ -4,6 +4,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatShares,
+  formatReportedValueDollars,
   formatValueThousands,
   formatPctChange,
   formatConcentrationPct,
@@ -43,20 +44,19 @@ describe("H — Client display helpers", () => {
     });
   });
 
-  // formatValueThousands
-  describe("H2 — formatValueThousands", () => {
-    it("H2a — 5,000,000 thousands = $5.0B", () => {
-      // reportedValue is stored in USD thousands (as SEC reports it).
-      // 5_000_000 thousands = 5_000_000_000 dollars = $5.0B
-      expect(formatValueThousands(5_000_000)).toBe("$5.0B");
+  // formatReportedValueDollars
+  describe("H2 — formatReportedValueDollars", () => {
+    it("H2a — formats canonical dollars without 1000x inflation", () => {
+      expect(formatReportedValueDollars(5_000_000)).toBe("$5.0M");
     });
     it("H2b — null → N/A", () => {
-      expect(formatValueThousands(null)).toBe("N/A");
+      expect(formatReportedValueDollars(null)).toBe("N/A");
     });
-    it("H2c — values in millions range", () => {
-      // 1000 thousands = 1_000_000 dollars = $1.0M
-      const result = formatValueThousands(1000);
-      expect(result).toBe("$1.0M");
+    it("H2c — formats dollar values in the thousands range", () => {
+      expect(formatReportedValueDollars(1000)).toBe("$1K");
+    });
+    it("H2d — keeps the legacy helper name as a dollar-safe alias", () => {
+      expect(formatValueThousands(5_000_000)).toBe("$5.0M");
     });
   });
 

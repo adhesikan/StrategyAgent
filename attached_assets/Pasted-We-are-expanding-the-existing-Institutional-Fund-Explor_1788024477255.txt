@@ -1,0 +1,58 @@
+We are expanding the existing Institutional Fund Explorer into a reusable
+Institutional Intelligence platform and external API.
+
+IMPORTANT EXECUTION RULES
+
+1. Do NOT rebuild or replace the existing Institutional Fund Explorer.
+2. Preserve all existing functionality unless explicitly changed by a later task.
+3. Work ONE task at a time.
+4. Do not start a subsequent task automatically.
+5. After every task:
+   - run relevant tests
+   - run TypeScript/type checks
+   - run lint/build checks if available
+   - report files changed
+   - report database migrations created
+   - report tests added/changed
+   - report exact test results
+   - report blockers
+   - STOP and wait for approval
+6. Do not refactor unrelated code.
+7. Do not add UI features unless specifically requested.
+8. Analytics calculations must live in reusable server/domain services, NOT React components.
+9. The StockMetrics UI and future external applications must consume the same underlying analytics services.
+10. Existing internal routes under /api/institutional should remain backward compatible.
+11. New machine-consumable APIs will eventually live under /api/v1.
+12. Preserve Form 13F terminology and data limitations.
+13. Never describe changes in reported holdings as known real-time buys or sells.
+14. Continue respecting is_effective=true when selecting authoritative filings.
+15. Do not merge common equity, put rows, and call rows unless an endpoint explicitly requests that.
+16. Never expose an unreliable ticker mapping as fact.
+17. Prefer CUSIP/security identity internally rather than ticker identity where appropriate.
+18. Any scoring model must be versioned and deterministic.
+19. Do not introduce AI/LLM calculations into deterministic analytics.
+20. API responses should eventually include dataAsOf/modelVersion metadata.
+
+Current application architecture includes:
+- server/routes/institutional-funds.ts
+- server/services/institutional/fund-service.ts
+- institutional_13f_filings
+- institutional_13f_holdings
+- institutional_security_mappings
+- institutional_quarterly_aggregates
+- existing Fund Explorer UI
+- existing symbol-to-holder intelligence
+
+Before coding anything:
+A. inspect the current repository
+B. confirm the above architecture against the actual code
+C. identify relevant existing tests
+D. identify database/migration tooling
+E. identify current authentication architecture
+F. identify current API route registration pattern
+
+Return an implementation inventory only.
+
+DO NOT CHANGE ANY CODE.
+
+STOP after reporting the inventory.

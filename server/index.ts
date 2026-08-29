@@ -15,6 +15,7 @@ import { fetchQuotesFromBroker } from "./broker-service";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
+import { ensureInstitutionalSecurityEnrichmentSchema } from "./services/institutional/security-enrichment-migration";
 
 // ── Global process survival handlers ────────────────────────────────────────
 // Express 4 async handlers that throw without try/catch produce unhandled
@@ -335,6 +336,8 @@ async function runStartupMigrations() {
         ON theme_intelligence_snapshots(generated_at)
     `);
 
+    await ensureInstitutionalSecurityEnrichmentSchema();
+
     const skipCleanup = await db.execute(sql`
       DELETE FROM agent_decisions WHERE action = 'SKIP'
     `);
@@ -579,6 +582,25 @@ async function restoreBrokerConnections() {
   configurePushService();
   await restoreBrokerConnections();
   await registerRoutes(httpServer, app);
+
+  // Keep normalized security/theme memberships aligned with the curated
+  // registry. This is idempotent and never assigns themes to untrusted maps.
+  try {
+    const { syncSecurityThemesFromRegistry } = await import(
+      "./services/institutional/security-theme-service"
+    );
+    const themeSync = await syncSecurityThemesFromRegistry();
+    log(
+      `Institutional theme sync complete: ${themeSync.themesUpserted} definitions, ` +
+        `${themeSync.membershipsRebuilt} memberships`,
+      "institutional",
+    );
+  } catch (err: any) {
+    log(
+      `Institutional theme sync error (non-fatal): ${err?.message}`,
+      "institutional",
+    );
+  }
   
   // Start alert engine (runs every 60 seconds)
   startAlertEngine(

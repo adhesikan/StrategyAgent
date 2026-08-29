@@ -11,17 +11,23 @@ export type {
   AnalyticsDataQuality,
   CohortAnalyticsQuery,
   CohortInstitutionalAnalytics,
+  EnrichedInstitutionalHolding,
+  EnrichedInstitutionalHoldingsQuery,
+  EnrichmentMetadataResolution,
   FundPortfolioAnalytics,
   FundPortfolioQuery,
   IndustryAllocation,
   InstitutionalAnalyticsQuery,
   InstitutionalBreadth,
   InstitutionalChangeType,
+  InstitutionalMappingCoverage,
   InstitutionalQuarter,
   InstitutionalQuarterLabel,
   InstitutionalQuarterNumber,
   InstitutionalQuarterSelector,
   InstitutionalScoreResult,
+  InstitutionalSecurityMetadata,
+  InstitutionalThemeMembership,
   InstitutionalTrend,
   MarketInstitutionalAnalytics,
   MarketAnalyticsQuery,
@@ -54,7 +60,19 @@ export type {
   SectorInstitutionalSourceSnapshot,
   StockInstitutionalSourceSnapshot,
   TrendInstitutionalSourceSnapshot,
+  InstitutionalEnrichmentRepository,
 } from "./repository";
+
+export {
+  buildEnrichedInstitutionalHolding,
+  computeInstitutionalMappingCoverage,
+  resolveReliableSecurityMapping,
+} from "./security-enrichment";
+export type {
+  EnrichmentHoldingInput,
+  ReliableMappingResolution,
+  SecurityMappingEvidence,
+} from "./security-enrichment";
 
 export type { FundAnalyticsService } from "./fund-analytics";
 export { createFundPortfolioAnalytics } from "./fund-analytics";

@@ -12,8 +12,10 @@ export const symbols = pgTable("symbols", {
   exchange: text("exchange"),
   sector: text("sector"),
   industry: text("industry"),
+  subIndustry: text("sub_industry"),
   marketCap: real("market_cap"),
   avgVolume: real("avg_volume"),
+  country: text("country"),
   isActive: boolean("is_active").default(true),
 });
 
@@ -3184,6 +3186,54 @@ export const securityMaster = pgTable("security_master", {
 
 export type SecurityMaster = typeof securityMaster.$inferSelect;
 export type InsertSecurityMaster = typeof securityMaster.$inferInsert;
+
+/**
+ * Extensible curated theme definitions for security enrichment.
+ * Theme membership is normalized in security_master_themes; analytics must
+ * never hardcode theme names or symbol lists.
+ */
+export const securityThemes = pgTable("security_themes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Stable kebab-case identifier shared with the theme registry. */
+  themeId: text("theme_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** curated until a separately governed classifier is introduced */
+  classificationMethod: text("classification_method").notNull().default("curated"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  idxThemeActive: index("idx_security_themes_active").on(t.active),
+}));
+
+export type SecurityTheme = typeof securityThemes.$inferSelect;
+export type InsertSecurityTheme = typeof securityThemes.$inferInsert;
+
+/**
+ * Many-to-many security master ↔ theme membership.
+ * A membership is valid only when its security master record is reliably
+ * mapped; unresolved holdings never receive a row here.
+ */
+export const securityMasterThemes = pgTable("security_master_themes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  securityMasterId: varchar("security_master_id").notNull()
+    .references(() => securityMaster.id, { onDelete: "cascade" }),
+  themeId: text("theme_id").notNull()
+    .references(() => securityThemes.themeId, { onDelete: "cascade" }),
+  classificationMethod: text("classification_method").notNull().default("curated"),
+  source: text("source"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  idxSecurityMasterThemeUnique: uniqueIndex("idx_security_master_themes_unique").on(
+    t.securityMasterId, t.themeId,
+  ),
+  idxSecurityMasterThemesSecurity: index("idx_security_master_themes_security").on(t.securityMasterId),
+  idxSecurityMasterThemesTheme: index("idx_security_master_themes_theme").on(t.themeId),
+}));
+
+export type SecurityMasterTheme = typeof securityMasterThemes.$inferSelect;
+export type InsertSecurityMasterTheme = typeof securityMasterThemes.$inferInsert;
 
 // ---------------------------------------------------------------------------
 // Institutional Symbol Signals — Sprint 2.2.6

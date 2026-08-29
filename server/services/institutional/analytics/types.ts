@@ -194,6 +194,76 @@ export interface CohortInstitutionalAnalytics {
   modelVersion: ModelVersion;
 }
 
+export type EnrichmentMappingResolution =
+  | "reliably_mapped"
+  | "unmapped"
+  | "ambiguous";
+
+export type EnrichmentClassificationStatus = "classified" | "unclassified";
+export type EnrichmentMetadataResolution = "canonical" | "partial" | "unavailable";
+
+export interface InstitutionalThemeMembership {
+  themeId: string;
+  themeName: string;
+  description: string | null;
+  classificationMethod: string;
+}
+
+export interface InstitutionalSecurityMetadata {
+  symbol: string;
+  companyName: string | null;
+  sector: string | null;
+  industry: string | null;
+  subIndustry: string | null;
+  marketCap: number | null;
+  exchange: string | null;
+  country: string | null;
+  assetType: string | null;
+}
+
+export interface EnrichedInstitutionalHolding {
+  holdingId: string;
+  accessionNumber: string;
+  filerCik: string;
+  filerName: string;
+  issuerName: string;
+  cusip: string;
+  periodOfReport: string;
+  reportedValueDollars: number | null;
+  reportedShares: number | null;
+  securityPositionType: string | null;
+  putCall: string | null;
+  mappingResolution: EnrichmentMappingResolution;
+  metadataResolution: EnrichmentMetadataResolution;
+  classificationStatus: EnrichmentClassificationStatus;
+  /** Why a holding is not usable in symbol-based analytics, when applicable. */
+  unclassifiedReason: "unmapped" | "ambiguous" | "metadata_unavailable" | null;
+  metadata: InstitutionalSecurityMetadata | null;
+  themes: InstitutionalThemeMembership[];
+}
+
+export interface EnrichedInstitutionalHoldingsQuery {
+  accessionNumber?: string;
+  periodOfReport?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface InstitutionalMappingCoverage {
+  totalHoldingCount: number;
+  reliablyMappedHoldingCount: number;
+  unmappedHoldingCount: number;
+  ambiguousHoldingCount: number;
+  unclassifiedHoldingCount: number;
+  symbolCoveragePercent: number;
+  sectorEnrichedHoldingCount: number;
+  industryEnrichedHoldingCount: number;
+  themeEnrichedHoldingCount: number;
+  sectorCoveragePercent: number;
+  industryCoveragePercent: number;
+  themeCoveragePercent: number;
+}
+
 export interface InstitutionalAnalyticsQuery {
   quarter?: InstitutionalQuarterSelector;
 }

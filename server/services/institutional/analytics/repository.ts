@@ -25,6 +25,9 @@ import type {
   StockInstitutionalAnalytics,
   StockAnalyticsQuery,
   TrendAnalyticsQuery,
+  EnrichedInstitutionalHolding,
+  EnrichedInstitutionalHoldingsQuery,
+  InstitutionalMappingCoverage,
 } from "./types";
 
 /**
@@ -64,4 +67,14 @@ export interface InstitutionalAnalyticsRepository {
   getCohortSnapshot(
     query: CohortAnalyticsQuery,
   ): Promise<CohortInstitutionalSourceSnapshot | null>;
+}
+
+/** Data-access port for enriched holdings; implementations may use SQL or another store. */
+export interface InstitutionalEnrichmentRepository {
+  getEnrichedInstitutionalHoldings(
+    query?: EnrichedInstitutionalHoldingsQuery,
+  ): Promise<EnrichedInstitutionalHolding[]>;
+  getInstitutionalMappingCoverage(
+    query?: Omit<EnrichedInstitutionalHoldingsQuery, "limit" | "offset">,
+  ): Promise<InstitutionalMappingCoverage>;
 }

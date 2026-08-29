@@ -1,0 +1,212 @@
+TASK 19 VERIFICATION — DO NOT CHANGE CODE YET
+
+Review commit:
+
+9d22d4a
+"Implement institutional intelligence page updates and add API error handling documentation"
+
+This is a verification gate only.
+
+Do NOT make code changes unless explicitly asked after the review.
+
+Verify Task 19 against the following acceptance criteria.
+
+1. ARCHITECTURE
+
+Confirm whether institutional analytics calculations are performed entirely
+server-side/domain-side.
+
+Identify any calculations in:
+client/src/pages/institutional-intelligence.tsx
+
+that duplicate server-side analytics.
+
+List them explicitly if any exist.
+
+The frontend should primarily:
+- request data
+- manage UI state
+- format values
+- render results
+
+It should NOT independently calculate institutional scores, trends,
+accumulation logic, portfolio analytics, or multibagger logic.
+
+2. API USAGE
+
+List every API endpoint consumed by the institutional intelligence page.
+
+For each endpoint report:
+- HTTP method
+- path
+- query parameters
+- whether it is /api/v1 or internal /api/institutional
+- response type used by the client
+
+Confirm whether the page is consuming the reusable analytics/API architecture
+rather than querying raw institutional data independently.
+
+3. REQUIRED PAGE CAPABILITIES
+
+Report which of these are currently implemented:
+
+A. Fund Explorer
+B. Stock Institutional Intelligence
+C. Institutional Trends
+D. Sector Rotation
+E. Industry Rotation
+F. Theme Rotation
+G. Institutional Discovery
+H. Multibagger Discovery
+
+For each mark:
+
+IMPLEMENTED
+PARTIAL
+NOT IMPLEMENTED
+
+Do not modify anything.
+
+4. STOCK INSTITUTIONAL INTELLIGENCE
+
+Confirm whether the page can display:
+
+reported holder count
+holder-count change
+newly reported holders
+increased reported positions
+reduced reported positions
+no-longer-reported positions
+aggregate reported-share change
+multi-quarter trend
+institutional accumulation score
+institutional discovery stage
+largest reported holders
+largest reported increases
+largest reported reductions
+data quality
+data as-of date
+
+Mark each:
+YES / NO
+
+5. MULTIBAGGER
+
+Confirm whether the page displays:
+
+overall score
+5x profile
+10x profile
+25x optionality
+100x optionality
+institutional score
+growth score
+fundamental score
+valuation score
+runway score
+risk score
+supporting factors
+limiting factors
+model version
+data quality
+
+Mark each:
+YES / NO
+
+6. PAGINATION
+
+Identify every potentially large table/list.
+
+For each state whether pagination is:
+
+SERVER-SIDE
+CLIENT-SIDE
+NONE
+
+Flag any large institutional result set that is currently loading the complete
+dataset into the browser.
+
+7. QUERY CLIENT / ERROR HANDLING
+
+Review the changes to:
+
+client/src/lib/queryClient.ts
+
+Explain exactly what changed.
+
+Confirm correct handling for:
+
+400
+401
+403
+404
+429
+500
+network failure
+empty response
+
+Confirm that API error payloads are not silently swallowed.
+
+8. 13F LANGUAGE / DISCLOSURE
+
+Search the institutional intelligence page for terminology.
+
+Confirm that the UI does NOT incorrectly say:
+
+institutions are buying
+institutions are selling
+fund bought
+fund sold
+smart money
+conviction buy
+buy signal
+sell signal
+
+Confirm appropriate terminology such as:
+
+reported holdings
+newly reported
+increased reported position
+reduced reported position
+no longer reported
+institutional accumulation model/score
+quarterly Form 13F data
+
+Report the exact delayed-data disclosure shown to users.
+
+9. TESTS
+
+Report all tests related to Task 19.
+
+Run:
+
+- institutional intelligence page tests
+- relevant API/client tests
+- TypeScript/type check
+- production build
+- lint if configured
+
+Return exact results.
+
+10. GIT
+
+Return:
+
+git status
+git diff 158710f..9d22d4a --stat
+
+Also list all changed files with a one-sentence description of what changed.
+
+FINAL RESULT
+
+Give one of these:
+
+PASS
+PASS WITH MINOR ISSUES
+FAIL / FIX REQUIRED
+
+If anything is missing, list the exact required fixes.
+
+DO NOT IMPLEMENT THE FIXES.
+
+STOP after the verification report.

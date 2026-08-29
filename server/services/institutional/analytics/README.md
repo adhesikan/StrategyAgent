@@ -128,5 +128,20 @@ sum above total portfolio exposure. Unmapped and ambiguous securities are not
 guessed into a classification. Common equity is the default; PRN, put, and call
 rows are excluded unless an option position type is selected explicitly.
 
+## Multi-quarter stock trend
+
+`getStockInstitutionalTrend(symbol, options)` loads up to eight consecutive
+effective filing quarters by default and returns chronological holder, share,
+value, breadth, persistence, and increase/reduction-balance observations.
+Missing adjacent manager filings are never interpreted as new or exited
+positions, and acceleration never bridges a missing quarter comparison.
+
+All classification boundaries live in the versioned
+`INSTITUTIONAL_TREND_MODEL_CONFIG` (`institutional_trend_v1`). Classification
+uses reported-share activity and manager breadth only. Reported market value is
+returned as context but cannot change an accumulation/distribution label because
+security price movement also affects filing-time value. No AI or LLM
+interpretation is involved.
+
 Route integration, StockMetrics migration, external APIs, and dashboards
 remain outside this layer.

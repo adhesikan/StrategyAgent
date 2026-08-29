@@ -33,6 +33,8 @@ import type {
   InstitutionalQuarter,
   InstitutionalActivityRankingOptions,
   InstitutionalActivityRankingResult,
+  StockInstitutionalTrendOptions,
+  StockInstitutionalTrendResult,
   StockInstitutionalAnalyticsOptions,
 } from "./types";
 
@@ -167,4 +169,29 @@ export interface CrossFundInstitutionalRepository {
   getCrossFundInstitutionalSource(
     query: CrossFundInstitutionalRepositoryQuery,
   ): Promise<CrossFundInstitutionalAnalyticsSource | null>;
+}
+
+export interface StockInstitutionalTrendQuarterSource {
+  quarter: InstitutionalQuarter;
+  previousQuarter: InstitutionalQuarter | null;
+  currentHoldings: EnrichedInstitutionalHolding[];
+  previousHoldings: EnrichedInstitutionalHolding[];
+  currentFilingManagerIds: string[];
+  comparableManagerIds: string[];
+}
+
+export interface StockInstitutionalTrendSource {
+  symbol: string;
+  quarters: StockInstitutionalTrendQuarterSource[];
+}
+
+export interface StockInstitutionalTrendRepositoryQuery {
+  symbol: string;
+  options: StockInstitutionalTrendOptions;
+}
+
+export interface StockInstitutionalTrendRepository {
+  getStockInstitutionalTrendSource(
+    query: StockInstitutionalTrendRepositoryQuery,
+  ): Promise<StockInstitutionalTrendSource | null>;
 }

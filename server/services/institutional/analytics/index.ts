@@ -35,6 +35,10 @@ export type {
   InstitutionalRotationKind,
   InstitutionalRotationOptions,
   InstitutionalRotationResult,
+  StockInstitutionalTrendClassification,
+  StockInstitutionalTrendOptions,
+  StockInstitutionalTrendQuarter,
+  StockInstitutionalTrendResult,
   InstitutionalBreadth,
   InstitutionalChangeType,
   InstitutionalMappingCoverage,
@@ -85,6 +89,10 @@ export type {
   CrossFundInstitutionalAnalyticsSource,
   CrossFundInstitutionalRepository,
   CrossFundInstitutionalRepositoryQuery,
+  StockInstitutionalTrendRepository,
+  StockInstitutionalTrendRepositoryQuery,
+  StockInstitutionalTrendSource,
+  StockInstitutionalTrendQuarterSource,
   FundPortfolioXRayRepository,
   FundPortfolioXRayRepositoryQuery,
   FundPortfolioXRaySource,
@@ -159,7 +167,18 @@ export type {
   InstitutionalRotationService,
   RotationCalculationInput,
 } from "./rotation-analytics";
+export {
+  computeStockInstitutionalTrend,
+  classifyStockInstitutionalTrend,
+  getStockInstitutionalTrend,
+  INSTITUTIONAL_TREND_MODEL_CONFIG,
+  INSTITUTIONAL_TREND_MODEL_VERSION,
+} from "./stock-trend";
+export type {
+  StockInstitutionalTrendCalculationInput,
+} from "./stock-trend";
 export { crossFundInstitutionalRepository } from "./cross-fund-analytics-repository";
+export { stockInstitutionalTrendRepository } from "./stock-trend-repository";
 export type {
   EffectiveStockFilingCandidate,
   EffectiveStockFilingSelection,

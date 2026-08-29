@@ -550,6 +550,50 @@ export interface InstitutionalRotationResult {
   modelVersion: ModelVersion;
 }
 
+export interface StockInstitutionalTrendOptions {
+  quarter?: FundPortfolioXRayQuarterSelector;
+  /** Number of consecutive quarters to request; defaults to 8 and is capped at 8. */
+  historyQuarters?: number;
+  /** Defaults to COMMON_EQUITY; PUT and CALL remain separate. */
+  positionType?: SecurityPositionType;
+}
+
+export interface StockInstitutionalTrendQuarter {
+  quarter: InstitutionalQuarter;
+  reportedHolderCount: number;
+  newlyReportedHolderCount: number;
+  increasedReportedHolderCount: number;
+  reducedReportedHolderCount: number;
+  noLongerReportedHolderCount: number;
+  aggregateReportedShares: number | null;
+  aggregateReportedValue: number | null;
+  /** Current holder count minus the comparable prior-quarter holder count. */
+  breadthChange: number | null;
+  /** Reported share change percentage; null when the prior share denominator is zero. */
+  shareTrend: number | null;
+  /** Unchanged comparable managers as a percentage of comparable managers. */
+  persistence: number | null;
+  /** (new + increased - reduced - exited) / all directional changes. */
+  increaseReductionBalance: number | null;
+  hasComparablePriorQuarter: boolean;
+}
+
+export type StockInstitutionalTrendClassification =
+  | "ACCELERATING_ACCUMULATION"
+  | "ACCUMULATION"
+  | "STABLE"
+  | "DISTRIBUTION"
+  | "ACCELERATING_DISTRIBUTION"
+  | "INSUFFICIENT_DATA";
+
+export interface StockInstitutionalTrendResult {
+  symbol: string;
+  quarters: StockInstitutionalTrendQuarter[];
+  classification: StockInstitutionalTrendClassification;
+  dataQuality: AnalyticsDataQuality;
+  modelVersion: ModelVersion;
+}
+
 export interface MarketAnalyticsQuery extends InstitutionalAnalyticsQuery {
   universe?: string;
 }

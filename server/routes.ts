@@ -81,6 +81,7 @@ import { registerInstitutionalMappingRoutes } from "./routes/institutional-mappi
 import { registerInstitutionalSignalRoutes } from "./routes/institutional-signals";
 import { registerInstitutionalFundsRoutes } from "./routes/institutional-funds";
 import { registerInstitutionalApiV1Routes } from "./routes/institutional-api-v1";
+import { registerInstitutionalApiV1DocsRoutes } from "./routes/institutional-api-docs-v1";
 import { registerIntelligenceRoutes } from "./routes/intelligence";
 import { registerPlatformHealthRoutes } from "./routes/platform-health";
 import { registerOperationsManualRoutes } from "./routes/operations-manual";
@@ -261,6 +262,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerInternalPortfolioRoutes(app);
   registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
+  registerInstitutionalApiV1DocsRoutes(app);
   registerInstitutionalApiV1Routes(app);
   // Static named institutional routes MUST be registered before the dynamic
   // /api/institutional/:symbol route, otherwise Express matches the dynamic

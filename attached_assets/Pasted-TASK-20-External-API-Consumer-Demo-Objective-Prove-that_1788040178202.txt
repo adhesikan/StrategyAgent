@@ -1,0 +1,374 @@
+TASK 20 — External API Consumer Demo
+
+Objective:
+Prove that the Institutional Intelligence and Multibagger modules can be
+consumed by a completely separate application using only the public /api/v1 API.
+
+IMPORTANT:
+Do NOT import StockMetrics server-side analytics services directly into this demo.
+Do NOT connect directly to the StockMetrics database.
+Do NOT duplicate institutional or multibagger calculations in the demo.
+
+The demo must behave like a real external third-party application.
+
+--------------------------------------------------
+PART 1 — DEMO APPLICATION ARCHITECTURE
+--------------------------------------------------
+
+Create a small standalone external-consumer demo in a clean isolated location,
+for example:
+
+examples/institutional-api-demo/
+
+or another repository-consistent location.
+
+The demo should have:
+
+Browser UI
+   ↓
+Demo backend / proxy
+   ↓
+StockMetrics public /api/v1
+   ↓
+Institutional Intelligence / Multibagger services
+
+The browser must NEVER call StockMetrics with a privileged API key directly.
+
+The demo backend must store the API key in an environment variable such as:
+
+STOCKMETRICS_API_KEY
+
+Also support a configurable API base URL:
+
+STOCKMETRICS_API_BASE_URL
+
+Do not hardcode production URLs.
+
+--------------------------------------------------
+PART 2 — INSTITUTIONAL ACCUMULATION PAGE
+--------------------------------------------------
+
+Build a page/view that consumes:
+
+GET /api/v1/institutional/trends/accumulation
+
+Display at minimum:
+
+symbol
+company name
+sector
+reported holder count
+newly reported holder count
+increased reported holder count
+reduced reported holder count
+no-longer-reported holder count
+aggregate reported share change %
+institutional accumulation score if available
+institutional trend if available
+
+Support filters where the API already supports them:
+
+quarter
+sector
+industry
+theme
+minimum managers
+limit
+offset
+
+Use server-side pagination.
+
+Do not calculate rankings client-side.
+
+--------------------------------------------------
+PART 3 — STOCK INSTITUTIONAL INTELLIGENCE PAGE
+--------------------------------------------------
+
+Allow symbol entry/search.
+
+Consume:
+
+GET /api/v1/institutional/stocks/:symbol
+
+GET /api/v1/institutional/stocks/:symbol/trend
+
+Display:
+
+reported holder count
+holder-count change
+dataAsOf
+newly reported holders
+increased reported positions
+reduced reported positions
+no-longer-reported positions
+aggregate reported-share change
+multi-quarter trend
+institutional accumulation score if included
+largest reported holders
+largest reported increases
+largest reported reductions
+data quality
+model version where applicable
+Form 13F delayed-data disclosure
+
+Do not derive these values from raw arrays when canonical server fields exist.
+
+--------------------------------------------------
+PART 4 — MULTIBAGGER DISCOVERY PAGE
+--------------------------------------------------
+
+Consume:
+
+GET /api/v1/multibagger/screener
+
+Display:
+
+symbol
+overall score
+5x profile
+10x profile
+25x optionality
+100x optionality
+institutional component
+growth component
+fundamentals component
+valuation component
+runway component
+risk component
+
+Support available screener filters such as:
+
+minOverallScore
+profile
+marketCapMin
+marketCapMax
+sector
+industry
+theme
+institutionalTrend
+minInstitutionalScore
+minRevenueGrowth
+limit
+offset
+
+Clicking a result should load:
+
+GET /api/v1/multibagger/:symbol
+
+Display:
+
+overall score
+profile classifications
+component scores
+supporting factors
+limiting factors
+model version
+data quality
+dataAsOf
+
+Do NOT turn these into recommendations.
+
+--------------------------------------------------
+PART 5 — SECURE API PROXY
+--------------------------------------------------
+
+Implement backend proxy routes in the demo.
+
+Requirements:
+
+1. Read STOCKMETRICS_API_KEY from server-side environment.
+2. Send:
+
+Authorization: Bearer <key>
+
+to StockMetrics.
+
+3. Never expose the key to browser JavaScript.
+4. Never log the full key.
+5. Never return the key in an error response.
+6. Validate user-supplied path/query input before proxying.
+7. Only allow explicitly approved StockMetrics API routes.
+8. Do not implement an unrestricted generic proxy.
+
+Example allowed proxy mappings:
+
+/demo-api/institutional/accumulation
+→ /api/v1/institutional/trends/accumulation
+
+/demo-api/institutional/stocks/:symbol
+→ /api/v1/institutional/stocks/:symbol
+
+/demo-api/institutional/stocks/:symbol/trend
+→ /api/v1/institutional/stocks/:symbol/trend
+
+/demo-api/multibagger
+→ /api/v1/multibagger/screener
+
+/demo-api/multibagger/:symbol
+→ /api/v1/multibagger/:symbol
+
+--------------------------------------------------
+PART 6 — ERROR HANDLING
+--------------------------------------------------
+
+Handle StockMetrics API responses explicitly:
+
+400
+401
+403
+404
+429
+500
+
+Also handle:
+
+network failure
+timeout
+invalid JSON
+empty results
+invalid symbol
+missing API key configuration
+
+For 429:
+display a friendly rate-limit message.
+
+For missing API key:
+the demo backend should return a configuration error without leaking secrets.
+
+Preserve StockMetrics error codes where safe and useful.
+
+--------------------------------------------------
+PART 7 — FORM 13F LANGUAGE
+--------------------------------------------------
+
+Use conservative language consistent with the main product.
+
+Allowed:
+
+Reported Holdings
+Reporting Managers
+Newly Reported
+Increased Reported Position
+Reduced Reported Position
+No Longer Reported
+Institutional Accumulation Score
+Quarterly Form 13F Data
+
+Do NOT use:
+
+Institutions are buying
+Institutions are selling
+Bought
+Sold
+Smart Money
+Conviction Buy
+Buy Signal
+Sell Signal
+
+Include the delayed-data disclosure.
+
+--------------------------------------------------
+PART 8 — README
+--------------------------------------------------
+
+Create a README for the demo explaining:
+
+1. Purpose
+2. Architecture
+3. Environment variables
+4. API authentication
+5. API endpoints consumed
+6. How to run locally
+7. How to point the demo at another StockMetrics environment
+8. Why the API key is server-side
+9. How another developer could replace the demo UI with their own website/app
+10. Form 13F limitations
+
+Include example environment configuration without real secrets:
+
+STOCKMETRICS_API_BASE_URL=https://example.com
+STOCKMETRICS_API_KEY=sm_test_xxxxx
+
+--------------------------------------------------
+PART 9 — TESTS
+--------------------------------------------------
+
+Add tests for:
+
+1. successful API proxy request
+2. Authorization header added server-side
+3. API key never returned to browser
+4. missing API key
+5. invalid symbol
+6. 401 handling
+7. 403 handling
+8. 404 handling
+9. 429 handling
+10. 500 handling
+11. network failure
+12. accumulation page rendering
+13. stock intelligence rendering
+14. multibagger screener rendering
+15. multibagger detail rendering
+16. empty result handling
+17. delayed-data disclosure
+18. prohibited terminology not introduced
+
+Run all new demo tests.
+
+Also run existing relevant API tests:
+
+server/routes/__tests__/institutional-api-v1.test.ts
+server/routes/__tests__/multibagger-api-v1.test.ts
+
+Run:
+
+npm run build
+
+Run:
+
+npm run check
+
+Important:
+The repository currently has a known unrelated TypeScript baseline of
+approximately 276 errors across 47 files.
+
+Do NOT attempt to repair those in this task.
+
+Acceptance requires:
+- zero new TypeScript errors in Task 20 files
+- production build passes
+- Task 20 tests pass
+
+--------------------------------------------------
+PART 10 — FINAL REPORT
+--------------------------------------------------
+
+Return:
+
+1. files added/changed
+2. demo architecture
+3. StockMetrics endpoints consumed
+4. proxy routes created
+5. security approach
+6. environment variables
+7. tests run
+8. exact test results
+9. production build result
+10. TypeScript baseline result
+11. whether any new errors originate from Task 20 files
+12. git diff --stat
+13. how to run the demo
+
+Final status:
+
+PASS
+or
+FAIL / FIX REQUIRED
+
+STOP.
+
+Do not start MCP integration.
+Do not add new analytics.
+Do not modify the main Institutional Intelligence UI unless required for a shared
+API contract fix.

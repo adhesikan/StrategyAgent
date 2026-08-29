@@ -1,0 +1,378 @@
+TASK #175 — Secure Institutional API Access with Keys and Usage Controls
+
+This task is the blocking parent for Task #178.
+
+Objective:
+Complete the external /api/v1 authentication, authorization, API-key,
+rate-limiting, and usage-control layer so external applications can securely
+consume the Institutional Intelligence API.
+
+IMPORTANT:
+Work ONLY on Task #175.
+
+Do not start Task #178.
+Do not build the external demo.
+Do not add new analytics.
+Do not modify Institutional Intelligence UI unless absolutely required for
+API compatibility.
+Do not fix unrelated repository-wide TypeScript errors.
+
+First inspect the existing API/security implementation because some or all of
+this infrastructure may already exist.
+
+Reuse existing authentication, database, middleware, logging, and rate-limit
+patterns where appropriate.
+
+--------------------------------------------------
+1. EXTERNAL API AUTHENTICATION
+--------------------------------------------------
+
+Protect external /api/v1 institutional endpoints using API keys.
+
+Expected request:
+
+Authorization: Bearer <api-key>
+
+Support recognizable key prefixes:
+
+sm_live_
+sm_test_
+
+Do NOT store complete plaintext API keys in the database.
+
+At creation:
+- generate cryptographically secure key
+- display/return complete key once
+- persist secure hash
+- persist non-secret prefix/identifier sufficient for lookup
+- never make the raw key retrievable afterward
+
+Never log complete API keys.
+
+--------------------------------------------------
+2. API CLIENT / KEY DATA MODEL
+--------------------------------------------------
+
+Inspect existing schema first and reuse anything already implemented.
+
+Provide the equivalent of:
+
+api_clients
+
+- id
+- name
+- owner/user reference where appropriate
+- status
+- createdAt
+- updatedAt
+
+api_keys
+
+- id
+- clientId
+- name
+- keyPrefix
+- keyHash
+- environment/test-vs-live
+- createdAt
+- lastUsedAt
+- expiresAt optional
+- revokedAt optional
+- status
+
+Follow existing naming/database conventions.
+
+Create migrations only if required.
+
+--------------------------------------------------
+3. SCOPES
+--------------------------------------------------
+
+Support API scopes.
+
+Planned scopes:
+
+institutional:read
+multibagger:read
+fundamentals:read
+research:read
+
+For Task #175, institutional:read must be fully functional.
+
+If Multibagger public v1 endpoints already exist and are intended for external
+consumption, support multibagger:read as well.
+
+Do not implement unrelated fundamentals/research APIs merely to satisfy the
+scope enum.
+
+Authorization rules must distinguish:
+
+401 = missing/invalid authentication
+
+403 = valid key but insufficient permission/scope
+
+--------------------------------------------------
+4. PROTECT /api/v1
+--------------------------------------------------
+
+Identify which /api/v1 routes are intended to be externally accessible.
+
+At minimum protect the institutional intelligence endpoints, including:
+
+/api/v1/institutional/funds/...
+/api/v1/institutional/stocks/...
+/api/v1/institutional/trends/...
+/api/v1/institutional/rotation/...
+
+Protect Multibagger v1 endpoints with multibagger:read if those routes are
+already part of the external API.
+
+Do NOT accidentally change existing application-session authentication under:
+
+/api/institutional/...
+
+The existing StockMetrics application must continue working.
+
+Health endpoints may remain unauthenticated if that matches the existing API
+design.
+
+--------------------------------------------------
+5. RATE LIMITING
+--------------------------------------------------
+
+Implement API-key/client-based rate limiting.
+
+Do not hardcode rate-limit policy throughout route files.
+
+Make limits configurable by client/tier or centralized configuration.
+
+Rate limiting should operate on authenticated API identity where possible,
+rather than treating all external users as one IP.
+
+Return HTTP 429 when exceeded.
+
+Return useful rate-limit metadata/headers where consistent with existing
+architecture.
+
+Do not leak sensitive client information.
+
+--------------------------------------------------
+6. USAGE METERING
+--------------------------------------------------
+
+Track external API usage.
+
+Capture at minimum:
+
+apiClientId
+apiKeyId or safe key identifier
+endpoint/route
+HTTP method
+response status
+request timestamp
+response time/duration
+
+Optionally capture request ID and safe usage dimensions already available.
+
+Do NOT store:
+
+raw API key
+Authorization header
+sensitive secrets
+
+Usage recording should not expose internal stack traces to clients.
+
+Design this so we can later support:
+
+usage dashboards
+API plans
+quotas
+billing
+partner licensing
+
+without implementing billing now.
+
+--------------------------------------------------
+7. KEY MANAGEMENT
+--------------------------------------------------
+
+Implement server/domain capabilities for:
+
+create API key
+list key metadata
+revoke API key
+
+Never return existing raw keys from list operations.
+
+If key rotation fits naturally into the architecture, structure the service so
+rotation can be added later, but do not overbuild it.
+
+Use existing application authorization rules to ensure ordinary users cannot
+manage other clients' API keys.
+
+--------------------------------------------------
+8. SECURITY
+--------------------------------------------------
+
+Verify:
+
+- cryptographically secure key generation
+- secure hashing
+- constant-time comparison where applicable
+- raw keys not persisted
+- raw keys not logged
+- Authorization headers not logged
+- revoked keys fail
+- expired keys fail
+- disabled clients fail
+- incorrect scopes fail
+- malformed bearer headers fail safely
+- API errors do not reveal hashes/database internals
+- SQL remains parameterized
+
+Do not invent custom cryptography if the repository already contains an
+appropriate secure library/pattern.
+
+--------------------------------------------------
+9. RESPONSE / ERROR CONTRACT
+--------------------------------------------------
+
+Preserve the existing /api/v1 response architecture.
+
+Authentication/authorization errors should follow the standard API error
+envelope where applicable:
+
+{
+  "error": {
+    "code": "...",
+    "message": "...",
+    "requestId": "..."
+  }
+}
+
+Use stable machine-readable codes such as equivalents of:
+
+API_KEY_REQUIRED
+API_KEY_INVALID
+API_KEY_EXPIRED
+API_KEY_REVOKED
+API_CLIENT_DISABLED
+INSUFFICIENT_SCOPE
+RATE_LIMIT_EXCEEDED
+
+Use the project's existing conventions if these already exist.
+
+--------------------------------------------------
+10. TESTS
+--------------------------------------------------
+
+Add focused tests covering at minimum:
+
+1. valid API key
+2. missing API key
+3. malformed Authorization header
+4. invalid API key
+5. revoked API key
+6. expired API key
+7. disabled API client
+8. valid institutional:read scope
+9. missing institutional:read scope
+10. valid multibagger:read if applicable
+11. missing multibagger scope if applicable
+12. rate-limit success below threshold
+13. HTTP 429 above threshold
+14. usage record creation
+15. lastUsedAt behavior
+16. raw key is not persisted
+17. raw key is not returned by list operation
+18. existing internal /api/institutional authentication still works
+19. public health behavior remains intentional
+20. API response/error contract remains backward compatible
+
+Run existing institutional and Multibagger API tests as regression coverage.
+
+--------------------------------------------------
+11. TYPE CHECK / BUILD
+--------------------------------------------------
+
+Run focused tests.
+
+Run:
+
+npm run build
+
+Run:
+
+npm run check
+
+Known repository baseline:
+approximately 276 TypeScript errors across unrelated existing modules.
+
+Do NOT repair those errors in Task #175.
+
+Acceptance requires:
+
+- no new TypeScript errors in Task #175 changed files
+- production build passes
+- focused security/API tests pass
+- existing institutional API tests pass
+- existing Multibagger API tests pass if affected
+
+--------------------------------------------------
+12. TASK #178 READINESS CHECK
+--------------------------------------------------
+
+After implementation, explicitly verify whether an independent application can
+now securely perform:
+
+GET /api/v1/institutional/trends/accumulation
+
+GET /api/v1/institutional/stocks/:symbol
+
+GET /api/v1/institutional/stocks/:symbol/trend
+
+using:
+
+Authorization: Bearer <external API key>
+
+Also verify Multibagger endpoints if they are part of the external v1 API.
+
+The purpose is to determine whether parent Task #175 can be marked complete
+and Task #178 can be unblocked.
+
+--------------------------------------------------
+13. FINAL REPORT
+--------------------------------------------------
+
+Return:
+
+1. files changed
+2. migrations created/applied
+3. API-client architecture
+4. API-key architecture
+5. hashing/security mechanism
+6. scopes implemented
+7. protected endpoints
+8. rate-limit implementation
+9. usage-metering implementation
+10. key-management capabilities
+11. tests run
+12. exact test results
+13. production build result
+14. TypeScript baseline result
+15. confirmation of zero new errors in changed files
+16. security findings
+17. Task #178 readiness
+18. git diff --stat
+
+Final status:
+
+PASS — TASK #178 UNBLOCKED
+
+or
+
+FAIL / FIX REQUIRED — TASK #178 REMAINS BLOCKED
+
+STOP.
+
+Do not begin Task #178.

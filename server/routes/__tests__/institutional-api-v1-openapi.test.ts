@@ -20,6 +20,11 @@ const dataPaths = [
   "/api/v1/institutional/rotation/themes",
 ] as const;
 
+const multibaggerPaths = [
+  "/api/v1/multibagger/{symbol}",
+  "/api/v1/multibagger/screener",
+] as const;
+
 describe("institutional v1 OpenAPI contract", () => {
   it("is a complete OpenAPI 3.x document for every current v1 endpoint", () => {
     expect(institutionalApiV1OpenApi.openapi).toMatch(/^3\./);
@@ -31,6 +36,16 @@ describe("institutional v1 OpenAPI contract", () => {
       expect(operation, `${path} is undocumented`).toBeTruthy();
       expect(operation?.operationId).toBeTruthy();
       expect(operation?.security).toEqual([{ bearerAuth: ["institutional:read"] }]);
+      expect(operation?.responses["200"]).toBeTruthy();
+      expect(operation?.responses["400"]).toBeTruthy();
+      expect(operation?.responses["401"]).toBeTruthy();
+      expect(operation?.responses["403"]).toBeTruthy();
+      expect(operation?.responses["429"]).toBeTruthy();
+    }
+    for (const path of multibaggerPaths) {
+      const operation = institutionalApiV1OpenApi.paths[path]?.get;
+      expect(operation, `${path} is undocumented`).toBeTruthy();
+      expect(operation?.security).toEqual([{ bearerAuth: ["multibagger:read"] }]);
       expect(operation?.responses["200"]).toBeTruthy();
       expect(operation?.responses["400"]).toBeTruthy();
       expect(operation?.responses["401"]).toBeTruthy();
@@ -69,6 +84,25 @@ describe("institutional v1 OpenAPI contract", () => {
     expect(parameters.Limit.schema).toMatchObject({ minimum: 1, maximum: 100 });
     expect(parameters.Offset.schema).toMatchObject({ minimum: 0 });
     expect(parameters.HistoryQuarters.schema).toMatchObject({ maximum: 8 });
+    expect(parameters.MultibaggerProfile.schema.enum).toEqual([
+      "fiveX",
+      "tenX",
+      "twentyFiveX",
+      "hundredX",
+    ]);
+    expect(parameters.MultibaggerMinOverallScore.schema).toMatchObject({
+      minimum: 0,
+      maximum: 100,
+    });
+    expect(parameters.MultibaggerMinInstitutionalScore.schema).toMatchObject({
+      minimum: 0,
+      maximum: 100,
+    });
+    expect(parameters.MultibaggerLimit.schema).toMatchObject({
+      minimum: 1,
+      maximum: 100,
+      default: 25,
+    });
 
     expect(institutionalApiV1OpenApi.components.headers["X-RateLimit-Limit"]).toBeTruthy();
     expect(institutionalApiV1OpenApi.components.headers["X-RateLimit-Remaining"]).toBeTruthy();
@@ -76,7 +110,36 @@ describe("institutional v1 OpenAPI contract", () => {
     expect(institutionalApiV1OpenApi.components.headers["Retry-After"]).toBeTruthy();
     expect(institutionalApiV1OpenApi.components.schemas.ApiMeta).toBeTruthy();
     expect(institutionalApiV1OpenApi.components.schemas.ErrorEnvelope).toBeTruthy();
+    expect(institutionalApiV1OpenApi.components.schemas.MultibaggerCandidate).toBeTruthy();
+    expect(institutionalApiV1OpenApi.components.schemas.MultibaggerScreener).toBeTruthy();
+    expect(institutionalApiV1OpenApi.components.schemas.MultibaggerProfiles).toBeTruthy();
     expect(institutionalApiV1OpenApi.components.responses.RateLimited).toBeTruthy();
+  });
+
+  it("documents the Multibagger response shape and cautious language", () => {
+    const serialized = JSON.stringify({
+      paths: Object.fromEntries(
+        multibaggerPaths.map((path) => [
+          path,
+          institutionalApiV1OpenApi.paths[path],
+        ]),
+      ),
+      schemas: {
+        candidate:
+          institutionalApiV1OpenApi.components.schemas.MultibaggerCandidate,
+        profiles:
+          institutionalApiV1OpenApi.components.schemas.MultibaggerProfiles,
+      },
+    });
+    expect(serialized).toContain("overallScore");
+    expect(serialized).toContain("componentScores");
+    expect(serialized).toContain("supportingFactors");
+    expect(serialized).toContain("limitingFactors");
+    expect(serialized).toContain("dataQuality");
+    expect(serialized).toContain("twentyFiveX");
+    expect(serialized).not.toMatch(/\bstrong buy\b/i);
+    expect(serialized).not.toMatch(/\bwill 10x\b/i);
+    expect(serialized).not.toMatch(/\bguaranteed\b/i);
   });
 
   it("includes curl, JavaScript fetch, and TypeScript accumulation examples", () => {
@@ -137,5 +200,6 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.headers.get("cache-control")).toContain("max-age=300");
     expect(body.openapi).toBe("3.1.0");
     expect(body.paths["/api/v1/institutional/trends/accumulation"]).toBeTruthy();
+    expect(body.paths["/api/v1/multibagger/screener"]).toBeTruthy();
   });
 });

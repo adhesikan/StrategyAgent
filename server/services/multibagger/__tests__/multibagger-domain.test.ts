@@ -80,7 +80,27 @@ function trend(
 ): StockInstitutionalTrendResult {
   return {
     symbol: "TEST",
-    quarters: [],
+    quarters: [
+      {
+        quarter,
+        reportedHolderCount: 12,
+        newlyReportedHolderCount: 4,
+        increasedReportedHolderCount: 5,
+        reducedReportedHolderCount: 1,
+        noLongerReportedHolderCount: 1,
+        aggregateReportedShares: 2_000_000,
+        aggregateReportedValue: 100_000_000,
+        breadthChange: 4,
+        shareTrend: 100,
+        persistence: 10,
+        increaseReductionBalance:
+          classification === "ACCELERATING_DISTRIBUTION" ||
+          classification === "DISTRIBUTION"
+            ? -0.8
+            : 0.8,
+        hasComparablePriorQuarter: true,
+      },
+    ],
     classification,
     dataQuality: { status: "complete", coveragePercent: 100, warnings: [] },
     modelVersion: { name: "institutional-trend", version: "1" },
@@ -117,6 +137,7 @@ function completeInput(marketCapDollars = 800_000_000) {
     runway: {
       marketCapDollars,
       addressableMarketDollars: 100_000_000_000,
+      addressableMarketReliable: true,
       annualRevenueDollars: 200_000_000,
       revenueGrowthPercent: 45,
       cashAndEquivalentsDollars: 300_000_000,
@@ -184,9 +205,12 @@ describe("multibagger discovery dimensions", () => {
     expect(positive.score).toBeGreaterThan(negative.score!);
     expect(positive.evidence.map((item) => item.key)).toEqual(
       expect.arrayContaining([
-        "aggregateReportedShareChangePct",
-        "directionalHolderBalance",
-        "multiQuarterTrend",
+        "institutionalAccumulationScore",
+        "institutionalTrend",
+        "reportedHolderGrowth",
+        "newManagerBreadth",
+        "aggregateReportedShareTrend",
+        "multiQuarterPersistence",
       ]),
     );
   });
@@ -351,6 +375,7 @@ describe("multibagger repository boundary", () => {
     const repository = createMultibaggerDiscoveryRepository({
       getInstitutionalAnalytics,
       getInstitutionalTrend,
+      getSpecialistManagerParticipation: async () => null,
       getGrowthSignals,
       getValuationSignals,
     });

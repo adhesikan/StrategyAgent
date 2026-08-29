@@ -62,10 +62,14 @@ const NAV_ITEMS: TopNavItem[] = [
   },
   {
     label: "Intelligence",
-    href: "/intelligence",
+    href: "/institutional",
     icon: Globe2,
     testId: "topnav-intelligence",
-    matches: (p) => p === "/intelligence" || p.startsWith("/intelligence/"),
+    matches: (p) =>
+      p === "/institutional" ||
+      p.startsWith("/institutional/") ||
+      p === "/intelligence" ||
+      p.startsWith("/intelligence/"),
   },
   {
     label: "Congress",

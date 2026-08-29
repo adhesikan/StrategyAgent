@@ -82,6 +82,8 @@ import { registerInstitutionalSignalRoutes } from "./routes/institutional-signal
 import { registerInstitutionalFundsRoutes } from "./routes/institutional-funds";
 import { registerInstitutionalApiV1Routes } from "./routes/institutional-api-v1";
 import { registerInstitutionalApiV1DocsRoutes } from "./routes/institutional-api-docs-v1";
+import { registerMultibaggerApiV1Routes } from "./routes/multibagger-api-v1";
+import { registerInstitutionalApplicationRoutes } from "./routes/institutional-application";
 import { registerIntelligenceRoutes } from "./routes/intelligence";
 import { registerPlatformHealthRoutes } from "./routes/platform-health";
 import { registerOperationsManualRoutes } from "./routes/operations-manual";
@@ -264,6 +266,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerMarketDataAdminRoutes(app, isAdmin);
   registerInstitutionalApiV1DocsRoutes(app);
   registerInstitutionalApiV1Routes(app);
+  registerMultibaggerApiV1Routes(app);
+  registerInstitutionalApplicationRoutes(app, isAuthenticated);
   // Static named institutional routes MUST be registered before the dynamic
   // /api/institutional/:symbol route, otherwise Express matches the dynamic
   // segment first and treats "mappings", "unmapped", etc. as ticker symbols.

@@ -23,8 +23,14 @@ import { MULTIBAGGER_MODEL_VERSION } from "./types";
 export function computeOptionalityScore(
   input: MultibaggerDiscoveryInput,
 ): OptionalityScore {
-  const marketCap = input.runway?.marketCapDollars ?? input.valuation?.marketCapDollars;
-  const addressableMarket = input.runway?.addressableMarketDollars;
+  const marketCap =
+    input.runway?.currentMarketCap ??
+    input.runway?.marketCapDollars ??
+    input.valuation?.marketCapDollars;
+  const addressableMarket =
+    input.runway?.addressableMarketReliable === true
+      ? input.runway?.addressableMarketDollars
+      : null;
   const evidence: SignalEvidence[] = [];
   const unavailableSignals: string[] = [];
   if (Number.isFinite(marketCap) && marketCap != null && marketCap > 0) {
@@ -62,18 +68,44 @@ export function computeOptionalityScore(
 export function computeMultibaggerDiscovery(
   input: MultibaggerDiscoveryInput,
 ): MultibaggerDiscoveryResult {
+  const runwayInput = {
+    ...(input.runway ?? {}),
+    currentMarketCap:
+      input.runway?.currentMarketCap ??
+      input.runway?.marketCapDollars ??
+      input.valuation?.marketCapDollars,
+    revenue:
+      input.runway?.revenue ??
+      input.runway?.annualRevenueDollars ??
+      input.valuation?.revenueDollars,
+    revenueGrowth:
+      input.runway?.revenueGrowth ??
+      input.runway?.revenueGrowthPercent ??
+      input.growth?.revenueGrowthYoYPercent,
+    operatingMarginPercent:
+      input.runway?.operatingMarginPercent ??
+      input.fundamental?.operatingMarginPercent,
+    freeCashFlowMarginPercent:
+      input.runway?.freeCashFlowMarginPercent ??
+      input.fundamental?.freeCashFlowMarginPercent,
+    freeCashFlowGrowthPercent:
+      input.runway?.freeCashFlowGrowthPercent ??
+      input.growth?.freeCashFlowGrowthYoYPercent,
+  };
+  const runwayScore = computeRunwayScore(runwayInput);
   const dimensions: MultibaggerDimensionScores = {
     institutional: computeInstitutionalDiscoveryScore(input),
     growth: computeGrowthScore(input.growth),
     fundamental: computeFundamentalQualityScore(input.fundamental),
     valuation: computeValuationScore(input.valuation),
-    runway: computeRunwayScore(input.runway),
+    runway: runwayScore,
     optionality: computeOptionalityScore(input),
     risk: computeRiskScore(input.risk),
   };
   const profiles = computeProfileScores(dimensions, {
-    marketCapDollars: input.runway?.marketCapDollars ?? input.valuation?.marketCapDollars,
-    addressableMarketDollars: input.runway?.addressableMarketDollars,
+    marketCapDollars: runwayScore.marketCapRunway.currentMarketCap,
+    addressableMarketDollars:
+      runwayScore.marketCapRunway.addressableMarketDollars,
   });
   const score = weightedOverallScore(dimensions);
   const availableDimensionCount = Object.values(dimensions).filter(
@@ -106,6 +138,10 @@ export function computeMultibaggerDiscovery(
     symbol: input.symbol.trim().toUpperCase(),
     modelVersion: MULTIBAGGER_MODEL_VERSION,
     dimensions,
+    institutionalDiscovery: dimensions.institutional,
+    runwayScore,
+    marketCapRunway: runwayScore.marketCapRunway,
+    optionalUpsideProfiles: runwayScore.optionalUpsideProfiles,
     overall,
     profiles,
     availableDimensionCount,

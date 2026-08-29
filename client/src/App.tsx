@@ -106,6 +106,7 @@ import DashboardPage from "@/pages/dashboard";
 import { ExecutionDetailPage } from "@/pages/executions";
 import { resolveLandingPage } from "@/lib/landing-page";
 import { Redirect } from "wouter";
+import InstitutionalIntelligencePage from "@/pages/institutional-intelligence";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -178,6 +179,7 @@ function AppRouter() {
       <Route path="/opportunities/:symbol" component={OpportunityWorkspacePage} />
       <Route path="/institutional/funds" component={InstitutionalFundsPage} />
       <Route path="/institutional/funds/:managerId" component={InstitutionalFundDetailPage} />
+      <Route path="/institutional" component={InstitutionalIntelligencePage} />
       <Route path="/intelligence" component={IntelligencePage} />
       <Route path="/intelligence/themes/:themeId" component={IntelligenceThemeDetailPage} />
       <Route path="/intelligence/sectors/:sector" component={IntelligenceSectorDetailPage} />

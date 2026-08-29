@@ -33,19 +33,20 @@ const dataResponse = (schema: string) => ({
 });
 
 const authenticated = [{ bearerAuth: ["institutional:read"] }];
+const multibaggerAuthenticated = [{ bearerAuth: ["multibagger:read"] }];
 
 export const institutionalApiV1OpenApi = {
   openapi: "3.1.0",
   jsonSchemaDialect: "https://json-schema.org/draft/2020-12/schema",
   info: {
-    title: "StockMetrics Institutional Intelligence API",
+    title: "StockMetrics Research Intelligence API",
     version: "1.0.0",
-    summary: "Quarterly institutional ownership analytics.",
+    summary: "Quarterly institutional analytics and deterministic candidate profile screens.",
     description: [
       "External, read-only analytics derived from SEC Form 13F reported holdings.",
       "",
       "## Authentication",
-      "Institutional data endpoints use `Authorization: Bearer <api-key>`. API keys are separate from StockMetrics application sessions and must have the `institutional:read` scope. The public API never accepts a browser session cookie as authentication.",
+       "Data endpoints use `Authorization: Bearer <api-key>`. API keys are separate from StockMetrics application sessions and must have the scope documented for the requested operation. The public API never accepts a browser session cookie as authentication.",
       "",
       "Keys use `sm_live_` or `sm_test_` prefixes. Treat a raw key like a password; it is shown only when created. Never put a key in a URL or source-control repository.",
       "",
@@ -55,7 +56,10 @@ export const institutionalApiV1OpenApi = {
       "## Query conventions",
       "`quarter` is `latest` or an explicit quarter such as `2026-Q1`. Position types are independent: `COMMON_EQUITY` is the default; `PUT` and `CALL` select reported option positions rather than being merged into common equity. Ranking `limit` is 1–100 and `offset` is zero-based.",
       "",
-      "## Form 13F limitations",
+       "## Multibagger Discovery",
+       "Multibagger Discovery is a deterministic, versioned candidate profile screen. It reports available evidence, explicit limitations, and constrained optional-upside profiles. It does not provide investment advice or certainty about future outcomes. Missing or insufficient inputs remain unavailable rather than being inferred.",
+       "",
+       "## Form 13F limitations",
       "13F information is delayed, reflects reportable holdings as filed by institutions, and is not a real-time position feed. Filing dates, amendments, mapping gaps, unavailable values, and quarter-to-quarter comparability can affect results. Null values mean the source value is unavailable; they are not zero.",
       "",
       "## Example: top institutional accumulation candidates",
@@ -90,6 +94,7 @@ export const institutionalApiV1OpenApi = {
     { name: "Stocks", description: "Institutional ownership analytics for a symbol." },
     { name: "Rankings", description: "Cross-fund institutional activity rankings." },
     { name: "Rotation", description: "Sector, industry, and theme rotation analytics." },
+    { name: "Multibagger", description: "Deterministic candidate profile and optionality screens." },
   ],
   paths: {
     "/api/v1/openapi.json": {
@@ -371,6 +376,66 @@ export const institutionalApiV1OpenApi = {
         },
       },
     },
+    "/api/v1/multibagger/screener": {
+      get: {
+        tags: ["Multibagger"],
+        operationId: "screenMultibaggerCandidates",
+        summary: "Screen the current candidate universe",
+        description: "Applies deterministic score, optionality-profile, company classification, institutional-trend, market-cap, and revenue-growth filters. Results are ordered by overall score descending, then symbol. Missing filter inputs fail closed and do not pass that filter.",
+        security: multibaggerAuthenticated,
+        parameters: [
+          parameterRef("MultibaggerMinOverallScore"),
+          parameterRef("MultibaggerProfile"),
+          parameterRef("MarketCapMin"),
+          parameterRef("MarketCapMax"),
+          parameterRef("Sector"),
+          parameterRef("Industry"),
+          parameterRef("Theme"),
+          parameterRef("MultibaggerInstitutionalTrend"),
+          parameterRef("MultibaggerMinInstitutionalScore"),
+          parameterRef("MultibaggerMinRevenueGrowth"),
+          parameterRef("MultibaggerLimit"),
+          parameterRef("Offset"),
+        ],
+        responses: {
+          "200": dataResponse("MultibaggerScreener"),
+          "400": responseRef("BadRequest"),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "404": responseRef("Unavailable"),
+          "429": responseRef("RateLimited"),
+          "500": responseRef("ServerError"),
+        },
+        "x-codeSamples": [
+          {
+            lang: "curl",
+            source: "curl -H 'Authorization: Bearer sm_live_REDACTED' 'https://your-app.example/api/v1/multibagger/screener?minOverallScore=70&profile=tenX&limit=25'",
+          },
+          {
+            lang: "JavaScript",
+            source: "const response = await fetch('/api/v1/multibagger/screener?minOverallScore=70&profile=tenX', { headers: { Authorization: `Bearer ${apiKey}` } });\nconst { data, meta } = await response.json();",
+          },
+        ],
+      },
+    },
+    "/api/v1/multibagger/{symbol}": {
+      get: {
+        tags: ["Multibagger"],
+        operationId: "getMultibaggerCandidateProfile",
+        summary: "Get a deterministic candidate profile screen",
+        description: "Returns versioned Multibagger Discovery component scores, constrained optional-upside profiles, supporting evidence, limiting evidence, and data quality for one symbol. Unavailable inputs remain null.",
+        security: multibaggerAuthenticated,
+        parameters: [parameterRef("Symbol")],
+        responses: {
+          "200": dataResponse("MultibaggerCandidate"),
+          "400": responseRef("BadRequest"),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("RateLimited"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -381,7 +446,7 @@ export const institutionalApiV1OpenApi = {
         description: "Use a dedicated API key in `Authorization: Bearer <api-key>`. Do not use an application-session cookie.",
         "x-scopes": {
           "institutional:read": "Read institutional Form 13F analytics.",
-          "multibagger:read": "Reserved for a future API surface.",
+          "multibagger:read": "Read deterministic Multibagger Discovery candidate profile screens.",
           "fundamentals:read": "Reserved for a future API surface.",
           "research:read": "Reserved for a future API surface.",
         },
@@ -542,6 +607,52 @@ export const institutionalApiV1OpenApi = {
         description: "Zero-based number of ranking items to skip.",
         schema: { type: "integer", minimum: 0, maximum: 100000, default: 0 },
       },
+      MultibaggerMinOverallScore: {
+        name: "minOverallScore",
+        in: "query",
+        required: false,
+        description: "Minimum available overall Multibagger Discovery score.",
+        schema: { type: "number", minimum: 0, maximum: 100 },
+      },
+      MultibaggerProfile: {
+        name: "profile",
+        in: "query",
+        required: false,
+        description: "Requires a strong or moderate constrained optional-upside profile for the selected multiple.",
+        schema: {
+          type: "string",
+          enum: ["fiveX", "tenX", "twentyFiveX", "hundredX"],
+        },
+      },
+      MultibaggerInstitutionalTrend: {
+        name: "institutionalTrend",
+        in: "query",
+        required: false,
+        schema: {
+          type: "string",
+          enum: ["ACCELERATING_ACCUMULATION", "ACCUMULATION", "STABLE", "DISTRIBUTION", "ACCELERATING_DISTRIBUTION"],
+        },
+      },
+      MultibaggerMinInstitutionalScore: {
+        name: "minInstitutionalScore",
+        in: "query",
+        required: false,
+        schema: { type: "number", minimum: 0, maximum: 100 },
+      },
+      MultibaggerMinRevenueGrowth: {
+        name: "minRevenueGrowth",
+        in: "query",
+        required: false,
+        description: "Minimum year-over-year revenue growth percentage. Candidates with unavailable revenue growth do not pass this filter.",
+        schema: { type: "number", minimum: -100, maximum: 10000 },
+      },
+      MultibaggerLimit: {
+        name: "limit",
+        in: "query",
+        required: false,
+        description: "Number of screened candidates to return.",
+        schema: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+      },
     },
     responses: {
       BadRequest: {
@@ -553,11 +664,11 @@ export const institutionalApiV1OpenApi = {
         content: { "application/json": { schema: ref("ErrorEnvelope") } },
       },
       Forbidden: {
-        description: "The API key is valid but does not have `institutional:read`.",
+        description: "The API key is valid but does not have the scope required by the operation.",
         content: { "application/json": { schema: ref("ErrorEnvelope") } },
       },
       Unavailable: {
-        description: "No institutional data is available for the requested selector.",
+        description: "No current data is available for the requested selector.",
         content: { "application/json": { schema: ref("ErrorEnvelope") } },
       },
       RateLimited: {
@@ -586,7 +697,7 @@ export const institutionalApiV1OpenApi = {
       },
       ApiMeta: {
         type: "object",
-        required: ["quarter", "dataAsOf", "modelVersion", "source", "requestId", "limitations"],
+        required: ["dataAsOf", "modelVersion", "source", "requestId", "limitations"],
         properties: {
           quarter: { type: ["string", "null"], pattern: "^\\d{4}-Q[1-4]$" },
           dataAsOf: { type: ["string", "null"], format: "date" },
@@ -617,6 +728,115 @@ export const institutionalApiV1OpenApi = {
               requestId: { type: "string" },
             },
           },
+        },
+      },
+      MultibaggerFactor: {
+        type: "object",
+        required: ["component", "score", "explanation"],
+        properties: {
+          component: { type: "string" },
+          score: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          explanation: { type: "string" },
+        },
+      },
+      MultibaggerRunwayFactor: {
+        type: "object",
+        required: ["code", "label", "value", "explanation"],
+        properties: {
+          code: { type: "string" },
+          label: { type: "string" },
+          value: { type: ["number", "string", "null"] },
+          explanation: { type: "string" },
+        },
+      },
+      MultibaggerRunwayDataQuality: {
+        type: "object",
+        required: ["status", "availableInputs", "unavailableInputs", "warnings", "modelVersion"],
+        properties: {
+          status: { type: "string", enum: ["COMPLETE", "PARTIAL", "INSUFFICIENT_DATA"] },
+          availableInputs: { type: "array", items: { type: "string" } },
+          unavailableInputs: { type: "array", items: { type: "string" } },
+          warnings: { type: "array", items: { type: "string" } },
+          modelVersion: { type: "string", enum: ["multibagger_runway_v1"] },
+        },
+      },
+      MultibaggerProfile: {
+        type: "object",
+        required: ["score", "classification", "availability", "runwayScore", "supportingFactors", "limitingFactors", "dataQuality"],
+        properties: {
+          score: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          classification: { type: "string", enum: ["STRONG_PROFILE", "MODERATE_PROFILE", "WEAK_PROFILE", "INSUFFICIENT_DATA"] },
+          availability: { type: "string", enum: ["available", "partial", "unavailable"] },
+          runwayScore: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          supportingFactors: { type: "array", items: ref("MultibaggerRunwayFactor") },
+          limitingFactors: { type: "array", items: ref("MultibaggerRunwayFactor") },
+          dataQuality: ref("MultibaggerRunwayDataQuality"),
+        },
+      },
+      MultibaggerProfiles: {
+        type: "object",
+        required: ["fiveX", "tenX", "twentyFiveX", "hundredX"],
+        properties: {
+          fiveX: ref("MultibaggerProfile"),
+          tenX: ref("MultibaggerProfile"),
+          twentyFiveX: ref("MultibaggerProfile"),
+          hundredX: ref("MultibaggerProfile"),
+        },
+      },
+      MultibaggerComponentScores: {
+        type: "object",
+        required: ["institutional", "growth", "fundamentals", "valuation", "runway", "optionality", "risk"],
+        properties: {
+          institutional: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          growth: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          fundamentals: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          valuation: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          runway: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          optionality: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          risk: { type: ["number", "null"], minimum: 0, maximum: 100 },
+        },
+      },
+      MultibaggerDataQuality: {
+        type: "object",
+        required: ["status", "confidence", "availableComponents", "unavailableComponents", "warnings"],
+        properties: {
+          status: { type: "string", enum: ["available", "partial", "unavailable"] },
+          confidence: { type: "string", enum: ["high", "moderate", "limited", "unavailable"] },
+          availableComponents: { type: "array", items: { type: "string" } },
+          unavailableComponents: { type: "array", items: { type: "string" } },
+          warnings: { type: "array", items: { type: "string" } },
+        },
+      },
+      MultibaggerCandidate: {
+        type: "object",
+        required: ["symbol", "overallScore", "modelVersion", "profiles", "componentScores", "supportingFactors", "limitingFactors", "dataQuality", "dataAsOf", "marketCap", "revenueGrowth", "sector", "industry", "themes"],
+        properties: {
+          symbol: { type: "string", pattern: "^[A-Z][A-Z0-9.-]{0,9}$" },
+          overallScore: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          modelVersion: { type: "string", enum: ["multibagger_v1"] },
+          profiles: ref("MultibaggerProfiles"),
+          componentScores: ref("MultibaggerComponentScores"),
+          supportingFactors: { type: "array", items: ref("MultibaggerFactor") },
+          limitingFactors: { type: "array", items: ref("MultibaggerFactor") },
+          dataQuality: ref("MultibaggerDataQuality"),
+          dataAsOf: { type: ["string", "null"], format: "date" },
+          marketCap: { type: ["number", "null"], minimum: 0 },
+          revenueGrowth: { type: ["number", "null"] },
+          sector: { type: ["string", "null"] },
+          industry: { type: ["string", "null"] },
+          themes: { type: "array", items: { type: "string" } },
+        },
+      },
+      MultibaggerScreener: {
+        type: "object",
+        required: ["candidates", "totalCount", "limit", "offset", "dataAsOf", "modelVersion"],
+        properties: {
+          candidates: { type: "array", items: ref("MultibaggerCandidate") },
+          totalCount: { type: "integer", minimum: 0 },
+          limit: { type: "integer", minimum: 1, maximum: 100 },
+          offset: { type: "integer", minimum: 0 },
+          dataAsOf: { type: ["string", "null"], format: "date" },
+          modelVersion: { type: "string", enum: ["multibagger_v1"] },
         },
       },
       Quarter: {

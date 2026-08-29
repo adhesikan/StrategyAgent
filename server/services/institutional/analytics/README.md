@@ -57,5 +57,26 @@ including unmapped holdings:
 The concrete repository reads `is_effective = true` filings and their stored
 holdings only. It never calls the SEC at request time.
 
+## Stock institutional intelligence
+
+`getStockInstitutionalAnalytics(symbol, quarter, options)` calculates
+stock-level analytics across tracked managers from persisted effective
+filings. It defaults to the latest quarter and `COMMON_EQUITY`; puts and calls
+remain independently selectable, and PRN rows never enter common-equity share
+totals.
+
+Current holdings are aggregated by manager while retaining their contributing
+CUSIPs. Quarter-over-quarter classifications are emitted only when the manager
+has effective filings for both adjacent calendar quarters. A current holder
+whose manager lacks the prior filing remains visible but is not mislabeled as
+new; aggregate and holder-count changes fail closed to `null` when the current
+holder set is not fully comparable.
+
+The result includes holder counts, reported share/value totals, average and
+median manager portfolio weights, bounded holder/change lists, and mapping/data
+quality. These metrics describe delayed holdings reported by tracked Form 13F
+managers. They do not establish total institutional ownership and reported
+differences are not exact trading activity.
+
 Route integration, StockMetrics migration, external APIs, and dashboards
 remain outside this layer.

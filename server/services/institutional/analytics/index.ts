@@ -47,6 +47,9 @@ export type {
   SectorInstitutionalAnalytics,
   StockAnalyticsQuery,
   StockInstitutionalAnalytics,
+  StockInstitutionalAnalyticsOptions,
+  StockInstitutionalHolder,
+  StockInstitutionalMappingCoverage,
   ThemeAllocation,
   TrendAnalyticsQuery,
 } from "./types";
@@ -73,6 +76,9 @@ export type {
   FundPortfolioXRayRepository,
   FundPortfolioXRayRepositoryQuery,
   FundPortfolioXRaySource,
+  StockInstitutionalAnalyticsSource,
+  StockInstitutionalRepository,
+  StockInstitutionalRepositoryQuery,
 } from "./repository";
 
 export {
@@ -102,7 +108,25 @@ export {
 } from "./fund-analytics-repository";
 export type { EffectiveFundFilingCandidate } from "./fund-analytics-repository";
 export type { StockAnalyticsService } from "./stock-analytics";
-export { createStockInstitutionalAnalytics } from "./stock-analytics";
+export {
+  createStockInstitutionalAnalytics,
+  computeStockInstitutionalAnalytics,
+  getStockInstitutionalAnalytics,
+} from "./stock-analytics";
+export type {
+  StockInstitutionalAnalyticsCalculationInput,
+  StockInstitutionalService,
+} from "./stock-analytics";
+export {
+  loadManagerPortfolioValues,
+  loadAllStockInstitutionalHoldings,
+  selectEffectiveStockFilings,
+  stockInstitutionalRepository,
+} from "./stock-analytics-repository";
+export type {
+  EffectiveStockFilingCandidate,
+  EffectiveStockFilingSelection,
+} from "./stock-analytics-repository";
 export type { MarketAnalyticsService } from "./market-analytics";
 export { createMarketInstitutionalAnalytics } from "./market-analytics";
 export type { SectorAnalyticsService } from "./sector-analytics";

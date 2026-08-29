@@ -106,9 +106,30 @@ export interface ThemeAllocation {
 export interface StockInstitutionalAnalytics {
   symbol: string;
   quarter: InstitutionalQuarter;
+  /** Quarter-end date represented by the reported holdings. */
+  dataAsOf: string | null;
   reportingManagerCount: number;
+  reportedHolderCount: number;
+  previousReportedHolderCount: number | null;
+  holderCountChange: number | null;
+  newlyReportedHolderCount: number;
+  increasedReportedHolderCount: number;
+  unchangedReportedHolderCount: number;
+  reducedReportedHolderCount: number;
+  noLongerReportedHolderCount: number;
   aggregateReportedShares: number | null;
+  previousAggregateReportedShares: number | null;
+  aggregateReportedShareChange: number | null;
+  aggregateReportedShareChangePct: number | null;
   aggregateReportedValueDollars: number | null;
+  averagePortfolioWeight: number | null;
+  medianPortfolioWeight: number | null;
+  topReportedHolders: StockInstitutionalHolder[];
+  largestNewlyReportedPositions: StockInstitutionalHolder[];
+  largestReportedShareIncreases: StockInstitutionalHolder[];
+  largestReportedShareReductions: StockInstitutionalHolder[];
+  noLongerReportedPositions: StockInstitutionalHolder[];
+  mappingCoverage: StockInstitutionalMappingCoverage;
   managerChangeCounts: {
     new: number;
     increased: number;
@@ -120,6 +141,39 @@ export interface StockInstitutionalAnalytics {
   trend: InstitutionalTrend | null;
   dataQuality: AnalyticsDataQuality;
   modelVersion: ModelVersion;
+}
+
+export interface StockInstitutionalHolder {
+  managerId: string;
+  managerName: string;
+  /** A holder can report multiple CUSIPs that resolve to this symbol. */
+  cusip: string | null;
+  cusips: string[];
+  symbol: string;
+  issuerName: string;
+  reportedShares: number | null;
+  previousReportedShares: number | null;
+  reportedShareChange: number | null;
+  reportedShareChangePct: number | null;
+  reportedValueDollars: number | null;
+  portfolioWeight: number | null;
+  changeType: InstitutionalChangeType | null;
+}
+
+export interface StockInstitutionalMappingCoverage {
+  candidateHoldingCount: number;
+  reliablyMappedHoldingCount: number;
+  unmappedHoldingCount: number;
+  ambiguousHoldingCount: number;
+  classificationUnavailableHoldingCount: number;
+  coveragePercent: number;
+}
+
+export interface StockInstitutionalAnalyticsOptions {
+  /** Defaults to COMMON_EQUITY. PUT and CALL remain separate. */
+  positionType?: SecurityPositionType;
+  /** Bounds each returned holder/change list. Defaults to 20. */
+  topN?: number;
 }
 
 export interface InstitutionalBreadth {
@@ -350,7 +404,10 @@ export interface FundPortfolioXRayQuery {
 
 export interface EnrichedInstitutionalHoldingsQuery {
   accessionNumber?: string;
+  accessionNumbers?: string[];
   periodOfReport?: string;
+  /** Restrict the SQL candidate set to evidence that may resolve to this symbol. */
+  symbol?: string;
   limit?: number;
   offset?: number;
 }

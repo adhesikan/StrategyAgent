@@ -30,6 +30,8 @@ import type {
   FundPortfolioXRayQuarterSelector,
   FundPortfolioXRayOptions,
   InstitutionalMappingCoverage,
+  InstitutionalQuarter,
+  StockInstitutionalAnalyticsOptions,
 } from "./types";
 
 /**
@@ -113,4 +115,33 @@ export interface FundPortfolioXRayRepository {
   getFundPortfolioSource(
     query: FundPortfolioXRayRepositoryQuery,
   ): Promise<FundPortfolioXRaySource | null>;
+}
+
+export interface StockInstitutionalAnalyticsSource {
+  symbol: string;
+  quarter: InstitutionalQuarter;
+  previousQuarter: InstitutionalQuarter | null;
+  dataAsOf: string | null;
+  currentHoldings: EnrichedInstitutionalHolding[];
+  previousHoldings: EnrichedInstitutionalHolding[];
+  managerPortfolioValues: Record<string, number | null>;
+  currentFilingManagerIds: string[];
+  comparableManagerIds: string[];
+}
+
+export interface StockInstitutionalRepositoryQuery {
+  symbol: string;
+  quarter: FundPortfolioXRayQuarterSelector;
+  options: StockInstitutionalAnalyticsOptions;
+}
+
+/**
+ * Stock analytics reads persisted effective filings and enriched holdings only.
+ * The repository may optimize the symbol lookup, but it must preserve CUSIPs
+ * and must not fetch a filing from SEC at request time.
+ */
+export interface StockInstitutionalRepository {
+  getStockInstitutionalSource(
+    query: StockInstitutionalRepositoryQuery,
+  ): Promise<StockInstitutionalAnalyticsSource | null>;
 }

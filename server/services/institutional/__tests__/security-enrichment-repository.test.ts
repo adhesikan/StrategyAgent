@@ -24,8 +24,10 @@ function holdingQuery(rows: unknown[]) {
       leftJoin: () => ({
         leftJoin: () => ({
           where: () => ({
-            limit: () => ({
-              offset: async () => rows,
+            orderBy: () => ({
+              limit: () => ({
+                offset: async () => rows,
+              }),
             }),
           }),
         }),

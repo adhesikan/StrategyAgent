@@ -6,7 +6,7 @@
  * a company record as a side effect of reading a holding.
  */
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "../../../db";
 import {
   institutional13fHoldings,
@@ -44,8 +44,23 @@ function buildConditions(query: EnrichedInstitutionalHoldingsQuery) {
   if (query.accessionNumber) {
     conditions.push(eq(institutional13fHoldings.accessionNumber, query.accessionNumber));
   }
+  if (query.accessionNumbers && query.accessionNumbers.length > 0) {
+    conditions.push(
+      inArray(institutional13fHoldings.accessionNumber, query.accessionNumbers),
+    );
+  }
   if (query.periodOfReport) {
     conditions.push(eq(institutional13fHoldings.periodOfReport, query.periodOfReport));
+  }
+  if (query.symbol?.trim()) {
+    const symbol = query.symbol.trim().toUpperCase();
+    conditions.push(
+      or(
+        sql`UPPER(${securityMaster.ticker}) = ${symbol}`,
+        sql`UPPER(${institutionalSecurityMappings.mappedSymbol}) = ${symbol}`,
+        sql`UPPER(${institutional13fHoldings.mappedSymbol}) = ${symbol}`,
+      ),
+    );
   }
   return conditions.length > 0 ? and(...conditions) : undefined;
 }
@@ -154,6 +169,13 @@ export async function getEnrichedInstitutionalHoldings(
       ),
     )
     .where(buildConditions(query))
+    .orderBy(
+      institutional13fHoldings.accessionNumber,
+      institutional13fHoldings.cusip,
+      institutional13fHoldings.id,
+      institutionalSecurityMappings.id,
+      securityMaster.id,
+    )
     .limit(query.limit ?? 10_000)
     .offset(query.offset ?? 0) as unknown as EnrichedHoldingRow[];
 

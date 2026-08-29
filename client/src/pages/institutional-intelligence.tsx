@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import {
   Activity,
   AlertCircle,
@@ -21,7 +21,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiErrorCode, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 type HubTab = "stock" | "trends" | "rotation" | "discovery" | "multibagger";
 type TrendMode = "accumulation" | "reduction" | "new-positions" | "exits";
@@ -304,6 +310,22 @@ function fetchV1<T>(path: string): Promise<T> {
   return fetchJson<ApiEnvelope<T>>(path).then((body) => body.data);
 }
 
+function isDataUnavailable(error: unknown): boolean {
+  return apiErrorCode(error) === "DATA_UNAVAILABLE";
+}
+
+function symbolFromSearch(search: string): string | null {
+  const raw = new URLSearchParams(
+    search.startsWith("?") ? search.slice(1) : search,
+  ).get("symbol");
+  const normalized = raw?.trim().toUpperCase() ?? "";
+  return /^[A-Z][A-Z0-9.-]{0,9}$/.test(normalized) ? normalized : null;
+}
+
+export function symbolQueryOpensStock(querySymbol: string | null): boolean {
+  return querySymbol !== null;
+}
+
 function formatNumber(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
   if (Math.abs(value) >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
@@ -432,14 +454,31 @@ function StockView({
     staleTime: 5 * 60_000,
   });
 
-  if (analyticsQuery.isLoading || trendQuery.isLoading) return <LoadingCards count={4} />;
-  if (analyticsQuery.isError && trendQuery.isError && legacyQuery.isError) {
+  if (
+    analyticsQuery.isLoading ||
+    trendQuery.isLoading ||
+    (!analyticsQuery.data && !legacyQuery.data && legacyQuery.isLoading)
+  ) {
+    return <LoadingCards count={4} />;
+  }
+  const analyticsUnavailable = isDataUnavailable(analyticsQuery.error);
+  const trendUnavailable = isDataUnavailable(trendQuery.error);
+  const primaryHardError =
+    (analyticsQuery.isError && !analyticsUnavailable) ||
+    (trendQuery.isError && !trendUnavailable);
+  if (
+    !analyticsQuery.data &&
+    !trendQuery.data &&
+    !legacyQuery.data &&
+    primaryHardError &&
+    legacyQuery.isError
+  ) {
     return <ErrorState onRetry={() => { void analyticsQuery.refetch(); void trendQuery.refetch(); void legacyQuery.refetch(); }} />;
   }
 
   const data = analyticsQuery.data;
   const trend = trendQuery.data;
-  const legacy = legacyQuery.data;
+  const legacy = legacyQuery.data?.summary ? legacyQuery.data : undefined;
   if (!data && !legacy) {
     return <EmptyState title={`No reported 13F data for ${symbol}`} detail="A completed institutional snapshot is required before this stock can be analyzed." />;
   }
@@ -602,6 +641,7 @@ function TrendsView() {
   });
   const total = query.data?.totalCount ?? 0;
   const pages = Math.max(1, Math.ceil(total / limit));
+  const unavailable = isDataUnavailable(query.error);
 
   return (
     <div className="space-y-5" data-testid="institutional-trends-view">
@@ -610,8 +650,8 @@ function TrendsView() {
         {TREND_ITEMS.map((item) => <Button key={item.key} variant={mode === item.key ? "default" : "outline"} size="sm" onClick={() => { setMode(item.key); setPage(0); }}>{item.label}</Button>)}
       </div>
       {query.isLoading && <LoadingCards count={4} />}
-      {query.isError && <ErrorState onRetry={() => void query.refetch()} />}
-      {!query.isLoading && !query.isError && query.data && query.data.items.length === 0 && <EmptyState title="No ranked symbols in this view" detail="The selected activity category has no completed results for the current snapshot." />}
+      {query.isError && !unavailable && <ErrorState onRetry={() => void query.refetch()} />}
+      {!query.isLoading && (unavailable || (query.data && query.data.items.length === 0)) && <EmptyState title="No ranked symbols in this view" detail="The selected activity category has no completed results for the current delayed Form 13F snapshot." onRetry={() => void query.refetch()} />}
       {query.data && query.data.items.length > 0 && (
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="text-sm">{TREND_ITEMS.find((item) => item.key === mode)?.label} · {query.data.quarter.label}</CardTitle><span className="text-xs text-muted-foreground">{total} symbols</span></CardHeader>
@@ -647,14 +687,15 @@ function RotationView() {
     queryFn: () => fetchV1(`/api/v1/institutional/rotation/${kind}`),
     staleTime: 5 * 60_000,
   });
+  const unavailable = isDataUnavailable(query.error);
 
   return (
     <div className="space-y-5" data-testid="institutional-rotation-view">
       <div><h2 className="text-xl font-semibold">Institutional rotation</h2><p className="mt-1 text-sm text-muted-foreground">Quarter-over-quarter reported value, manager breadth, and directional activity by classification.</p></div>
       <div className="flex flex-wrap gap-2">{ROTATION_ITEMS.map((item) => <Button key={item.key} variant={kind === item.key ? "default" : "outline"} size="sm" onClick={() => setKind(item.key)}>{item.label}</Button>)}</div>
       {query.isLoading && <LoadingCards count={4} />}
-      {query.isError && <ErrorState onRetry={() => void query.refetch()} />}
-      {query.data && query.data.classifications.length === 0 && <EmptyState title={`No ${kind} rotation snapshot`} detail="Rotation appears after the institutional analytics pipeline produces a completed quarter." />}
+      {query.isError && !unavailable && <ErrorState onRetry={() => void query.refetch()} />}
+      {(unavailable || (query.data && query.data.classifications.length === 0)) && <EmptyState title={`No ${kind} rotation snapshot`} detail="Rotation appears after the institutional analytics pipeline produces a completed delayed Form 13F quarter." onRetry={() => void query.refetch()} />}
       {query.data && query.data.classifications.length > 0 && (
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="text-sm">{query.data.kind} · {query.data.quarter.label}</CardTitle><span className="text-xs text-muted-foreground">{query.data.classifications.length} classifications</span></CardHeader>
@@ -757,14 +798,30 @@ function Pagination({ page, pages, onChange }: { page: number; pages: number; on
 }
 
 export default function InstitutionalIntelligencePage() {
+  const search = useSearch();
+  const [, navigate] = useLocation();
+  const querySymbol = symbolFromSearch(search);
   const [activeTab, setActiveTab] = useState<HubTab>("stock");
-  const [inputSymbol, setInputSymbol] = useState("AAPL");
-  const [symbol, setSymbol] = useState("AAPL");
+  const [inputSymbol, setInputSymbol] = useState(querySymbol ?? "AAPL");
+  const [symbol, setSymbol] = useState(querySymbol ?? "AAPL");
+
+  useEffect(() => {
+    if (!symbolQueryOpensStock(querySymbol)) return;
+    if (querySymbol === null) return;
+    setActiveTab("stock");
+    if (querySymbol === symbol) return;
+    setInputSymbol(querySymbol);
+    setSymbol(querySymbol);
+  }, [querySymbol, symbol]);
 
   function submitSymbol(event: React.FormEvent) {
     event.preventDefault();
     const normalized = inputSymbol.trim().toUpperCase();
-    if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(normalized)) setSymbol(normalized);
+    if (/^[A-Z][A-Z0-9.-]{0,9}$/.test(normalized)) {
+      setSymbol(normalized);
+      setActiveTab("stock");
+      navigate(`/institutional?symbol=${encodeURIComponent(normalized)}`);
+    }
   }
 
   return (
@@ -788,15 +845,48 @@ export default function InstitutionalIntelligencePage() {
           <Button type="submit">Research symbol</Button>
         </form>
 
-        <div className="flex gap-1 overflow-x-auto border-b pb-1" role="tablist" aria-label="Institutional intelligence views">
-          {TAB_ITEMS.map((item) => { const Icon = item.icon; return <button key={item.key} role="tab" aria-selected={activeTab === item.key} onClick={() => setActiveTab(item.key)} className={cn("flex shrink-0 items-center gap-2 rounded-t-md px-3 py-2 text-sm font-medium transition-colors", activeTab === item.key ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground")} data-testid={`institutional-tab-${item.key}`}><Icon className="h-4 w-4" />{item.label}</button>; })}
-        </div>
-
-        {activeTab === "stock" && <StockView symbol={symbol} onOpenMultibagger={() => setActiveTab("multibagger")} />}
-        {activeTab === "trends" && <TrendsView />}
-        {activeTab === "rotation" && <RotationView />}
-        {activeTab === "discovery" && <DiscoveryView symbol={symbol} />}
-        {activeTab === "multibagger" && <MultibaggerView symbol={symbol} />}
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as HubTab)}
+        >
+          <TabsList
+            className="flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent p-0"
+            aria-label="Institutional intelligence views"
+          >
+            {TAB_ITEMS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <TabsTrigger
+                  key={item.key}
+                  value={item.key}
+                  className="shrink-0 gap-2 rounded-t-md rounded-b-none px-3 py-2 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+                  data-testid={`institutional-tab-${item.key}`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+          <TabsContent value="stock" className="mt-6">
+            <StockView
+              symbol={symbol}
+              onOpenMultibagger={() => setActiveTab("multibagger")}
+            />
+          </TabsContent>
+          <TabsContent value="trends" className="mt-6">
+            <TrendsView />
+          </TabsContent>
+          <TabsContent value="rotation" className="mt-6">
+            <RotationView />
+          </TabsContent>
+          <TabsContent value="discovery" className="mt-6">
+            <DiscoveryView symbol={symbol} />
+          </TabsContent>
+          <TabsContent value="multibagger" className="mt-6">
+            <MultibaggerView symbol={symbol} />
+          </TabsContent>
+        </Tabs>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5"><Info className="h-3.5 w-3.5" />Delayed SEC Form 13F data · reported holdings only</span>

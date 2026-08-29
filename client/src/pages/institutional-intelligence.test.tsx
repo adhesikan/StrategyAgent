@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { apiErrorCode } from "../lib/queryClient";
+import { symbolQueryOpensStock } from "./institutional-intelligence";
 
 const pageSource = readFileSync(
   resolve(__dirname, "institutional-intelligence.tsx"),
@@ -34,6 +36,23 @@ describe("Institutional Intelligence hub", () => {
   it("uses server-side pagination for ranking tables", () => {
     expect(pageSource).toContain("limit=${limit}&offset=${page * limit}");
     expect(pageSource).toContain("query.data?.totalCount");
+  });
+
+  it("hydrates ranked symbol links and distinguishes unavailable snapshots", () => {
+    expect(pageSource).toContain("useSearch()");
+    expect(pageSource).toContain("symbolFromSearch(search)");
+    expect(pageSource).toContain("setActiveTab(\"stock\")");
+    expect(pageSource).toContain('apiErrorCode(error) === "DATA_UNAVAILABLE"');
+    expect(
+      apiErrorCode(
+        new Error(
+          '404: {"error":{"code":"DATA_UNAVAILABLE","message":"No snapshot"}}',
+        ),
+      ),
+    ).toBe("DATA_UNAVAILABLE");
+    expect(pageSource).toContain("legacyQuery.data?.summary");
+    expect(pageSource).toContain("<TabsContent");
+    expect(symbolQueryOpensStock("AAPL")).toBe(true);
   });
 
   it("does not introduce prohibited promotional or transaction language", () => {

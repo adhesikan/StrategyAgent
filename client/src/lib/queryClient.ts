@@ -35,7 +35,8 @@ export function apiErrorCode(err: unknown): string | null {
   if (jsonStart < 0) return null;
   try {
     const body = JSON.parse(raw.slice(jsonStart));
-    return typeof body.code === "string" ? body.code : null;
+    if (typeof body.code === "string") return body.code;
+    return typeof body.error?.code === "string" ? body.error.code : null;
   } catch {
     return null;
   }

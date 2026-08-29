@@ -113,5 +113,20 @@ exhaustion and performs two all-manager holdings loads (current/prior), with no
 per-manager or per-symbol queries. No new index or precomputed table is
 justified by the available evidence.
 
+## Classification rotation
+
+`getSectorRotation()`, `getIndustryRotation()`, and `getThemeRotation()` reuse
+the persisted cross-fund current/prior-quarter source. They report filing-time
+value exposure, manager breadth, and share-based position activity separately.
+Reported value changes are never treated as buying or selling because security
+price changes also affect reported value.
+
+Sector and industry groups are exclusive for each reliably mapped security.
+Theme groups are intentionally non-exclusive: a security contributes its full
+reported exposure to every normalized theme membership, so thematic values may
+sum above total portfolio exposure. Unmapped and ambiguous securities are not
+guessed into a classification. Common equity is the default; PRN, put, and call
+rows are excluded unless an option position type is selected explicitly.
+
 Route integration, StockMetrics migration, external APIs, and dashboards
 remain outside this layer.

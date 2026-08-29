@@ -31,6 +31,10 @@ export type {
   InstitutionalActivityRankingOptions,
   InstitutionalActivityRankingResult,
   InstitutionalActivityRankingSort,
+  InstitutionalRotationClassification,
+  InstitutionalRotationKind,
+  InstitutionalRotationOptions,
+  InstitutionalRotationResult,
   InstitutionalBreadth,
   InstitutionalChangeType,
   InstitutionalMappingCoverage,
@@ -140,10 +144,21 @@ export {
   getNewlyReportedRanking,
   getNoLongerReportedRanking,
 } from "./cross-fund-analytics";
+export {
+  computeInstitutionalRotation,
+  getIndustryRotation,
+  getSectorRotation,
+  getThemeRotation,
+  institutionalRotationService,
+} from "./rotation-analytics";
 export type {
   CrossFundActivityCalculationInput,
   CrossFundActivityRankingService,
 } from "./cross-fund-analytics";
+export type {
+  InstitutionalRotationService,
+  RotationCalculationInput,
+} from "./rotation-analytics";
 export { crossFundInstitutionalRepository } from "./cross-fund-analytics-repository";
 export type {
   EffectiveStockFilingCandidate,

@@ -512,6 +512,44 @@ export interface InstitutionalActivityRankingResult {
   modelVersion: ModelVersion;
 }
 
+export type InstitutionalRotationKind = "SECTOR" | "INDUSTRY" | "THEME";
+
+export interface InstitutionalRotationOptions {
+  quarter?: FundPortfolioXRayQuarterSelector;
+  /** Defaults to COMMON_EQUITY; options remain independently selectable. */
+  positionType?: SecurityPositionType;
+}
+
+export interface InstitutionalRotationClassification {
+  quarter: InstitutionalQuarter;
+  /** Sector, industry, or theme display name. */
+  classification: string;
+  /** Present for theme rows so callers can retain the canonical theme identity. */
+  classificationId?: string;
+  currentReportedValue: number | null;
+  previousReportedValue: number | null;
+  reportedValueChange: number | null;
+  reportedValueChangePct: number | null;
+  /** Null for option rows, where underlying-share aggregation is not meaningful. */
+  currentReportedShares: number | null;
+  managerCount: number;
+  previousManagerCount: number | null;
+  managerCountChange: number | null;
+  newlyReportedPositionCount: number;
+  increasedReportedPositionCount: number;
+  reducedReportedPositionCount: number;
+  noLongerReportedPositionCount: number;
+}
+
+export interface InstitutionalRotationResult {
+  kind: InstitutionalRotationKind;
+  quarter: InstitutionalQuarter;
+  previousQuarter: InstitutionalQuarter | null;
+  classifications: InstitutionalRotationClassification[];
+  dataQuality: AnalyticsDataQuality;
+  modelVersion: ModelVersion;
+}
+
 export interface MarketAnalyticsQuery extends InstitutionalAnalyticsQuery {
   universe?: string;
 }

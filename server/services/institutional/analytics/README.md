@@ -143,5 +143,40 @@ returned as context but cannot change an accumulation/distribution label because
 security price movement also affects filing-time value. No AI or LLM
 interpretation is involved.
 
+## Versioned accumulation score
+
+`computeInstitutionalAccumulationScore()` implements the private
+`institutional_accumulation_v1` model. The model returns integer component and
+final scores to avoid false precision. Its configured weights are:
+
+- reported-share change: 25%
+- holder breadth change: 20%
+- increase/reduction balance: 20%
+- newly reported manager breadth: 15%
+- multi-quarter positive-balance persistence: 10%
+- reported portfolio-weight change: 10%
+
+Reported-share change receives the largest weight because it is the direct
+position-size measure available in 13F data. Holder breadth and the
+increase/reduction balance receive the next-largest weights because they capture
+how widely that movement is distributed. New-manager breadth is lower to limit
+double-counting with breadth and balance. Persistence and portfolio-weight
+change are contextual confirmations and therefore receive the smallest weights.
+
+Directional percentage components are centered at 50 and saturate at explicit
+versioned bounds (breadth ±25%, shares ±50%, portfolio weight ±2 percentage
+points). New-manager breadth scales from 0 to 100 over 0–25%; activity balance
+maps linearly from -1 to +1; persistence is already a 0–100 percentage. Values
+beyond a saturation point carry no additional score so an extreme filing cannot
+dominate the result.
+
+Missing components are not assigned neutral values. Available weights are
+renormalized only when they total at least 70% of the model; otherwise the score
+is null with explicit insufficiency flags. The 70% floor requires a clear
+majority of the documented evidence weight while allowing one contextual
+component to be absent. Portfolio-weight change is unavailable unless a
+reliable prior comparison is supplied. Manager-quality weighting is excluded
+from this version.
+
 Route integration, StockMetrics migration, external APIs, and dashboards
 remain outside this layer.

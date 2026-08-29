@@ -47,6 +47,11 @@ export type {
   InstitutionalQuarterNumber,
   InstitutionalQuarterSelector,
   InstitutionalScoreResult,
+  InstitutionalAccumulationComponentKey,
+  InstitutionalAccumulationInsufficientDataFlag,
+  InstitutionalAccumulationScoreComponent,
+  InstitutionalAccumulationScoreInput,
+  InstitutionalAccumulationScoreResult,
   InstitutionalSecurityMetadata,
   InstitutionalThemeMembership,
   InstitutionalTrend,
@@ -192,3 +197,9 @@ export { createInstitutionalTrend } from "./trend-analytics";
 export type { CohortAnalyticsService } from "./cohort-analytics";
 export { createCohortInstitutionalAnalytics } from "./cohort-analytics";
 export type { InstitutionalScoringService } from "./scoring";
+export {
+  computeInstitutionalAccumulationScore,
+  INSTITUTIONAL_ACCUMULATION_MODEL,
+  scoreInstitutionalAccumulationComponent,
+  scoreStockInstitutionalAccumulation,
+} from "./scoring";

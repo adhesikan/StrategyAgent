@@ -219,6 +219,66 @@ export interface InstitutionalScoreResult {
   limitations: string[];
 }
 
+export type InstitutionalAccumulationComponentKey =
+  | "breadthChange"
+  | "reportedShareChange"
+  | "newManagerBreadth"
+  | "increaseReductionBalance"
+  | "multiQuarterPersistence"
+  | "portfolioWeightChange";
+
+export type InstitutionalAccumulationInsufficientDataFlag =
+  | "MISSING_DATA_QUARTER"
+  | "DATA_QUALITY_INSUFFICIENT"
+  | "MISSING_BREADTH_CHANGE"
+  | "MISSING_REPORTED_SHARE_CHANGE"
+  | "MISSING_NEW_MANAGER_BREADTH"
+  | "MISSING_INCREASE_REDUCTION_BALANCE"
+  | "MISSING_MULTI_QUARTER_PERSISTENCE"
+  | "MISSING_PORTFOLIO_WEIGHT_CHANGE"
+  | "INSUFFICIENT_AVAILABLE_WEIGHT";
+
+export interface InstitutionalAccumulationScoreComponent {
+  rawValue: number | null;
+  score: number | null;
+  configuredWeight: number;
+  effectiveWeight: number;
+  weightedContribution: number | null;
+  available: boolean;
+  explanation: string;
+}
+
+export interface InstitutionalAccumulationScoreInput {
+  breadthChangePct: number | null;
+  aggregateReportedShareChangePct: number | null;
+  newlyReportedManagerBreadthPct: number | null;
+  increaseReductionBalance: number | null;
+  multiQuarterPersistencePct: number | null;
+  portfolioWeightChangePctPoints: number | null;
+  dataQuarter: InstitutionalQuarter | null;
+  dataAsOf: string | null;
+  dataQuality: AnalyticsDataQuality;
+}
+
+export interface InstitutionalAccumulationScoreResult {
+  score: number | null;
+  modelVersion: "institutional_accumulation_v1";
+  components: Record<
+    InstitutionalAccumulationComponentKey,
+    InstitutionalAccumulationScoreComponent
+  >;
+  componentScores: Record<
+    InstitutionalAccumulationComponentKey,
+    number | null
+  >;
+  weights: Record<InstitutionalAccumulationComponentKey, number>;
+  dataQuarter: InstitutionalQuarter | null;
+  dataAsOf: string | null;
+  dataQuality: AnalyticsDataQuality;
+  insufficientData: boolean;
+  insufficientDataFlags: InstitutionalAccumulationInsufficientDataFlag[];
+}
+
 export interface MarketInstitutionalAnalytics {
   quarter: InstitutionalQuarter;
   coveredSymbolCount: number;

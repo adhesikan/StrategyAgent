@@ -1,0 +1,203 @@
+The read-only discrepancy investigation is complete.
+
+PRODUCTION APPLY REMAINS NO-GO.
+
+We now know that exactly 30 aggregate-eligible exact-material subgroups
+require source provenance resolution:
+
+AAPL: 6
+NVDA: 13
+MSFT: 11
+COST: 0
+
+These groups are materially identical in all fields currently persisted,
+but INFOTABLE_SK was not retained historically.
+
+DO NOT:
+- run repair APPLY
+- modify production holdings
+- deduplicate production rows
+- weaken the current repair blocker
+- rerun full 13F ingestion
+- enable Institutional Intelligence
+
+NEXT TASK: TARGETED SEC SOURCE PROVENANCE RECONCILIATION
+
+Build a READ-ONLY diagnostic that resolves ONLY these 30 groups against
+their original SEC 13F information-table source filings.
+
+OBJECTIVE
+
+Determine whether each repeated production row corresponds to:
+
+A. multiple distinct source information-table rows in the original SEC
+   filing, or
+
+B. fewer source rows than persisted production rows, proving an ingestion
+   or persistence duplication, or
+
+C. source evidence that cannot be matched conclusively.
+
+1. IDENTIFY SOURCE FILINGS
+
+For each of the 30 groups use the existing production data to obtain:
+
+- full accession number
+- filer CIK
+- filing type
+- filing date
+- period of report
+- CUSIP
+- issuer name
+- class title
+- PUT/CALL
+- reported shares
+- reported value
+- shares/PRN type
+- investment discretion
+- other manager
+- voting authority
+
+Do not rely only on accession suffixes.
+
+2. FETCH ORIGINAL SEC INFORMATION TABLE
+
+Use the project's existing SEC access conventions/client where possible.
+
+Fetch only the necessary original SEC filing/information-table documents
+for the affected accession numbers.
+
+Respect SEC request requirements and existing throttling/user-agent rules.
+
+Do NOT perform a broad historical reingestion.
+
+3. PRESERVE SOURCE ROW IDENTITY IN MEMORY
+
+If the SEC source provides INFOTABLE_SK or an equivalent source-row
+identifier, retain it in the diagnostic result.
+
+Do not write it to production yet.
+
+For each matching source line return:
+
+- source row identifier
+- accession number
+- CUSIP
+- issuer
+- class
+- option type
+- shares
+- value
+- shares/PRN type
+- investment discretion
+- other manager
+- voting authority
+
+4. MATCH EACH OF THE 30 PRODUCTION SUBGROUPS
+
+For every subgroup compare:
+
+production physical row count
+
+versus
+
+number of matching distinct source information-table rows.
+
+Classify each as:
+
+SOURCE_ROWS_CONFIRM_MULTIPLE
+  The original SEC filing itself contains the same material row multiple
+  times under distinct source row identities.
+
+INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED
+  Production contains more identical rows than the SEC source.
+
+SOURCE_MATCH_AMBIGUOUS
+  Source evidence cannot establish the relationship safely.
+
+SOURCE_UNAVAILABLE
+  Filing/source could not be retrieved.
+
+Do not infer duplication unless the source proves it.
+
+5. AGGREGATION DECISION
+
+For SOURCE_ROWS_CONFIRM_MULTIPLE:
+confirm that preserving and summing the separate rows is correct.
+
+For INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED:
+design a separate non-destructive repair plan but DO NOT execute it.
+
+For SOURCE_MATCH_AMBIGUOUS or SOURCE_UNAVAILABLE:
+retain NO-GO for that symbol.
+
+6. SYMBOL-LEVEL RESULT
+
+Return independently for:
+
+AAPL
+NVDA
+MSFT
+COST
+
+whether that symbol is:
+
+SAFE_FOR_CURRENT_REPAIR
+BLOCKED_BY_CONFIRMED_DUPLICATION
+BLOCKED_BY_UNRESOLVED_PROVENANCE
+
+This should allow us to avoid unnecessarily blocking one clean symbol
+because another symbol is unresolved.
+
+7. COST
+
+COST currently has zero unresolved groups.
+
+Confirm that nothing discovered in this diagnostic changes COST's clean
+status.
+
+Do not run an APPLY for COST in this task.
+
+8. FUTURE PROVENANCE
+
+Document the exact SEC source-row identifier that should be persisted in
+future ingestion.
+
+Do not perform the schema migration yet.
+
+9. TESTS
+
+Add tests covering:
+
+- two identical material rows with distinct source row IDs
+- one source row accidentally persisted twice
+- ambiguous source matching
+- unavailable source filing
+- symbol-level independent GO/NO-GO
+- no production writes
+- no broad reingestion
+
+10. RETURN
+
+TASK STATUS
+SOURCE FILINGS EXAMINED
+SOURCE ROW IDENTITY AVAILABLE
+AAPL SOURCE RECONCILIATION
+NVDA SOURCE RECONCILIATION
+MSFT SOURCE RECONCILIATION
+COST STATUS
+CONFIRMED SOURCE-DISTINCT GROUPS
+CONFIRMED INGESTION DUPLICATES
+UNRESOLVED GROUPS
+CONDITIONAL AGGREGATION IMPACT AFTER RECONCILIATION
+SYMBOL-LEVEL SAFETY STATUS
+FILES CHANGED
+TEST RESULTS
+BUILD RESULT
+COMMIT
+PUSH STATUS
+NEXT RAILWAY READ-ONLY COMMAND
+
+PRODUCTION APPLY: NO
+
+STOP.

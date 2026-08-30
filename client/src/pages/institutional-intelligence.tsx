@@ -520,14 +520,14 @@ function StockView({
   onOpenMultibagger: () => void;
 }) {
   const analyticsQuery = useQuery<StockAnalytics>({
-    queryKey: [`/api/v1/institutional/stocks/${symbol}?topN=20`],
-    queryFn: () => fetchV1(`/api/v1/institutional/stocks/${symbol}?topN=20`),
+    queryKey: [`/api/institutional/v1/stocks/${symbol}?topN=20`],
+    queryFn: () => fetchV1(`/api/institutional/v1/stocks/${symbol}?topN=20`),
     enabled: !!symbol,
     staleTime: 5 * 60_000,
   });
   const trendQuery = useQuery<StockTrend>({
-    queryKey: [`/api/v1/institutional/stocks/${symbol}/trend?historyQuarters=8`],
-    queryFn: () => fetchV1(`/api/v1/institutional/stocks/${symbol}/trend?historyQuarters=8`),
+    queryKey: [`/api/institutional/v1/stocks/${symbol}/trend?historyQuarters=8`],
+    queryFn: () => fetchV1(`/api/institutional/v1/stocks/${symbol}/trend?historyQuarters=8`),
     enabled: !!symbol,
     staleTime: 5 * 60_000,
   });
@@ -745,8 +745,8 @@ function TrendsView() {
   const [page, setPage] = useState(0);
   const limit = 20;
   const query = useQuery<RankingResult>({
-    queryKey: [`/api/v1/institutional/trends/${mode}`, page],
-    queryFn: () => fetchV1(`/api/v1/institutional/trends/${mode}?limit=${limit}&offset=${page * limit}`),
+    queryKey: [`/api/institutional/v1/trends/${mode}`, page],
+    queryFn: () => fetchV1(`/api/institutional/v1/trends/${mode}?limit=${limit}&offset=${page * limit}`),
     staleTime: 5 * 60_000,
   });
   const total = query.data?.totalCount ?? 0;
@@ -793,8 +793,8 @@ function TrendsView() {
 function RotationView() {
   const [kind, setKind] = useState<RotationKind>("sectors");
   const query = useQuery<RotationResult>({
-    queryKey: [`/api/v1/institutional/rotation/${kind}`],
-    queryFn: () => fetchV1(`/api/v1/institutional/rotation/${kind}`),
+    queryKey: [`/api/institutional/v1/rotation/${kind}`],
+    queryFn: () => fetchV1(`/api/institutional/v1/rotation/${kind}`),
     staleTime: 5 * 60_000,
   });
   const unavailable = isDataUnavailable(query.error);

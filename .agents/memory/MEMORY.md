@@ -100,3 +100,4 @@
 - [Sprint 2.8.7 BI-004 — Planning Capital](sprint-287-bi004-planning-capital.md) — USER_DEFINED_PLANNING_CAPITAL in planningSnapshot JSONB; dim-7 PLANNING_MODE; never PASS; PATCH /:id/planning-capital sub-route before /:id catch-all.
 - [Historical validation bias controls](historical-validation-bias-controls.md) — select score cohorts before outcome availability; require adjusted endpoints and immutable artifact hashes.
 - [Institutional API unavailable states](institutional-api-unavailable-states.md) — v1 nests error codes; legacy returns HTTP 200 unavailable payloads, so UI emptiness needs both contracts.
+- [One-time credential logging](one-time-credential-logging.md) — secret-creation responses must be redacted at the global response logger, not only omitted from persistence.

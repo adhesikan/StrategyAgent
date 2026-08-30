@@ -7,7 +7,6 @@
  * response contracts.
  */
 
-import crypto from "node:crypto";
 import type { Express, Request, RequestHandler, Response } from "express";
 import { z } from "zod";
 import {
@@ -42,15 +41,15 @@ import {
   isValidManagerId,
   normalizeManagerId,
 } from "../services/institutional/fund-service";
+import { externalApiRequestId } from "../services/external-api-security";
 
 const SOURCE_LABEL = "SEC Form 13F reported holdings";
 const API_MODEL_VERSION = "institutional-api-v1";
 const SYMBOL_RE = /^[A-Z][A-Z0-9.-]{0,9}$/;
-const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
 const CACHE_HEADERS = {
   health: "public, max-age=30, stale-while-revalidate=60",
-  analytics: "public, max-age=300, stale-while-revalidate=600",
+  analytics: "private, max-age=300, stale-while-revalidate=600",
 } as const;
 
 const COMMON_POSITION_TYPES = ["COMMON_EQUITY", "PUT", "CALL"] as const;
@@ -178,10 +177,7 @@ export class InstitutionalApiV1Error extends Error {
 }
 
 function requestId(req: Request): string {
-  const candidate = req.header("x-request-id");
-  return candidate && REQUEST_ID_RE.test(candidate)
-    ? candidate
-    : crypto.randomUUID();
+  return externalApiRequestId(req);
 }
 
 function parseQuery<T extends z.ZodTypeAny>(
@@ -280,7 +276,7 @@ function responseMeta(
 function setRequestHeaders(res: Response, id: string, cache: string): void {
   res.setHeader("X-Request-Id", id);
   res.setHeader("Cache-Control", cache);
-  res.setHeader("Vary", "Accept");
+  res.setHeader("Vary", "Authorization, Accept");
 }
 
 function sendSuccess(
@@ -380,15 +376,22 @@ function commonOptions(query: ApiV1Query) {
 export function registerInstitutionalApiV1Routes(
   app: Express,
   deps: ApiV1Deps = defaultDeps,
+  options: {
+    basePath?: string;
+    includeHealth?: boolean;
+  } = {},
 ): void {
-  app.get("/api/v1/health", withApiLogging(
-    "health",
-    async () => ({
-      status: "ok",
-      apiVersion: "v1",
-    }),
-    CACHE_HEADERS.health,
-  ));
+  const basePath = options.basePath ?? "/api/v1/institutional";
+  if (options.includeHealth !== false) {
+    app.get("/api/v1/health", withApiLogging(
+      "health",
+      async () => ({
+        status: "ok",
+        apiVersion: "v1",
+      }),
+      CACHE_HEADERS.health,
+    ));
+  }
 
   const fundHandler = withApiLogging(
     "fund",
@@ -409,10 +412,10 @@ export function registerInstitutionalApiV1Routes(
       );
     },
   );
-  app.get("/api/v1/institutional/funds/:managerId/analytics", fundHandler);
-  app.get("/api/v1/institutional/funds/:managerId", fundHandler);
+  app.get(`${basePath}/funds/:managerId/analytics`, fundHandler);
+  app.get(`${basePath}/funds/:managerId`, fundHandler);
 
-  app.get("/api/v1/institutional/stocks/:symbol", withApiLogging(
+  app.get(`${basePath}/stocks/:symbol`, withApiLogging(
     "stock",
     async (req) => {
       const symbol = requireSymbol(String(req.params.symbol ?? ""));
@@ -432,7 +435,7 @@ export function registerInstitutionalApiV1Routes(
     },
   ));
 
-  app.get("/api/v1/institutional/stocks/:symbol/trend", withApiLogging(
+  app.get(`${basePath}/stocks/:symbol/trend`, withApiLogging(
     "stock-trend",
     async (req) => {
       const symbol = requireSymbol(String(req.params.symbol ?? ""));
@@ -455,22 +458,22 @@ export function registerInstitutionalApiV1Routes(
       Promise<InstitutionalActivityRankingResult | null>;
   }> = [
     {
-      path: "/api/v1/institutional/trends/accumulation",
+      path: `${basePath}/trends/accumulation`,
       name: "accumulation",
       load: deps.getInstitutionalAccumulationRanking,
     },
     {
-      path: "/api/v1/institutional/trends/reduction",
+      path: `${basePath}/trends/reduction`,
       name: "reduction",
       load: deps.getInstitutionalReductionRanking,
     },
     {
-      path: "/api/v1/institutional/trends/new-positions",
+      path: `${basePath}/trends/new-positions`,
       name: "new-positions",
       load: deps.getNewlyReportedRanking,
     },
     {
-      path: "/api/v1/institutional/trends/exits",
+      path: `${basePath}/trends/exits`,
       name: "exits",
       load: deps.getNoLongerReportedRanking,
     },
@@ -503,17 +506,17 @@ export function registerInstitutionalApiV1Routes(
       Promise<InstitutionalRotationResult | null>;
   }> = [
     {
-      path: "/api/v1/institutional/rotation/sectors",
+      path: `${basePath}/rotation/sectors`,
       name: "sector-rotation",
       load: deps.getSectorRotation,
     },
     {
-      path: "/api/v1/institutional/rotation/industries",
+      path: `${basePath}/rotation/industries`,
       name: "industry-rotation",
       load: deps.getIndustryRotation,
     },
     {
-      path: "/api/v1/institutional/rotation/themes",
+      path: `${basePath}/rotation/themes`,
       name: "theme-rotation",
       load: deps.getThemeRotation,
     },

@@ -83,6 +83,11 @@ import { registerInstitutionalFundsRoutes } from "./routes/institutional-funds";
 import { registerInstitutionalApiV1Routes } from "./routes/institutional-api-v1";
 import { registerInstitutionalApiV1DocsRoutes } from "./routes/institutional-api-docs-v1";
 import { registerMultibaggerApiV1Routes } from "./routes/multibagger-api-v1";
+import { registerExternalApiKeyRoutes } from "./routes/external-api-keys";
+import {
+  createExternalApiMiddleware,
+  createExternalApiUsageMiddleware,
+} from "./services/external-api-security";
 import { registerInstitutionalApplicationRoutes } from "./routes/institutional-application";
 import { registerIntelligenceRoutes } from "./routes/intelligence";
 import { registerPlatformHealthRoutes } from "./routes/platform-health";
@@ -264,7 +269,28 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerInternalPortfolioRoutes(app);
   registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
+  // Meter every versioned external API response, including intentionally
+  // unauthenticated health/docs and rejected credential attempts.
+  app.use("/api/v1", createExternalApiUsageMiddleware());
   registerInstitutionalApiV1DocsRoutes(app);
+  registerExternalApiKeyRoutes(app, isAuthenticated, isAdmin);
+  // The signed-in application consumes the same deterministic domain adapter
+  // through a session-authenticated namespace, never through an external key.
+  app.use("/api/institutional/v1", isAuthenticated);
+  registerInstitutionalApiV1Routes(app, undefined, {
+    basePath: "/api/institutional/v1",
+    includeHealth: false,
+  });
+  // Versioned data APIs use external Bearer credentials only. These mounts
+  // intentionally do not touch the application's /api/institutional routes.
+  app.use(
+    "/api/v1/institutional",
+    createExternalApiMiddleware("institutional:read"),
+  );
+  app.use(
+    "/api/v1/multibagger",
+    createExternalApiMiddleware("multibagger:read"),
+  );
   registerInstitutionalApiV1Routes(app);
   registerMultibaggerApiV1Routes(app);
   registerInstitutionalApplicationRoutes(app, isAuthenticated);

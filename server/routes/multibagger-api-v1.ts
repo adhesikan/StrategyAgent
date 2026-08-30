@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import type { Express, Request, RequestHandler, Response } from "express";
 import { z } from "zod";
 import {
@@ -12,11 +11,11 @@ import type {
   OptionalUpsideProfileKey,
 } from "../services/multibagger";
 import { getOpportunityIntelligence } from "../services/opportunity-intelligence-service";
+import { externalApiRequestId } from "../services/external-api-security";
 
 const REQUIRED_SCOPE = "multibagger:read";
 const SOURCE_LABEL = "Deterministic Multibagger Discovery screen";
 const SYMBOL_RE = /^[A-Z][A-Z0-9.-]{0,9}$/;
-const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 const CACHE_HEADER = "private, max-age=300";
 
 const queryNumber = (minimum: number, maximum: number, defaultValue?: number) => {
@@ -206,10 +205,7 @@ function parseScreenerQuery(query: Request["query"]): ScreenerQuery {
 }
 
 function requestId(req: Request): string {
-  const candidate = req.header("x-request-id");
-  return candidate && REQUEST_ID_RE.test(candidate)
-    ? candidate
-    : crypto.randomUUID();
+  return externalApiRequestId(req);
 }
 
 async function requireScope(

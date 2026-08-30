@@ -17,6 +17,8 @@ import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { ensureInstitutionalSecurityEnrichmentSchema } from "./services/institutional/security-enrichment-migration";
 import { ensureInstitutionalManagerCohortSchema } from "./services/institutional/manager-cohort-migration";
+import { ensureExternalApiSecuritySchema } from "./services/external-api-security";
+import { sanitizeApiResponseForLog } from "./services/api-log-sanitizer";
 
 // ── Global process survival handlers ────────────────────────────────────────
 // Express 4 async handlers that throw without try/catch produce unhandled
@@ -339,6 +341,7 @@ async function runStartupMigrations() {
 
     await ensureInstitutionalSecurityEnrichmentSchema();
     await ensureInstitutionalManagerCohortSchema();
+    await ensureExternalApiSecuritySchema();
 
     const skipCleanup = await db.execute(sql`
       DELETE FROM agent_decisions WHERE action = 'SKIP'
@@ -504,7 +507,12 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        const safeResponse = sanitizeApiResponseForLog(
+          path,
+          req.method,
+          capturedJsonResponse,
+        );
+        logLine += ` :: ${JSON.stringify(safeResponse)}`;
       }
 
       log(logLine);

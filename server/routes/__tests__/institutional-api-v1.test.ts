@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express from "express";
 import type { Server } from "node:http";
 import { registerInstitutionalApiV1Routes } from "../institutional-api-v1";
+import { createExternalApiUsageMiddleware } from "../../services/external-api-security";
 
 const quarter = {
   year: 2026,
@@ -52,6 +53,7 @@ let server: Server;
 let baseUrl: string;
 let logSpy: ReturnType<typeof vi.spyOn>;
 let errorSpy: ReturnType<typeof vi.spyOn>;
+const usageSpy = vi.fn(async () => undefined);
 
 async function apiGet(path: string, requestId?: string) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -65,6 +67,10 @@ beforeAll(async () => {
   logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
   errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const app = express();
+  app.use(
+    "/api/v1",
+    createExternalApiUsageMiddleware({ recordUsage: usageSpy }),
+  );
   registerInstitutionalApiV1Routes(app, services as any);
   server = await new Promise<Server>((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
@@ -104,6 +110,22 @@ describe("External Institutional Intelligence API v1", () => {
         limitations: expect.any(Array),
       }),
     });
+  });
+
+  it("uses the same generated request ID in the response and usage record", async () => {
+    usageSpy.mockClear();
+    const { response, body } = await apiGet(
+      "/api/v1/institutional/stocks/aapl",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const responseId = response.headers.get("x-request-id");
+    expect(responseId).toBeTruthy();
+    expect(body.meta.requestId).toBe(responseId);
+    expect(usageSpy).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: responseId,
+      responseStatus: 200,
+      endpoint: "/api/v1/institutional/stocks/aapl",
+    }));
   });
 
   const endpoints = [

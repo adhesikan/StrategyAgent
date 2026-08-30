@@ -136,13 +136,13 @@ describe("production source identity diagnostic", () => {
       async (url) => {
         fetched.push(url);
         return url.endsWith("-index.html")
-        ? { text: `<tr><td><a href="nested/infotable.xml">filing</a></td><td>Information Table</td><td>INFORMATION TABLE</td><td>123</td></tr>`, status: 200, contentType: "text/html", byteLength: 120 }
+        ? { text: `<tr><td>2</td><td>Information Table</td><td><a href="nested/infotable.xml">infotable.xml</a></td><td>INFORMATION TABLE</td><td>123</td></tr>`, status: 200, contentType: "text/html", byteLength: 120 }
         : { text: `\uFEFF<!-- SEC --><?safe ok?>${xml(1).replace('<?xml version="1.0"?>', "")}`, status: 200, contentType: "application/xml", byteLength: 100 };
       },
     );
     expect(report.sourceDocuments).toHaveLength(1);
     expect(report.sourceDocuments[0]).toMatchObject({
-      selectedFilename: "infotable.xml", selectedDocumentType: "Information Table",
+      selectedFilename: "infotable.xml", selectedDocumentType: "INFORMATION TABLE",
       selectedPath: "/Archives/edgar/data/1/000000000124999999/nested/infotable.xml",
       selectedIndexRow: 1, selectedSize: "123", rootElement: "informationTable", rejectionCode: null,
     });

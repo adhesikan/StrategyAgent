@@ -21,3 +21,6 @@ evidence as unresolved rather than safe. For source reconciliation, a filename
 is not authoritative by itself: require explicit Information Table metadata
 from the filing index, fetch the exact validated same-accession path, and retain
 body-free transport/encoding/validator evidence for every attempted accession.
+SEC may list both an XSL-rendered `.html` representation and the raw `.xml`
+Information Table with the same type/sequence; select only the raw XML document
+label outside viewer/XSL paths, and fail closed if distinct raw candidates remain.

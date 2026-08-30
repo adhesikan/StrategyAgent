@@ -259,7 +259,7 @@ COMPANY CONFORMED NAME:	BLACKROCK INC
 describe("A — Filing document discovery", () => {
   it("A20 — finds XML infotable filename from index HTML", () => {
     const html = `<table><tr><td><a href="0001364742-24-000007-index.htm">Index</a></td></tr>
-      <tr><td><a href="infotable.xml">Information Table</a></td><td>INFORMATION TABLE</td></tr></table>`;
+      <tr><td>2</td><td>FORM 13F INFORMATION TABLE</td><td><a href="infotable.xml">infotable.xml</a></td><td>INFORMATION TABLE</td><td>123</td></tr></table>`;
     expect(findInfoTableDocumentFilename(html)).toBe("infotable.xml");
   });
 
@@ -271,19 +271,19 @@ describe("A — Filing document discovery", () => {
 
   it("A21b — selects only the authoritative Information Table row, not primary XML or schema", () => {
     const index = `<table>
-      <tr><td><a href="primary.xml">primary.xml</a></td><td>13F-HR</td><td>Primary Document</td></tr>
-      <tr><td><a href='/Archives/edgar/data/1/000000000124000001/info&#x2d;table.xml'>info-table.xml</a></td><td>INFORMATION TABLE</td><td>Information Table</td></tr>
-      <tr><td><a href="informationtable.xsd">informationtable.xsd</a></td><td>EX-101.SCH</td><td>Schema</td></tr>
+      <tr><td>1</td><td>Primary Document</td><td><a href="primary.xml">primary.xml</a></td><td>13F-HR</td><td>10</td></tr>
+      <tr><td>2</td><td>Information Table</td><td><a href='/Archives/edgar/data/1/000000000124000001/info&#x2d;table.xml'>info-table.xml</a></td><td>INFORMATION TABLE</td><td>20</td></tr>
+      <tr><td>3</td><td>Schema</td><td><a href="informationtable.xsd">informationtable.xsd</a></td><td>EX-101.SCH</td><td>30</td></tr>
     </table>`;
     expect(findInfoTableDocumentFilename(index)).toBe("info-table.xml");
-    expect(findInfoTableDocumentFilename(`${index}<tr><td><a href="second.xml">second</a></td><td>INFORMATION TABLE</td></tr>`)).toBeNull();
-    expect(findInfoTableDocumentFilename(`<tr><td><a href="../info.xml">x</a></td><td>INFORMATION TABLE</td></tr>`)).toBeNull();
-    expect(findInfoTableDocumentFilename(`<tr><td><a href="infotable.xml">Information Table</a></td><td>13F-HR</td></tr>`)).toBeNull();
-    expect(findInfoTableDocumentFilename(`<tr><td><a href="primary.xml">Information Table</a></td><td>Primary Document</td></tr>`)).toBeNull();
+    expect(findInfoTableDocumentFilename(`${index}<tr><td>4</td><td>Information Table</td><td><a href="second.xml">second.xml</a></td><td>INFORMATION TABLE</td><td>40</td></tr>`)).toBeNull();
+    expect(findInfoTableDocumentFilename(`<tr><td>2</td><td></td><td><a href="../info.xml">info.xml</a></td><td>INFORMATION TABLE</td><td>20</td></tr>`)).toBeNull();
+    expect(findInfoTableDocumentFilename(`<tr><td>2</td><td>Information Table</td><td><a href="infotable.xml">infotable.xml</a></td><td>13F-HR</td><td>20</td></tr>`)).toBeNull();
+    expect(findInfoTableDocumentFilename(`<tr><td>1</td><td>Primary Document</td><td><a href="primary.xml">primary.xml</a></td><td>13F-HR</td><td>20</td></tr>`)).toBeNull();
   });
 
   it("resolves nested and absolute documents only inside the expected filing directory", () => {
-    const row = (href: string) => `<tr><td><a href="${href}">document</a></td><td>INFORMATION TABLE</td></tr>`;
+    const row = (href: string) => `<tr><td>2</td><td>FORM 13F INFORMATION TABLE</td><td><a href="${href}">table.xml</a></td><td>INFORMATION TABLE</td><td>123</td></tr>`;
     expect(selectInfoTableDocument(row("nested/table.xml"), "0000000001", "000000000124000001").path)
       .toBe("/Archives/edgar/data/1/000000000124000001/nested/table.xml");
     expect(selectInfoTableDocument(row("/Archives/edgar/data/1/000000000124000001/table.xml"), "1", "000000000124000001").path)
@@ -294,6 +294,63 @@ describe("A — Filing document discovery", () => {
       .toBe("/Archives/edgar/data/1/000000000124000001/nested/table.xml");
     expect(selectInfoTableDocument(`<a href="/Archives/edgar/data/2/000000000224000001/table.xml">Information Table</a>`, "1", "000000000124000001").rejection)
       .toBe("NO_CANDIDATE");
+  });
+
+  it("selects raw XML over SEC's rendered Information Table row for the two production patterns", () => {
+    const blackstone = `<table>
+      <tr><td>1</td><td></td><td><a href="/Archives/edgar/data/1960144/000106299326001194/xslForm13F_X02/primary_doc.xml">primary_doc.html</a></td><td>13F-HR</td><td>&nbsp;</td></tr>
+      <tr><td>1</td><td></td><td><a href="/Archives/edgar/data/1960144/000106299326001194/primary_doc.xml">primary_doc.xml</a></td><td>13F-HR</td><td>2016</td></tr>
+      <tr><td>2</td><td>FORM 13F INFORMATION TABLE</td><td><a href="/Archives/edgar/data/1960144/000106299326001194/xslForm13F_X02/form13fInfoTable.xml">form13fInfoTable.html</a></td><td>INFORMATION TABLE</td><td>&nbsp;</td></tr>
+      <tr><td>2</td><td>FORM 13F INFORMATION TABLE</td><td><a href="/Archives/edgar/data/1960144/000106299326001194/form13fInfoTable.xml">form13fInfoTable.xml</a></td><td>INFORMATION TABLE</td><td>3439587</td></tr>
+    </table>`;
+    expect(selectInfoTableDocument(blackstone, "1960144", "000106299326001194")).toMatchObject({
+      filename: "form13fInfoTable.xml",
+      path: "/Archives/edgar/data/1960144/000106299326001194/form13fInfoTable.xml",
+      documentType: "INFORMATION TABLE",
+      description: "FORM 13F INFORMATION TABLE",
+      size: "3439587",
+      rejection: "NONE",
+    });
+
+    const northRock = `<table>
+      <tr><td>2</td><td></td><td><a href="/Archives/edgar/data/1513703/000139834426009705/xslForm13F_X02/fp0098543-1_13fhr-table.xml">fp0098543-1_13fhr-table.html</a></td><td>INFORMATION TABLE</td><td>&nbsp;</td></tr>
+      <tr><td>2</td><td></td><td><a href="/Archives/edgar/data/1513703/000139834426009705/fp0098543-1_13fhr-table.xml">fp0098543-1_13fhr-table.xml</a></td><td>INFORMATION TABLE</td><td>1794163</td></tr>
+    </table>`;
+    expect(selectInfoTableDocument(northRock, "1513703", "000139834426009705")).toMatchObject({
+      filename: "fp0098543-1_13fhr-table.xml",
+      path: "/Archives/edgar/data/1513703/000139834426009705/fp0098543-1_13fhr-table.xml",
+      documentType: "INFORMATION TABLE",
+      size: "1794163",
+      rejection: "NONE",
+    });
+  });
+
+  it("fails closed when two independent raw Information Table XML documents remain", () => {
+    const index = `<table>
+      <tr><td>2</td><td>Information Table</td><td><a href="first.xml">first.xml</a></td><td>INFORMATION TABLE</td><td>10</td></tr>
+      <tr><td>3</td><td>Information Table</td><td><a href="second.xml">second.xml</a></td><td>INFORMATION TABLE</td><td>20</td></tr>
+    </table>`;
+    expect(selectInfoTableDocument(index, "1", "000000000124000001").rejection).toBe("MULTIPLE_CANDIDATES");
+  });
+
+  it("rejects forbidden non-holdings XML even when a row is mislabeled as an Information Table", () => {
+    const row = (filename: string) =>
+      `<tr><td>2</td><td>Information Table</td><td><a href="${filename}">${filename}</a></td><td>INFORMATION TABLE</td><td>10</td></tr>`;
+    for (const filename of [
+      "cover.xml",
+      "primary_doc.xml",
+      "exhibit99.xml",
+      "table-schema.xml",
+      "table_stylesheet.xml",
+      "holdings-summary.xml",
+    ]) {
+      expect(selectInfoTableDocument(row(filename), "1", "000000000124000001").rejection).toBe("NO_CANDIDATE");
+    }
+    expect(selectInfoTableDocument(
+      `<table>${row("primary_doc.xml")}${row("actual-holdings.xml")}</table>`,
+      "1",
+      "000000000124000001",
+    )).toMatchObject({ filename: "actual-holdings.xml", rejection: "NONE" });
   });
 });
 

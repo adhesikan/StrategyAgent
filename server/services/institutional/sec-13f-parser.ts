@@ -253,7 +253,12 @@ export function selectInfoTableDocument(indexHtml: string, filingCik?: string, a
     .replace(/&quot;/gi, '"').replace(/&#39;/g, "'")
     .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
     .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(Number.parseInt(decimal, 10)));
-  const strip = (value: string) => decode(value).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const strip = (value: string) => decode(value)
+    .replace(/&nbsp;/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const normalized = (value: string) => value.replace(/\s+/g, " ").trim().toUpperCase();
   const candidates: Array<InfoTableDocumentSelection> = [];
   const expectedPath = filingCik && accessionNoDashes
     ? `/Archives/edgar/data/${filingCik.replace(/^0+/, "")}/${accessionNoDashes}/`
@@ -265,32 +270,38 @@ export function selectInfoTableDocument(indexHtml: string, filingCik?: string, a
       const resolved = new URL(href, expectedPath ? `https://www.sec.gov${expectedPath}` : "https://www.sec.gov/Archives/");
       if (resolved.protocol !== "https:" || !["www.sec.gov", "sec.gov"].includes(resolved.hostname)) return null;
       if (expectedPath && !resolved.pathname.startsWith(expectedPath)) return null;
+      const lowerPath = resolved.pathname.toLowerCase();
+      if (/(?:^|\/)(?:xsl[^/]*|ixviewer|viewer|render|rendered)(?:\/|$)/.test(lowerPath)) return null;
+      if (/(?:^|[/_.-])(?:cover|primary|exhibit\d*|schema|stylesheet|summary)(?=[/_.-]|$)/.test(lowerPath)) return null;
       const filename = resolved.pathname.split("/").pop() ?? "";
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.xml$/i.test(filename)) return null;
-      if (/\.(xsd|xsl|xslt)$/i.test(filename) || /(?:schema|stylesheet|summary)/i.test(filename)) return null;
+      if (/\.(xsd|xsl|xslt)$/i.test(filename)) return null;
       return { href, path: resolved.pathname, filename };
     } catch { return null; }
   };
   const rows = indexHtml.match(/<tr\b[\s\S]*?<\/tr\s*>/gi) ?? [];
   for (const [rowIndex, row] of rows.entries()) {
-    const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td\s*>/gi)].map((cell) => strip(cell[1]));
-    // SEC's filing-index columns are Document, Description, Type, Size.
-    // Require an entire Type or Description cell, never a filename or an
-    // incidental phrase elsewhere in a row.
-    const normalized = (value: string) => value.replace(/\s+/g, " ").trim().toUpperCase();
-    // The first cell contains the document anchor/filename and is never
-    // metadata evidence. SEC's Description/Type columns follow it.
-    const metadataCells = cells.slice(1);
-    const type = metadataCells.find((cell) => ["INFORMATION TABLE", "INFOTABLE"].includes(normalized(cell))) ?? null;
-    const description = metadataCells.find((cell) => ["INFORMATION TABLE", "INFOTABLE"].includes(normalized(cell))) ?? null;
-    if (!type && !description) continue;
-    const anchors = row.matchAll(/<a\b[^>]*\bhref\s*=\s*(["'])([\s\S]*?)\1[^>]*>/gi);
+    const rawCells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td\s*>/gi)].map((cell) => cell[1] ?? "");
+    const cells = rawCells.map(strip);
+    // SEC filing indexes use Seq, Description, Document, Type, Size. The
+    // Type cell is authoritative. Description text or a suggestive filename
+    // alone must never qualify a document.
+    if (cells.length < 4 || normalized(cells[3] ?? "") !== "INFORMATION TABLE") continue;
+    const description = cells[1] || null;
+    const type = cells[3];
+    const documentCell = rawCells[2] ?? "";
+    const anchors = documentCell.matchAll(/<a\b[^>]*\bhref\s*=\s*(["'])([\s\S]*?)\1[^>]*>([\s\S]*?)<\/a\s*>/gi);
     for (const anchor of anchors) {
+      // SEC emits an XSL-rendered representation and the raw XML as separate
+      // rows with the same INFORMATION TABLE type. The visible Document label
+      // identifies the representation even though both hrefs end in .xml.
+      if (!/\.xml$/i.test(strip(anchor[3] ?? ""))) continue;
       const resolved = resolveHref(anchor[2] ?? "");
       if (!resolved) continue;
       candidates.push({
         filename: resolved.filename, href: resolved.href, path: resolved.path, documentType: type, description,
-        size: cells.find((cell) => /^\d[\d,]*$/.test(cell)) ?? null, indexRow: rowIndex + 1, rejection: "NONE",
+        size: /^\d[\d,]*$/.test(cells[4] ?? "") ? cells[4] : null,
+        indexRow: rowIndex + 1, rejection: "NONE",
       });
     }
   }
@@ -304,9 +315,12 @@ export function selectInfoTableDocument(indexHtml: string, filingCik?: string, a
         documentType: "INFORMATION TABLE", description: "INFORMATION TABLE", size: null, indexRow: null, rejection: "NONE" });
     }
   }
-  if (candidates.length === 1) return candidates[0];
+  const independentCandidates = Array.from(
+    new Map(candidates.map((candidate) => [candidate.path, candidate])).values(),
+  );
+  if (independentCandidates.length === 1) return independentCandidates[0];
   return { filename: null, href: null, path: null, documentType: null, description: null, size: null, indexRow: null,
-    rejection: candidates.length > 1 ? "MULTIPLE_CANDIDATES" : "NO_CANDIDATE" };
+    rejection: independentCandidates.length > 1 ? "MULTIPLE_CANDIDATES" : "NO_CANDIDATE" };
 }
 
 /** Compatibility helper for callers that need only the safe filename. */

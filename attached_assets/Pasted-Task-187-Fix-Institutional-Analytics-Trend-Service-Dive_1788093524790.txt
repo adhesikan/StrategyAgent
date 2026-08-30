@@ -1,0 +1,168 @@
+Task #187 — Fix Institutional Analytics/Trend Service Divergence
+
+Production acceptance correctly failed.
+
+DO NOT enable INSTITUTIONAL_INTELLIGENCE_ENABLED.
+DO NOT rerun the production repair.
+DO NOT reingest or backfill SEC data.
+DO NOT modify schema unless a proven defect absolutely requires it.
+DO NOT build new diagnostic infrastructure.
+
+Acceptance evidence shows:
+
+Canonical/raw QoQ validation: PASS
+Signal validation: PASS
+Mapping coverage:
+- AAPL 1070/1070
+- NVDA 1095/1095
+- MSFT 1110/1110
+- COST 653/653
+
+Preserved legitimate SEC multiple groups:
+- AAPL 6
+- NVDA 13
+- MSFT 11
+- COST 0
+
+However, application analytics/trend services diverge from the canonical aggregates.
+
+Examples:
+
+AAPL 2026-Q1 canonical/raw:
+shares = 356103333
+USD = 89861054661
+
+Analytics service:
+shares = 356037004
+USD = 89844220993
+
+NVDA 2026-Q1 canonical/raw:
+shares = 611352620
+USD = 106050976163
+
+Analytics service:
+shares = 611091875
+USD = 106005505315
+
+MSFT 2026-Q1 canonical/raw:
+shares = 208406065
+USD = 76577730161
+
+Analytics service:
+shares = 208333928
+USD = 76551017111
+
+COST analytics shares/value match canonical Q1, but activity validation and trend validation still fail.
+
+Trend service returns INSUFFICIENT_DATA and does not reproduce the validated Q1/Q4 aggregate values for all four symbols.
+
+There is also one separate canonical discrepancy:
+
+MSFT 2025-Q4:
+aggregate USD = 151374915912
+raw common USD = 151375045522
+difference = 129610
+
+Objective:
+
+Identify and fix ONLY the exact causes of:
+
+1. Analytics service divergence from canonical institutional quarterly aggregates.
+2. Trend service divergence/incomplete response.
+3. MSFT 2025-Q4 USD aggregate/raw mismatch.
+
+Important architecture rule:
+
+institutional_quarterly_aggregates is the canonical persisted aggregate output produced from the validated repair rules.
+
+Application analytics/trend services must use the same canonical inclusion/exclusion and mapping semantics.
+
+Do not maintain competing aggregation definitions in multiple services.
+
+Investigation requirements:
+
+A. Analytics service
+
+Trace the existing production analytics service query/calculation.
+
+Determine exactly why it excludes rows included in the canonical aggregate for AAPL/NVDA/MSFT.
+
+Compare:
+- effective filing logic
+- reliable mapping logic
+- CUSIP vs ticker filtering
+- common-equity classification
+- put/call exclusion
+- PRN exclusion
+- amendment handling
+- legitimate SEC-confirmed multiple rows
+- manager identity/deduplication
+- reported_value normalization
+
+Do not guess.
+
+B. Activity calculation
+
+Compare analytics activity calculation against the canonical QoQ manager comparison used by the repaired aggregates.
+
+QoQ identity must remain CUSIP-based.
+
+Determine why COST activity fails even though its analytics shares/value match.
+
+C. Trend service
+
+Trace why the trend service reports INSUFFICIENT_DATA despite 26–41 aggregate quarters existing for these symbols.
+
+Trend service should consume canonical quarterly aggregates where appropriate instead of independently reconstructing incompatible totals.
+
+Determine why its Q1/Q4 shares and USD values diverge.
+
+D. MSFT 2025-Q4
+
+Investigate only the $129,610 raw-vs-aggregate USD discrepancy.
+
+Determine the exact row(s) responsible and whether:
+- the canonical aggregate is stale/incorrect,
+- the acceptance raw check is including a row that canonical aggregation correctly excludes,
+- or another defined aggregation rule explains the difference.
+
+Do not modify production data until the cause is proven.
+
+Implementation preference:
+
+Prefer fixing analytics/trend services to consume or share the canonical aggregation logic rather than creating another special-case reconciliation layer.
+
+Do not hard-code AAPL/NVDA/MSFT/COST values.
+
+Do not weaken acceptance criteria to make the test pass.
+
+Do not remove mismatch checks.
+
+After the exact defects are identified:
+
+1. Make the smallest correct code fix.
+2. Add focused regression tests reproducing each defect.
+3. Run focused tests.
+4. Run full institutional suite.
+5. Run production build.
+6. Independent completion review.
+7. Commit and push to origin/main.
+
+If MSFT 2025-Q4 requires a production data correction, STOP after proving the exact correction required and report it.
+
+Do not perform that production write as part of this task.
+
+At completion provide:
+
+1. Root cause for analytics mismatch.
+2. Root cause for activity mismatch.
+3. Root cause for trend mismatch.
+4. Root cause for MSFT $129,610 discrepancy.
+5. Exact files changed.
+6. Focused/full test/build/review results.
+7. Commit SHA.
+8. Whether any production data correction is required.
+9. Exact next Railway command.
+
+FEATURE FLAG CHANGE: NO.
+PRODUCTION DATA WRITE: NO unless separately reviewed and explicitly approved.

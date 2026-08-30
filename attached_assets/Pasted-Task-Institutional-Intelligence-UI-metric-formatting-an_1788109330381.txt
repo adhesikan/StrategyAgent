@@ -1,0 +1,154 @@
+Task — Institutional Intelligence UI metric formatting and tooltips
+
+This task applies ONLY to the existing Institutional Intelligence UI inside StrategyAgent / VCP Trader AI.
+
+The screenshots provided by the user are from this UI.
+
+DO NOT modify:
+- institutional.stockmetrics.pro
+- stockmetrics-institutional repository
+- institutional calculations
+- aggregation logic
+- signal logic
+- trend logic
+- production data
+- APIs
+- SEC ingestion
+
+OBJECTIVE
+
+Improve presentation of the existing VCP Trader AI Institutional Intelligence UI without changing any underlying calculations.
+
+1. FIX RAW DECIMAL DISPLAY
+
+The Accumulation Components section currently displays values such as:
+
+Breadth
+38.63636363636364
+
+This is presentation-layer leakage of backend precision.
+
+Display derived component scores with a maximum of 1 decimal place while preserving the original numeric value internally.
+
+Examples:
+
+38.63636363636364 → 38.6
+100 → 100
+0 → 0
+50 → 50
+37 → 37
+
+Do not change the backend value or calculation.
+
+Use a shared formatting helper rather than formatting Breadth specifically.
+
+2. ADD CONTEXTUAL TOOLTIPS
+
+Add a reusable accessible tooltip/help component to derived or potentially confusing Institutional Intelligence metrics.
+
+At minimum cover:
+
+Accumulation score
+Reported holders
+Reported shares
+Mapping coverage
+Trend classification
+Breadth direction
+Newly reported
+Increased
+Reduced
+No longer reported
+Unchanged
+Concentration
+QoQ shares
+Breadth
+Data Quality
+Accumulation
+Concentration
+Entrants vs Exits
+Signal confidence
+Comparable managers
+Data as of
+
+Tooltips must explain WHAT the metric measures rather than suggest whether the value is good or bad.
+
+Keep explanations concise and plain-English.
+
+Examples:
+
+Breadth:
+"Measures how broadly reported institutional participation is distributed across comparable managers."
+
+Mapping Coverage:
+"Percentage of eligible common-equity holdings that can be reliably linked to the researched security."
+
+Accumulation Score:
+"Composite score derived from reported institutional activity, breadth, concentration, entrants versus exits, and data quality. It describes reported filing activity and is not a buy or sell recommendation."
+
+Data Quality:
+"Reflects the completeness and reliability of the institutional data used to calculate this analysis."
+
+Entrants vs Exits:
+"Compares managers newly reporting a position with managers that no longer report the position in the comparable quarter."
+
+QoQ Shares:
+"Change in reported shares versus the comparable prior quarter."
+
+Data as of:
+"The quarter-end date represented by the institutional data, not the filing or transaction date."
+
+Signal:
+"Deterministic classification derived from reported institutional activity. It describes the filing pattern and is not investment advice."
+
+3. PRESERVE 13F CONTEXT
+
+Do not remove the existing Form 13F limitation/disclosure language.
+
+Tooltips should complement it rather than repeat the entire disclosure.
+
+Remember:
+- 13F data is delayed
+- quarter-over-quarter differences are filing comparisons, not known transaction dates
+- reported holdings do not represent all institutional ownership
+
+4. ACCESSIBILITY
+
+Tooltips must work with:
+- mouse
+- keyboard
+- accessible screen-reader labeling
+
+Do not rely exclusively on hover.
+
+5. VISUAL CONSISTENCY
+
+Use the existing VCP Trader AI design system.
+
+Do not redesign the Institutional Intelligence page.
+
+Keep help icons subtle and consistent.
+
+Avoid tooltip/icon clutter. Obvious table headings such as "Manager" do not need explanations.
+
+6. TEST
+
+Verify AAPL, NVDA, MSFT and COST without hard-coding any symbol values.
+
+Specifically verify that:
+
+38.63636363636364 displays as 38.6
+
+while the underlying value remains unchanged.
+
+Run focused tests, institutional tests, production build and git diff --check.
+
+STOP after this UI cleanup.
+
+Report:
+- files changed
+- formatter/helper created or reused
+- tooltip component created or reused
+- metrics receiving tooltips
+- tests
+- build
+- commit SHA

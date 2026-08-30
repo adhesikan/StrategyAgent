@@ -1,0 +1,224 @@
+TASK #193 — Fix OpenFIGI Production Backfill Rate-Limit Execution
+
+Task #192 production dry run completed successfully from Railway.
+
+DO NOT APPLY the generated plan.
+
+Current Task #192 results:
+
+plannedLookups: 10000
+promotable: 60
+rate_limited: 9750
+ambiguous: 102
+provider_failed: 68
+unsupported: 4
+no_reference: 16
+skippedByLimit/partial: 4709
+
+The 10,000 attempted lookup population reconciles exactly, but 9,750 / 10,000 requests were classified RATE_LIMITED.
+
+Therefore the current blocker is provider execution throughput, NOT resolver correctness.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Fix the OpenFIGI enrichment execution path so a bounded production dry run can evaluate the requested CUSIP population within OpenFIGI's supported batching and rate-limit rules.
+
+Do not change resolver trust semantics.
+
+Do not weaken ambiguity/conflict handling.
+
+Do not add fuzzy matching.
+
+Do not perform production APPLY.
+
+==================================================
+1. INSPECT ACTUAL OPENFIGI REQUEST IMPLEMENTATION
+==================================================
+
+Inspect the Task #191 OpenFIGI provider implementation.
+
+Determine:
+
+- number of CUSIPs/jobs sent per HTTP request
+- whether requests are currently sent one CUSIP at a time
+- configured batch size
+- concurrency
+- rate-limit pacing
+- Retry-After handling
+- exponential-backoff behavior
+- maximum retries
+- behavior after HTTP 429
+- whether a configured OpenFIGI API key is actually being used in Railway
+
+Never print the API key.
+
+Report only whether authenticated/keyed mode is ACTIVE or NOT ACTIVE.
+
+Do not ask me to paste a credential.
+
+==================================================
+2. USE OPENFIGI BATCHING CORRECTLY
+==================================================
+
+Use the provider's supported multi-job mapping request rather than one HTTP request per CUSIP whenever allowed.
+
+Batch exact ID_CUSIP jobs into the maximum safe provider-supported batch size for the active access tier.
+
+Maintain deterministic ordering.
+
+Responses must be associated back to the exact input CUSIP.
+
+No fuzzy searches.
+
+==================================================
+3. RATE-LIMIT COORDINATION
+==================================================
+
+Implement a provider-level request scheduler.
+
+It must:
+
+- respect the active OpenFIGI rate-limit tier
+- limit concurrency
+- honor Retry-After
+- use bounded exponential backoff
+- stop request bursts after a 429
+- resume after the permitted interval
+- avoid retry storms
+- preserve deterministic population processing
+
+RATE_LIMITED must represent a genuinely unresolved provider execution after bounded retries, not merely the first HTTP 429.
+
+==================================================
+4. AUTHENTICATION CHECK
+==================================================
+
+Confirm whether Railway has the required OpenFIGI credential configured.
+
+Return only:
+
+OPENFIGI AUTH MODE: KEYED
+
+or
+
+OPENFIGI AUTH MODE: UNAUTHENTICATED
+
+Never display the credential.
+
+If the production environment is unintentionally unauthenticated and keyed access is required for the intended throughput, identify that as the concrete blocker.
+
+Do not create or replace credentials automatically.
+
+==================================================
+5. BOUNDED LONG-RUN SUPPORT
+==================================================
+
+A full institutional backfill may take time.
+
+The CLI must safely support processing the population in deterministic provider batches without requiring ticker-by-ticker execution.
+
+If execution cannot finish inside one Railway shell lifecycle, support resumable population chunks by deterministic CUSIP ordering/cursor while preserving a single aggregate plan.
+
+Do not persist identity/reference results during DRY RUN.
+
+A temporary local/in-memory provider result set may be used only for that dry-run invocation.
+
+Do not classify unprocessed CUSIPs as provider failures.
+
+==================================================
+6. OUTCOME SEMANTICS
+==================================================
+
+Keep separate:
+
+AUTHORITATIVELY_RESOLVABLE
+AMBIGUOUS
+CONFLICTING
+UNSUPPORTED
+NO_REFERENCE_AVAILABLE
+PROVIDER_FAILED
+RATE_LIMITED
+NOT_PROCESSED
+
+Do not use PARTIAL to mix provider ambiguity with population items that were simply outside the requested bound.
+
+Report skipped-by-bound separately.
+
+==================================================
+7. TESTS
+==================================================
+
+Add tests for:
+
+- full provider batch
+- partial provider batch
+- multiple batches
+- exact response-to-CUSIP association
+- HTTP 429
+- Retry-After
+- retry succeeds
+- retry exhaustion
+- no retry storm
+- deterministic ordering
+- keyed vs unauthenticated configuration
+- max-cusips limiting provider calls
+- skipped-by-limit classification
+- dry run zero writes
+
+Run focused tests, full institutional regression suite, build, and architecture review.
+
+==================================================
+8. PRODUCTION SAFETY
+==================================================
+
+NO production database writes.
+
+NO enrichment APPLY.
+
+NO institutional remediation APPLY.
+
+NO feature-flag activation.
+
+NO migration execution against production.
+
+Code may be committed/pushed after tests.
+
+==================================================
+9. COMPLETION OUTPUT
+==================================================
+
+Return:
+
+ROOT CAUSE
+
+OPENFIGI AUTH MODE
+
+CURRENT REQUEST BEHAVIOR
+
+FIXED REQUEST BEHAVIOR
+
+RATE-LIMIT STRATEGY
+
+BATCH SIZE
+
+CONCURRENCY
+
+RETRY POLICY
+
+DRY-RUN WRITE SAFETY
+
+TEST RESULTS
+
+BUILD RESULT
+
+ARCHITECTURE REVIEW
+
+COMMIT SHA
+
+Then provide the exact Railway production dry-run command to repeat the population-wide measurement.
+
+Do not start another diagnostic task.
+Do not APPLY anything.
+STOP.

@@ -6,6 +6,7 @@ import {
   classifyExpectedSecurityTrace,
   evaluateInstitutionalRepairValidation,
   getRepairBlockingIssues,
+  getRepairStageBlockingIssues,
   issuerNamesMatchExpectedSymbol,
   shouldRunRepairStage,
   validateRepairApplyRequest,
@@ -14,6 +15,7 @@ import { previousCalendarQuarterEnd } from "../server/services/institutional/ing
 import {
   parseRepairCliArgs,
   validateRepairCheckpointResume,
+  validateRepairDatabaseRuntime,
   type Checkpoint,
 } from "./repair-institutional-production-data";
 
@@ -46,6 +48,15 @@ describe("institutional production repair safety", () => {
       expectedDatabase: "production_db",
       currentDatabase: "production_db",
     })).toEqual([]);
+  });
+
+  it("requires the runtime DATABASE_URL and rejects external database overrides", () => {
+    expect(validateRepairDatabaseRuntime({})).toEqual(["DATABASE_URL_REQUIRED"]);
+    expect(validateRepairDatabaseRuntime({
+      DATABASE_URL: "configured",
+      EXTERNAL_DATABASE_URL: "configured",
+    })).toEqual(["EXTERNAL_DATABASE_URL_FORBIDDEN"]);
+    expect(validateRepairDatabaseRuntime({ DATABASE_URL: "configured" })).toEqual([]);
   });
 
   it("contains only the four explicitly verified repair mappings", () => {
@@ -94,6 +105,19 @@ describe("institutional production repair safety", () => {
       duplicateHoldingGroups: 2,
       orphanHoldingRows: 1,
       mappingCounts: {},
+      dataQuality: {
+        totalFilings: 0,
+        effectiveFilings: 0,
+        totalHoldings: 0,
+        effectiveHoldings: 0,
+        effectiveManagers: 0,
+        effectiveQuarters: 0,
+        latestEffectiveQuarter: null,
+        mappedEffectiveHoldings: 0,
+        mappingCoverage: null,
+        aggregateRows: 0,
+        aggregateState: "incomplete",
+      },
       expectedSecurities: VERIFIED_REPAIR_MAPPINGS.map((mapping, index) => ({
         ...mapping,
         issuerNames: [],
@@ -108,14 +132,21 @@ describe("institutional production repair safety", () => {
       plan: {
         effectiveHoldings: 10,
         reliableMappingCandidates: 4,
+        mappingRowsToInsert: 4,
+        mappingRowsToPromote: 0,
         ambiguousMappings: 0,
         unmappedMappings: 0,
         rejectedMappings: 0,
         alreadyMappedEffectiveHoldings: 0,
         holdingsToUpdate: 9,
+        remainingUnmappedEffectiveHoldings: 1,
         conflictingMappedHoldings: 1,
         aggregateSymbols: 4,
         aggregateQuarters: 8,
+        aggregateRowsToInsert: 8,
+        aggregateRowsToUpdate: 0,
+        signalRowsToInsert: 4,
+        signalRowsToUpdate: 0,
         reliableMappingDigest: "mappings",
         targetHoldingDigest: "holdings",
       },
@@ -125,6 +156,83 @@ describe("institutional production repair safety", () => {
     expect(issues).toContain("EXPECTED_CUSIP_NOT_PRESENT:AAPL");
     expect(issues).toContain("EXPECTED_CUSIP_CONFLICT:NVDA");
     expect(issues).toContain("CONFLICTING_EXISTING_HOLDING_MAPPINGS");
+    expect(issues).toContain("NO_EFFECTIVE_FILINGS");
+    expect(issues).toContain("INSUFFICIENT_HISTORICAL_QUARTERS");
+  });
+
+  it("stops when existing reliable mapping coverage is no longer near zero", () => {
+    const issues = getRepairBlockingIssues({
+      databaseIdentity: {
+        database: "prod",
+        user: "user",
+        schema: "public",
+        railwayEnvironment: "production",
+      },
+      schemaReady: true,
+      publicFeatureEnabled: false,
+      duplicateHoldingGroups: 0,
+      orphanHoldingRows: 0,
+      mappingCounts: { reviewed: 10 },
+      dataQuality: {
+        totalFilings: 1394,
+        effectiveFilings: 970,
+        totalHoldings: 562000,
+        effectiveHoldings: 500000,
+        effectiveManagers: 970,
+        effectiveQuarters: 41,
+        latestEffectiveQuarter: "2026-06-30",
+        mappedEffectiveHoldings: 30000,
+        mappingCoverage: 0.06,
+        aggregateRows: 0,
+        aggregateState: "incomplete",
+      },
+      expectedSecurities: VERIFIED_REPAIR_MAPPINGS.map((mapping) => ({
+        ...mapping,
+        issuerNames: [mapping.issuerName],
+        effectiveHoldingRows: 10,
+        mappedHoldingRows: 0,
+        conflictingHoldingRows: 0,
+        issuerIdentityMatched: true,
+        referenceSymbol: null,
+        referenceStatus: null,
+        mappingAction: "insert_reviewed" as const,
+      })),
+      plan: {
+        effectiveHoldings: 500000,
+        reliableMappingCandidates: 4,
+        mappingRowsToInsert: 4,
+        mappingRowsToPromote: 0,
+        ambiguousMappings: 0,
+        unmappedMappings: 0,
+        rejectedMappings: 0,
+        alreadyMappedEffectiveHoldings: 0,
+        holdingsToUpdate: 40,
+        remainingUnmappedEffectiveHoldings: 499960,
+        conflictingMappedHoldings: 0,
+        aggregateSymbols: 4,
+        aggregateQuarters: 164,
+        aggregateRowsToInsert: 164,
+        aggregateRowsToUpdate: 0,
+        signalRowsToInsert: 4,
+        signalRowsToUpdate: 0,
+        reliableMappingDigest: "mappings",
+        targetHoldingDigest: "holdings",
+      },
+    });
+    expect(issues).toContain("MAPPING_COVERAGE_NOT_NEAR_ZERO");
+  });
+
+  it("requires incomplete scoped aggregates for mapping or aggregate stages only", () => {
+    const preflight = {
+      dataQuality: { aggregateState: "present" },
+    } as Parameters<typeof getRepairStageBlockingIssues>[0];
+    expect(getRepairStageBlockingIssues(preflight, "mapping")).toEqual([
+      "AGGREGATE_STATE_NOT_INCOMPLETE",
+    ]);
+    expect(getRepairStageBlockingIssues(preflight, "aggregates")).toEqual([
+      "AGGREGATE_STATE_NOT_INCOMPLETE",
+    ]);
+    expect(getRepairStageBlockingIssues(preflight, "snapshots")).toEqual([]);
   });
 
   it("hashes plans deterministically and changes on drift", () => {
@@ -135,18 +243,38 @@ describe("institutional production repair safety", () => {
       duplicateHoldingGroups: 0,
       orphanHoldingRows: 0,
       mappingCounts: {},
+      dataQuality: {
+        totalFilings: 100,
+        effectiveFilings: 100,
+        totalHoldings: 1000,
+        effectiveHoldings: 1000,
+        effectiveManagers: 20,
+        effectiveQuarters: 8,
+        latestEffectiveQuarter: "2026-06-30",
+        mappedEffectiveHoldings: 0,
+        mappingCoverage: 0,
+        aggregateRows: 0,
+        aggregateState: "incomplete",
+      },
       expectedSecurities: [],
       plan: {
         effectiveHoldings: 100,
         reliableMappingCandidates: 4,
+        mappingRowsToInsert: 4,
+        mappingRowsToPromote: 0,
         ambiguousMappings: 0,
         unmappedMappings: 0,
         rejectedMappings: 0,
         alreadyMappedEffectiveHoldings: 0,
         holdingsToUpdate: 100,
+        remainingUnmappedEffectiveHoldings: 0,
         conflictingMappedHoldings: 0,
         aggregateSymbols: 4,
         aggregateQuarters: 8,
+        aggregateRowsToInsert: 8,
+        aggregateRowsToUpdate: 0,
+        signalRowsToInsert: 4,
+        signalRowsToUpdate: 0,
         reliableMappingDigest: "mappings",
         targetHoldingDigest: "holdings",
       },
@@ -218,6 +346,45 @@ describe("institutional production repair safety", () => {
       "CHECKPOINT_DATABASE_IDENTITY_MISMATCH",
       "CHECKPOINT_PRIOR_STAGE_NOT_COMPLETED:aggregates",
     ]);
+  });
+
+  it("accepts a snapshots resume with the refreshed post-aggregate and post-signal hash", () => {
+    const checkpoint: Checkpoint = {
+      version: 1,
+      mode: "apply",
+      planHash: "initial-plan",
+      resumePlanHash: "post-signal-plan",
+      databaseIdentity: {
+        database: "prod",
+        user: "postgres",
+        schema: "public",
+        railwayEnvironment: "production",
+      },
+      startedAt: "2026-08-30T00:00:00.000Z",
+      updatedAt: "2026-08-30T00:05:00.000Z",
+      stages: {
+        mapping: {
+          status: "completed",
+          completedAt: "2026-08-30T00:01:00.000Z",
+          result: {},
+        },
+        aggregates: {
+          status: "completed",
+          completedAt: "2026-08-30T00:03:00.000Z",
+          result: {},
+        },
+        signals: {
+          status: "completed",
+          completedAt: "2026-08-30T00:05:00.000Z",
+          result: {},
+        },
+      },
+    };
+    expect(validateRepairCheckpointResume(checkpoint, {
+      fromStage: "snapshots",
+      currentPlanHash: "post-signal-plan",
+      databaseIdentity: checkpoint.databaseIdentity,
+    })).toEqual([]);
   });
 
   it("fails validation when rebuilt data is incomplete or stale", () => {

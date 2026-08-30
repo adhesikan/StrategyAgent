@@ -17,10 +17,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import {
   INSTITUTIONAL_REPAIR_CONFIRMATION,
   REPAIR_STAGE_ORDER,
+  VERIFIED_REPAIR_MAPPINGS,
   type RepairStage,
   applyInstitutionalMappingRepair,
-  listReliableMappedSymbols,
   loadInstitutionalRepairPreflight,
+  getRepairStageBlockingIssues,
   shouldRunRepairStage,
   evaluateInstitutionalRepairValidation,
   validateInstitutionalRepairSymbols,
@@ -136,20 +137,70 @@ async function loadCheckpoint(path: string): Promise<Checkpoint> {
   return JSON.parse(await readFile(path, "utf8")) as Checkpoint;
 }
 
-function printDryRun(preflight: Awaited<ReturnType<typeof loadInstitutionalRepairPreflight>>): void {
+export function validateRepairDatabaseRuntime(env: {
+  DATABASE_URL?: string;
+  EXTERNAL_DATABASE_URL?: string;
+}): string[] {
+  const issues: string[] = [];
+  if (!env.DATABASE_URL) issues.push("DATABASE_URL_REQUIRED");
+  if (env.EXTERNAL_DATABASE_URL) issues.push("EXTERNAL_DATABASE_URL_FORBIDDEN");
+  return issues;
+}
+
+function printDryRun(
+  preflight: Awaited<ReturnType<typeof loadInstitutionalRepairPreflight>>,
+  intelligencePreview: Awaited<ReturnType<typeof runIntelligencePrecomputation>>,
+  options: CliOptions,
+): void {
+  const runtimeIssues = intelligencePreview.status === "completed"
+    ? []
+    : [`INTELLIGENCE_PRECOMPUTATION_${intelligencePreview.status.toUpperCase()}`];
+  const blockingIssues = [
+    ...preflight.blockingIssues,
+    ...getRepairStageBlockingIssues(preflight, options.fromStage),
+    ...runtimeIssues,
+  ];
   console.log("\n=== Institutional Production Repair — DRY RUN ===");
   console.log("READ-ONLY: no mappings, holdings, aggregates, signals, or snapshots were changed.");
   console.log(JSON.stringify(preflight, null, 2));
-  console.log("\nTo apply this exact plan after reviewing every blocking issue:");
+  console.log("\nEXPECTED WRITE COUNTS:");
+  console.log(JSON.stringify({
+    securityMappingsToInsert: preflight.plan.mappingRowsToInsert,
+    securityMappingsToPromote: preflight.plan.mappingRowsToPromote,
+    holdingsToMap: preflight.plan.holdingsToUpdate,
+    holdingsRemainingUnmapped: preflight.plan.remainingUnmappedEffectiveHoldings,
+    aggregateRowsToInsert: preflight.plan.aggregateRowsToInsert,
+    aggregateRowsToUpdate: preflight.plan.aggregateRowsToUpdate,
+    signalRowsToInsert: preflight.plan.signalRowsToInsert,
+    signalRowsToUpdate: preflight.plan.signalRowsToUpdate,
+    sectorSnapshotRowsToRebuild: intelligencePreview.status === "completed"
+      ? intelligencePreview.sectorCount
+      : null,
+    themeSnapshotRowsToRebuild: intelligencePreview.status === "completed"
+      ? intelligencePreview.themeCount
+      : null,
+    intelligencePreview,
+  }, null, 2));
   console.log(
-    `npx tsx scripts/repair-institutional-production-data.ts --apply --environment production ` +
-    `--confirm ${INSTITUTIONAL_REPAIR_CONFIRMATION} --plan-hash ${preflight.planHash} ` +
-    `--database-name ${preflight.databaseIdentity.database} ` +
-    `--checkpoint-file /tmp/institutional-repair-checkpoint.json`,
+    `\nRECOMMENDATION: ${blockingIssues.length === 0 ? "GO" : "NO-GO"} ` +
+      `(blocking issues: ${blockingIssues.length})`,
   );
+  if (blockingIssues.length === 0) {
+    console.log("\nTo apply this exact plan after review:");
+    console.log(
+      `npx tsx scripts/repair-institutional-production-data.ts --apply --environment production ` +
+      `--confirm ${INSTITUTIONAL_REPAIR_CONFIRMATION} --plan-hash ${preflight.planHash} ` +
+      `--database-name ${preflight.databaseIdentity.database} ` +
+      `--checkpoint-file /tmp/institutional-repair-checkpoint.json`,
+    );
+  }
 }
 
 async function main(): Promise<void> {
+  const databaseRuntimeIssues = validateRepairDatabaseRuntime(process.env);
+  if (databaseRuntimeIssues.length > 0) {
+    fail("DATABASE_RUNTIME_REJECTED", databaseRuntimeIssues.join(","));
+  }
   let options: CliOptions;
   try {
     options = parseRepairCliArgs(process.argv.slice(2));
@@ -158,9 +209,16 @@ async function main(): Promise<void> {
   }
 
   const preflight = await loadInstitutionalRepairPreflight();
+  const intelligencePreview = await runIntelligencePrecomputation({ persist: false });
   if (!options.apply) {
-    printDryRun(preflight);
-    process.exit(preflight.blockingIssues.length === 0 ? 0 : 2);
+    printDryRun(preflight, intelligencePreview, options);
+    process.exit(
+      preflight.blockingIssues.length === 0 &&
+      getRepairStageBlockingIssues(preflight, options.fromStage).length === 0 &&
+      intelligencePreview.status === "completed"
+        ? 0
+        : 2,
+    );
   }
 
   const guardIssues = validateRepairApplyRequest({
@@ -176,6 +234,10 @@ async function main(): Promise<void> {
   if (options.planHash && options.planHash !== preflight.planHash) guardIssues.push("PLAN_HASH_MISMATCH");
   if (!options.checkpointFile) guardIssues.push("CHECKPOINT_FILE_REQUIRED");
   guardIssues.push(...preflight.blockingIssues);
+  guardIssues.push(...getRepairStageBlockingIssues(preflight, options.fromStage));
+  if (intelligencePreview.status !== "completed") {
+    guardIssues.push(`INTELLIGENCE_PRECOMPUTATION_${intelligencePreview.status.toUpperCase()}`);
+  }
   if (guardIssues.length > 0) {
     fail("PREFLIGHT_FAILED", Array.from(new Set(guardIssues)).join(","));
   }
@@ -241,18 +303,22 @@ async function main(): Promise<void> {
     }
   };
 
+  const refreshResumePlanHash = async (): Promise<void> => {
+    const refreshedPreflight = await loadInstitutionalRepairPreflight();
+    checkpoint.resumePlanHash = refreshedPreflight.planHash;
+    await persistCheckpoint(options.checkpointFile!, checkpoint);
+  };
+
   const mappingResult = await runStage(
     "mapping",
     async () => applyInstitutionalMappingRepair(preflight.planHash),
   );
   if (mappingResult) {
-    const postMappingPreflight = await loadInstitutionalRepairPreflight();
-    checkpoint.resumePlanHash = postMappingPreflight.planHash;
-    await persistCheckpoint(options.checkpointFile!, checkpoint);
+    await refreshResumePlanHash();
   }
 
-  const symbols = await listReliableMappedSymbols();
-  await runStage(
+  const symbols = VERIFIED_REPAIR_MAPPINGS.map((mapping) => mapping.symbol);
+  const aggregateResult = await runStage(
     "aggregates",
     async () => {
       const result = await rebuildInstitutionalAggregates({ symbols });
@@ -265,8 +331,11 @@ async function main(): Promise<void> {
       return result;
     },
   );
+  if (aggregateResult) {
+    await refreshResumePlanHash();
+  }
 
-  await runStage(
+  const signalResult = await runStage(
     "signals",
     async () => {
       const result = await rebuildInstitutionalSignals({ symbols });
@@ -279,6 +348,9 @@ async function main(): Promise<void> {
       return result;
     },
   );
+  if (signalResult) {
+    await refreshResumePlanHash();
+  }
 
   const snapshotResult = await runStage(
     "snapshots",

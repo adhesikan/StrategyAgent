@@ -72,6 +72,12 @@ async function tableExists(tableName: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_RUNTIME_REJECTED:DATABASE_URL_REQUIRED");
+  }
+  if (process.env.EXTERNAL_DATABASE_URL) {
+    throw new Error("DATABASE_RUNTIME_REJECTED:EXTERNAL_DATABASE_URL_FORBIDDEN");
+  }
   console.log("\n=== Institutional Intelligence Production Data Waterfall ===");
   console.log("READ-ONLY: SELECT statements only; credentials are never printed.");
 

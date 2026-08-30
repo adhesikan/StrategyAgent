@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 
 export const INSTITUTIONAL_REPAIR_CONFIRMATION = "REPAIR_INSTITUTIONAL_PRODUCTION_DATA";
 export const INSTITUTIONAL_REPAIR_LOCK_KEY = 774_412_004;
+export const MAX_NEAR_ZERO_MAPPING_COVERAGE = 0.05;
 
 export const VERIFIED_REPAIR_MAPPINGS = [
   { symbol: "AAPL", cusip: "037833100", issuerName: "Apple Inc." },
@@ -50,18 +51,38 @@ export interface InstitutionalRepairPreflight {
   duplicateHoldingGroups: number;
   orphanHoldingRows: number;
   mappingCounts: Record<string, number>;
+  dataQuality: {
+    totalFilings: number;
+    effectiveFilings: number;
+    totalHoldings: number;
+    effectiveHoldings: number;
+    effectiveManagers: number;
+    effectiveQuarters: number;
+    latestEffectiveQuarter: string | null;
+    mappedEffectiveHoldings: number;
+    mappingCoverage: number | null;
+    aggregateRows: number;
+    aggregateState: "incomplete" | "present";
+  };
   expectedSecurities: ExpectedSecurityTrace[];
   plan: {
     effectiveHoldings: number;
     reliableMappingCandidates: number;
+    mappingRowsToInsert: number;
+    mappingRowsToPromote: number;
     ambiguousMappings: number;
     unmappedMappings: number;
     rejectedMappings: number;
     alreadyMappedEffectiveHoldings: number;
     holdingsToUpdate: number;
+    remainingUnmappedEffectiveHoldings: number;
     conflictingMappedHoldings: number;
     aggregateSymbols: number;
     aggregateQuarters: number;
+    aggregateRowsToInsert: number;
+    aggregateRowsToUpdate: number;
+    signalRowsToInsert: number;
+    signalRowsToUpdate: number;
     reliableMappingDigest: string;
     targetHoldingDigest: string;
   };
@@ -167,6 +188,19 @@ export function shouldRunRepairStage(stage: RepairStage, fromStage: RepairStage)
   return REPAIR_STAGE_ORDER.indexOf(stage) >= REPAIR_STAGE_ORDER.indexOf(fromStage);
 }
 
+export function getRepairStageBlockingIssues(
+  preflight: InstitutionalRepairPreflight,
+  fromStage: RepairStage,
+): string[] {
+  if (
+    (fromStage === "mapping" || fromStage === "aggregates") &&
+    preflight.dataQuality.aggregateState !== "incomplete"
+  ) {
+    return ["AGGREGATE_STATE_NOT_INCOMPLETE"];
+  }
+  return [];
+}
+
 export function getRepairBlockingIssues(
   preflight: Omit<InstitutionalRepairPreflight, "blockingIssues" | "planHash">,
 ): string[] {
@@ -175,6 +209,24 @@ export function getRepairBlockingIssues(
   if (preflight.publicFeatureEnabled) issues.push("PUBLIC_FEATURE_MUST_REMAIN_DISABLED");
   if (preflight.duplicateHoldingGroups > 0) issues.push("DUPLICATE_HOLDING_GROUPS_PRESENT");
   if (preflight.orphanHoldingRows > 0) issues.push("ORPHAN_HOLDINGS_PRESENT");
+  if (preflight.dataQuality.effectiveFilings === 0) {
+    issues.push("NO_EFFECTIVE_FILINGS");
+  }
+  if (preflight.dataQuality.effectiveManagers === 0) {
+    issues.push("NO_EFFECTIVE_MANAGERS");
+  }
+  if (preflight.dataQuality.effectiveQuarters < 2) {
+    issues.push("INSUFFICIENT_HISTORICAL_QUARTERS");
+  }
+  if (preflight.dataQuality.effectiveHoldings === 0) {
+    issues.push("NO_EFFECTIVE_HOLDINGS");
+  }
+  if (
+    preflight.dataQuality.mappingCoverage !== null &&
+    preflight.dataQuality.mappingCoverage > MAX_NEAR_ZERO_MAPPING_COVERAGE
+  ) {
+    issues.push("MAPPING_COVERAGE_NOT_NEAR_ZERO");
+  }
   for (const trace of preflight.expectedSecurities) {
     if (trace.effectiveHoldingRows === 0) issues.push(`EXPECTED_CUSIP_NOT_PRESENT:${trace.symbol}`);
     if (trace.effectiveHoldingRows > 0 && !trace.issuerIdentityMatched) {
@@ -249,6 +301,19 @@ export async function loadInstitutionalRepairPreflight(
       duplicateHoldingGroups: 0,
       orphanHoldingRows: 0,
       mappingCounts: {},
+      dataQuality: {
+        totalFilings: 0,
+        effectiveFilings: 0,
+        totalHoldings: 0,
+        effectiveHoldings: 0,
+        effectiveManagers: 0,
+        effectiveQuarters: 0,
+        latestEffectiveQuarter: null,
+        mappedEffectiveHoldings: 0,
+        mappingCoverage: null,
+        aggregateRows: 0,
+        aggregateState: "incomplete" as const,
+      },
       expectedSecurities: VERIFIED_REPAIR_MAPPINGS.map((mapping) => ({
         ...mapping,
         issuerNames: [],
@@ -263,14 +328,21 @@ export async function loadInstitutionalRepairPreflight(
       plan: {
         effectiveHoldings: 0,
         reliableMappingCandidates: 0,
+        mappingRowsToInsert: 0,
+        mappingRowsToPromote: 0,
         ambiguousMappings: 0,
         unmappedMappings: 0,
         rejectedMappings: 0,
         alreadyMappedEffectiveHoldings: 0,
         holdingsToUpdate: 0,
+        remainingUnmappedEffectiveHoldings: 0,
         conflictingMappedHoldings: 0,
         aggregateSymbols: 0,
         aggregateQuarters: 0,
+        aggregateRowsToInsert: 0,
+        aggregateRowsToUpdate: 0,
+        signalRowsToInsert: 0,
+        signalRowsToUpdate: 0,
         reliableMappingDigest: "",
         targetHoldingDigest: "",
       },
@@ -352,6 +424,60 @@ export async function loadInstitutionalRepairPreflight(
   const mappingCounts = Object.fromEntries(
     mappingRows.map((row) => [String(row.mapping_status), asCount(row.count)]),
   );
+  const qualityRows = rowsOf(await executor.execute(sql`
+    SELECT
+      (SELECT COUNT(*)::int FROM institutional_13f_filings) AS total_filings,
+      (SELECT COUNT(*)::int FROM institutional_13f_filings WHERE is_effective = TRUE) AS effective_filings,
+      (SELECT COUNT(*)::int FROM institutional_13f_holdings) AS total_holdings,
+      (SELECT COUNT(*)::int
+         FROM institutional_13f_holdings h
+         INNER JOIN institutional_13f_filings f
+           ON f.accession_number = h.accession_number
+          AND f.is_effective = TRUE) AS effective_holdings,
+      (SELECT COUNT(DISTINCT h.filer_cik)::int
+         FROM institutional_13f_holdings h
+         INNER JOIN institutional_13f_filings f
+           ON f.accession_number = h.accession_number
+          AND f.is_effective = TRUE) AS effective_managers,
+      (SELECT COUNT(DISTINCT h.period_of_report)::int
+         FROM institutional_13f_holdings h
+         INNER JOIN institutional_13f_filings f
+           ON f.accession_number = h.accession_number
+          AND f.is_effective = TRUE) AS effective_quarters,
+      (SELECT MAX(h.period_of_report)
+         FROM institutional_13f_holdings h
+         INNER JOIN institutional_13f_filings f
+           ON f.accession_number = h.accession_number
+          AND f.is_effective = TRUE) AS latest_effective_quarter,
+      (SELECT COUNT(*)::int
+         FROM institutional_13f_holdings h
+         INNER JOIN institutional_13f_filings f
+           ON f.accession_number = h.accession_number
+          AND f.is_effective = TRUE
+        WHERE h.mapped_symbol IS NOT NULL
+          AND h.mapping_status IN ('exact', 'reviewed')) AS mapped_effective_holdings,
+      (SELECT COUNT(*)::int FROM institutional_quarterly_aggregates) AS aggregate_rows
+  `));
+  const qualityRow = qualityRows[0] ?? {};
+  const effectiveHoldings = asCount(qualityRow.effective_holdings);
+  const aggregateRows = asCount(qualityRow.aggregate_rows);
+  const dataQuality = {
+    totalFilings: asCount(qualityRow.total_filings),
+    effectiveFilings: asCount(qualityRow.effective_filings),
+    totalHoldings: asCount(qualityRow.total_holdings),
+    effectiveHoldings,
+    effectiveManagers: asCount(qualityRow.effective_managers),
+    effectiveQuarters: asCount(qualityRow.effective_quarters),
+    latestEffectiveQuarter: qualityRow.latest_effective_quarter
+      ? String(qualityRow.latest_effective_quarter)
+      : null,
+    mappedEffectiveHoldings: asCount(qualityRow.mapped_effective_holdings),
+    mappingCoverage: effectiveHoldings > 0
+      ? asCount(qualityRow.mapped_effective_holdings) / effectiveHoldings
+      : null,
+    aggregateRows,
+    aggregateState: aggregateRows === 0 ? "incomplete" as const : "present" as const,
+  };
 
   const planRows = rowsOf(await executor.execute(sql`
     WITH verified(cusip, mapped_symbol, mapping_status) AS (
@@ -362,12 +488,6 @@ export async function loadInstitutionalRepairPreflight(
         ('22160K105', 'COST', 'reviewed')
     ),
     reliable AS (
-      SELECT cusip, mapped_symbol, mapping_status
-      FROM institutional_security_mappings
-      WHERE mapped_symbol IS NOT NULL
-        AND mapping_status IN ('exact', 'reviewed')
-        AND cusip NOT IN ('037833100', '67066G104', '594918104', '22160K105')
-      UNION ALL
       SELECT v.cusip, v.mapped_symbol, v.mapping_status
       FROM verified v
     ),
@@ -382,6 +502,14 @@ export async function loadInstitutionalRepairPreflight(
       SELECT h.*, r.mapped_symbol AS target_symbol, r.mapping_status AS target_status
       FROM effective_holdings h
       INNER JOIN reliable r ON r.cusip = h.cusip
+    ),
+    target_quarters AS (
+      SELECT DISTINCT target_symbol, period_of_report
+      FROM target
+    ),
+    target_symbols AS (
+      SELECT DISTINCT target_symbol
+      FROM target
     )
     SELECT
       (SELECT COUNT(*) FROM effective_holdings)::int AS effective_holdings,
@@ -397,11 +525,33 @@ export async function loadInstitutionalRepairPreflight(
         WHERE (mapped_symbol IS NULL OR mapped_symbol = target_symbol)
           AND (mapped_symbol IS NULL OR mapping_status NOT IN ('exact', 'reviewed')))::int
         AS holdings_to_update,
+      (SELECT COUNT(*)
+         FROM effective_holdings h
+         LEFT JOIN reliable r ON r.cusip = h.cusip
+        WHERE r.cusip IS NULL)::int AS remaining_unmapped_effective_holdings,
       (SELECT COUNT(*) FROM target
         WHERE mapped_symbol IS NOT NULL AND mapped_symbol <> target_symbol)::int
         AS conflicting_mapped_holdings,
       (SELECT COUNT(DISTINCT target_symbol) FROM target)::int AS aggregate_symbols,
       (SELECT COUNT(DISTINCT (target_symbol, period_of_report)) FROM target)::int AS aggregate_quarters,
+      (SELECT COUNT(*)::int
+         FROM target_quarters tq
+         LEFT JOIN institutional_quarterly_aggregates a
+           ON a.symbol = tq.target_symbol
+          AND a.period_of_report = tq.period_of_report
+        WHERE a.symbol IS NULL) AS aggregate_rows_to_insert,
+      (SELECT COUNT(*)::int
+         FROM target_quarters tq
+         INNER JOIN institutional_quarterly_aggregates a
+           ON a.symbol = tq.target_symbol
+          AND a.period_of_report = tq.period_of_report) AS aggregate_rows_to_update,
+      (SELECT COUNT(*)::int
+         FROM target_symbols ts
+         LEFT JOIN institutional_symbol_signals s ON s.symbol = ts.target_symbol
+        WHERE s.symbol IS NULL) AS signal_rows_to_insert,
+      (SELECT COUNT(*)::int
+         FROM target_symbols ts
+         INNER JOIN institutional_symbol_signals s ON s.symbol = ts.target_symbol) AS signal_rows_to_update,
       (SELECT MD5(COALESCE(STRING_AGG(
         id || '|' || cusip || '|' || COALESCE(mapped_symbol, '') || '|' ||
         mapping_status || '|' || target_symbol || '|' || target_status,
@@ -422,18 +572,35 @@ export async function loadInstitutionalRepairPreflight(
     duplicateHoldingGroups: asCount(duplicateRows[0]?.count),
     orphanHoldingRows: asCount(orphanRows[0]?.count),
     mappingCounts,
+    dataQuality: {
+      ...dataQuality,
+      aggregateState: asCount(planRow.aggregate_rows_to_insert) > 0
+        ? "incomplete" as const
+        : "present" as const,
+    },
     expectedSecurities,
     plan: {
       effectiveHoldings: asCount(planRow.effective_holdings),
       reliableMappingCandidates: asCount(planRow.reliable_mapping_candidates),
+      mappingRowsToInsert: expectedSecurities.filter(
+        (trace) => trace.mappingAction === "insert_reviewed",
+      ).length,
+      mappingRowsToPromote: expectedSecurities.filter(
+        (trace) => trace.mappingAction === "promote_reviewed",
+      ).length,
       ambiguousMappings: mappingCounts.ambiguous ?? 0,
       unmappedMappings: mappingCounts.unmapped ?? 0,
       rejectedMappings: mappingCounts.rejected ?? 0,
       alreadyMappedEffectiveHoldings: asCount(planRow.already_mapped_effective_holdings),
       holdingsToUpdate: asCount(planRow.holdings_to_update),
+      remainingUnmappedEffectiveHoldings: asCount(planRow.remaining_unmapped_effective_holdings),
       conflictingMappedHoldings: asCount(planRow.conflicting_mapped_holdings),
       aggregateSymbols: asCount(planRow.aggregate_symbols),
       aggregateQuarters: asCount(planRow.aggregate_quarters),
+      aggregateRowsToInsert: asCount(planRow.aggregate_rows_to_insert),
+      aggregateRowsToUpdate: asCount(planRow.aggregate_rows_to_update),
+      signalRowsToInsert: asCount(planRow.signal_rows_to_insert),
+      signalRowsToUpdate: asCount(planRow.signal_rows_to_update),
       reliableMappingDigest: String(planRow.reliable_mapping_digest ?? ""),
       targetHoldingDigest: String(planRow.target_holding_digest ?? ""),
     },
@@ -487,7 +654,10 @@ export async function applyInstitutionalMappingRepair(
     }
 
     const updateRows = rowsOf(await tx.execute(sql`
-      WITH updated AS (
+      WITH verified(cusip) AS (
+        VALUES ('037833100'), ('67066G104'), ('594918104'), ('22160K105')
+      ),
+      updated AS (
         UPDATE institutional_13f_holdings h
         SET
           mapped_symbol = m.mapped_symbol,
@@ -496,6 +666,7 @@ export async function applyInstitutionalMappingRepair(
         WHERE f.accession_number = h.accession_number
           AND f.is_effective = TRUE
           AND m.cusip = h.cusip
+          AND h.cusip IN (SELECT cusip FROM verified)
           AND m.mapped_symbol IS NOT NULL
           AND m.mapping_status IN ('exact', 'reviewed')
           AND (h.mapped_symbol IS NULL OR h.mapped_symbol = m.mapped_symbol)
@@ -507,13 +678,17 @@ export async function applyInstitutionalMappingRepair(
     const holdingsUpdated = asCount(updateRows[0]?.count);
 
     const remainingRows = rowsOf(await tx.execute(sql`
+      WITH verified(cusip) AS (
+        VALUES ('037833100'), ('67066G104'), ('594918104'), ('22160K105')
+      )
       SELECT COUNT(*)::int AS count
       FROM institutional_13f_holdings h
       INNER JOIN institutional_13f_filings f
         ON f.accession_number = h.accession_number
        AND f.is_effective = TRUE
       INNER JOIN institutional_security_mappings m ON m.cusip = h.cusip
-      WHERE m.mapped_symbol IS NOT NULL
+      WHERE h.cusip IN (SELECT cusip FROM verified)
+        AND m.mapped_symbol IS NOT NULL
         AND m.mapping_status IN ('exact', 'reviewed')
         AND (h.mapped_symbol IS NULL OR h.mapping_status NOT IN ('exact', 'reviewed'))
     `));

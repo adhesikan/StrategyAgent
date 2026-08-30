@@ -91,4 +91,12 @@ describe("repair snapshot precomputation", () => {
     expect(mocks.saveSectorSnapshot).not.toHaveBeenCalled();
     expect(mocks.saveThemeSnapshot).not.toHaveBeenCalled();
   });
+
+  it("computes exact snapshot counts without persisting during dry-run", async () => {
+    const result = await runIntelligencePrecomputation({ persist: false });
+
+    expect(result).toMatchObject({ status: "completed", persisted: false });
+    expect(mocks.saveSectorSnapshot).not.toHaveBeenCalled();
+    expect(mocks.saveThemeSnapshot).not.toHaveBeenCalled();
+  });
 });

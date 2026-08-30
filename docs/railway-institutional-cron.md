@@ -194,6 +194,35 @@ Use this flow only when SEC filings and holdings already exist but reliable
 CUSIP mappings, aggregates, signals, or sector/theme snapshots are missing.
 It does not download SEC data and it does not change the public feature flag.
 
+### Production architecture and execution boundary
+
+This project does **not** use a Replit production database:
+
+- Replit is the development environment.
+- GitHub is the source repository.
+- Railway runs the production application.
+- Railway PostgreSQL is the production database.
+
+Run every command in this section only from the Railway application shell after
+the repair commit has been deployed there. The scripts use the runtime
+`DATABASE_URL` through `server/db.ts`; do not paste, print, replace, or override
+that value on the command line. Do not create a Replit production database or
+copy production data into Replit.
+
+The repair and validation commands fail closed if `DATABASE_URL` is absent or
+`EXTERNAL_DATABASE_URL` is present. This prevents the application's normal
+external-database preference from redirecting a repair away from Railway's
+runtime database.
+
+Before continuing in the Railway shell, verify the runtime identifies itself as
+production without overriding the value:
+
+```bash
+test "$RAILWAY_ENVIRONMENT_NAME" = "production"
+```
+
+If that command exits nonzero, stop and correct the Railway service environment.
+
 ### 1. Keep the public feature disabled
 
 Confirm `INSTITUTIONAL_INTELLIGENCE_ENABLED=false`. The repair command refuses
@@ -207,7 +236,16 @@ npx tsx scripts/repair-institutional-production-data.ts
 
 Review the database identity, schema result, duplicate/orphan checks, all four
 expected CUSIP traces, mapping status counts, rows to update, aggregate scope,
-blocking issues, and the SHA-256 `planHash`. Dry-run uses SELECT statements only.
+blocking issues, snapshot preview, and the SHA-256 `planHash`. Dry-run uses
+SELECT statements only and prints an explicit `GO` or `NO-GO`.
+
+The data-quality block reports current values rather than requiring stale exact
+counts. Compare them with the last known scale (approximately 1,394 filings,
+562k holdings, 970 effective managers, and 41 historical quarters). The command
+fails closed when effective filings/holdings/managers are absent, fewer than two
+historical quarters exist, or reliable mapping coverage is above the near-zero
+pre-repair threshold. It also reports exact mapping, holding, aggregate, signal,
+sector, and theme rows that the reviewed plan would write or rebuild.
 
 Stop if any blocking issue is reported. In particular, do not proceed when an
 expected CUSIP points at a different symbol, an existing holding has a conflicting
@@ -233,17 +271,27 @@ Only `mapped_symbol` and `mapping_status` are updated on effective holdings, and
 only from exact/reviewed mapping references. Raw CUSIP, issuer, class, value,
 shares, put/call, PRN type, filing identity, and historical filings are untouched.
 
-The four verified mappings are inserted or promoted idempotently. Heuristic,
-probable, ambiguous, unmapped, and rejected references are never promoted.
-Aggregates are rebuilt oldest-first so each quarter uses its actual preceding
-comparable quarter. Put/call and PRN rows remain excluded by the aggregation
-engine. Signals use the latest two aggregate quarters.
+The four verified mappings are inserted or promoted idempotently. Mapping,
+aggregate, and signal writes are constrained to AAPL, NVDA, MSFT, and COST so
+the dry-run counts and plan hash cover the full write scope. Heuristic, probable,
+ambiguous, unmapped, and rejected references are never promoted.
+Aggregates are rebuilt oldest-first. A quarter is compared only with its
+immediately preceding calendar quarter; gaps do not silently compare non-adjacent
+periods. Put/call and PRN rows remain excluded by the aggregation engine. Signals
+follow the aggregate's recorded comparable predecessor.
 
 Sector/theme rebuilding restores the latest valid opportunity snapshot from
 PostgreSQL when the one-off repair process has no in-memory ranking. If no valid
 persisted snapshot exists, the checkpoint records that stage as `blocked`; it
 never claims success. Run a normal Opportunity Engine scan so it persists a valid
 snapshot, then resume from snapshots:
+
+```bash
+npx tsx scripts/repair-institutional-production-data.ts \
+  --from-stage snapshots
+```
+
+Copy the fresh hash and database name from that resume-scoped dry-run, then run:
 
 ```bash
 npx tsx scripts/repair-institutional-production-data.ts \
@@ -256,16 +304,16 @@ npx tsx scripts/repair-institutional-production-data.ts \
   --from-stage snapshots
 ```
 
-Always run a fresh dry-run before a resume because mapped counts and therefore
-the plan hash change after a completed stage. Resume also verifies the existing
-checkpoint's database identity, post-mapping plan hash, and all prior stage
-completion records. Do not point `--from-stage` at a new or unrelated file.
+Always run a fresh dry-run with the same `--from-stage` before a resume because
+mapped and aggregate state changes after completed stages. Resume also verifies
+the existing checkpoint's database identity, post-mapping plan hash, and all
+prior stage completion records. Do not point `--from-stage` at a new or unrelated
+file.
 
 ### 4. Validate without writes
 
 ```bash
 npx tsx scripts/audit-institutional-production-data.ts
-npx tsx scripts/audit-institutional-readiness.ts
 ```
 
 The production-data audit reports mapping coverage, holder/manager counts,

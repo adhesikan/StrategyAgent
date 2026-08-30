@@ -176,7 +176,7 @@ interface PrecomputationStatus {
 }
 
 export type IntelligencePrecomputationResult =
-  | { status: "completed"; sectorCount: number; themeCount: number; rankedCount: number; durationMs: number }
+  | { status: "completed"; sectorCount: number; themeCount: number; rankedCount: number; persisted: boolean; durationMs: number }
   | { status: "blocked"; reason: "no_ranking_available"; durationMs: number }
   | { status: "failed"; error: string; durationMs: number };
 
@@ -199,7 +199,10 @@ export function getPrecomputationStatus(): Readonly<PrecomputationStatus> {
 // Main orchestration entry point
 // ---------------------------------------------------------------------------
 
-export async function runIntelligencePrecomputation(): Promise<IntelligencePrecomputationResult> {
+export async function runIntelligencePrecomputation(
+  options: { persist?: boolean } = {},
+): Promise<IntelligencePrecomputationResult> {
+  const persist = options.persist !== false;
   const startedAt = Date.now();
   _precomputeStatus.lastAttemptAt = new Date().toISOString();
   _precomputeStatus.running       = true;
@@ -265,11 +268,12 @@ export async function runIntelligencePrecomputation(): Promise<IntelligencePreco
       generatedAt,
     });
 
-    // Persist both
-    await Promise.all([
-      saveSectorSnapshot(sectorSnapshot),
-      saveThemeSnapshot(themeSnapshot),
-    ]);
+    if (persist) {
+      await Promise.all([
+        saveSectorSnapshot(sectorSnapshot),
+        saveThemeSnapshot(themeSnapshot),
+      ]);
+    }
 
     _precomputeStatus.lastSuccessAt   = new Date().toISOString();
     _precomputeStatus.lastSectorCount = sectorSnapshot.sectors.length;
@@ -288,6 +292,7 @@ export async function runIntelligencePrecomputation(): Promise<IntelligencePreco
       sectorCount: sectorSnapshot.sectors.length,
       themeCount: themeSnapshot.themes.length,
       rankedCount: rankedSymbols.length,
+      persisted: persist,
       durationMs: Date.now() - startedAt,
     };
   } catch (err: any) {

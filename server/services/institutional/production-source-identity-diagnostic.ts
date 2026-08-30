@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { filingDocUrl, filingIndexUrl } from "./sec-client";
-import { findInfoTableDocumentFilename, isInfoTableXml, parseInfoTableXml, type ParsedHolding } from "./sec-13f-parser";
+import { filingIndexUrl } from "./sec-client";
+import { isInfoTableXml, parseInfoTableXml, selectInfoTableDocument, type ParsedHolding } from "./sec-13f-parser";
 
 export const PRODUCTION_SOURCE_IDENTITY_TARGETS = [
   { symbol: "AAPL", cusip: "037833100" },
@@ -64,9 +64,122 @@ export interface GroupFinding extends ProductionDiagnosticGroup {
   conditionalRedundantRows: number;
   conditionalRedundantShares: number;
   conditionalRedundantReportedValue: number | null;
+  /** Safe, body-free source evidence captured before reconciliation. */
+  sourceDocument: SourceDocumentDiagnostic | null;
 }
 
-export type SecTextFetcher = (url: string) => Promise<string>;
+export interface SecFetchResult {
+  text: string;
+  status: number | null;
+  contentType: string | null;
+  byteLength: number;
+  decodingError?: boolean;
+  detectedEncoding?: string;
+}
+export type SecTextFetcher = (url: string) => Promise<string | SecFetchResult>;
+export type SourceRejectionCode =
+  | "RESPONSE_NOT_XML" | "SEC_HTML_WRAPPER" | "XML_DECLARATION_INVALID" | "XML_TRUNCATED"
+  | "XML_UNCLOSED_TAG" | "XML_MISNESTED_TAG" | "INVALID_ENTITY" | "ILLEGAL_XML_CHARACTER"
+  | "DOCTYPE_PRESENT" | "MULTIPLE_ROOT_ELEMENTS" | "INVALID_DOCUMENT_ORDER"
+  | "UNEXPECTED_SEC_FORMAT" | "WRONG_DOCUMENT_SELECTED" | "SEC_ERROR_RESPONSE"
+  | "CONTENT_ENCODING_ERROR" | "OTHER_VALIDATION_FAILURE";
+export interface SourceDocumentDiagnostic {
+  indexUrl: string | null;
+  documentUrl: string | null;
+  selectedFilename: string | null;
+  selectedHref: string | null;
+  selectedPath: string | null;
+  selectedDocumentType: string | null;
+  selectedDescription: string | null;
+  selectedSize: string | null;
+  selectedIndexRow: number | null;
+  selectionRejection: string | null;
+  httpStatus: number | null;
+  contentType: string | null;
+  detectedEncoding: string | null;
+  byteLength: number | null;
+  signature: string | null;
+  rootElement: string | null;
+  validatorStage: "INDEX_SELECTION" | "TRANSPORT" | "XML_STRUCTURE" | "INFOTABLE_ROOT" | "PARSER";
+  rejectionCode: SourceRejectionCode | null;
+  safeOffset: number | null;
+  safeElement: string | null;
+}
+
+function normalizedFetch(result: string | SecFetchResult): SecFetchResult {
+  return typeof result === "string"
+    ? { text: result, status: null, contentType: null, byteLength: Buffer.byteLength(result, "utf8") }
+    : result;
+}
+
+/** Produces body-free validation evidence; never return source text from here. */
+export function inspectInfoTableDocument(content: string, fetch: {
+  status: number | null; contentType: string | null; byteLength: number; decodingError?: boolean; detectedEncoding?: string;
+}): SourceDocumentDiagnostic {
+  const prefix = content.replace(/^\uFEFF/, "").trimStart();
+  const rootMatch = prefix.match(/^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*|<\?[\s\S]*?\?>\s*)*<([A-Za-z_][\w:.-]*)\b/);
+  const rootElement = rootMatch?.[1] ?? null;
+  const signature = rootElement ? `<${rootElement}>` : (prefix.startsWith("<!DOCTYPE") ? "<!DOCTYPE>" : prefix.startsWith("<html") ? "<html>" : null);
+  const base = {
+    indexUrl: "", documentUrl: null, selectedFilename: null, selectedHref: null, selectedPath: null,
+    selectedDocumentType: null, selectedDescription: null, selectedSize: null, selectedIndexRow: null, selectionRejection: null, httpStatus: fetch.status, contentType: fetch.contentType,
+    detectedEncoding: fetch.detectedEncoding ?? null,
+    byteLength: fetch.byteLength, signature, rootElement, safeOffset: null, safeElement: rootElement,
+  };
+  const reject = (rejectionCode: SourceRejectionCode, validatorStage: SourceDocumentDiagnostic["validatorStage"], safeOffset: number | null = null, safeElement: string | null = rootElement) =>
+    ({ ...base, validatorStage, rejectionCode, safeOffset, safeElement });
+  if (fetch.status != null && (fetch.status < 200 || fetch.status >= 300)) return reject("SEC_ERROR_RESPONSE", "TRANSPORT");
+  if (fetch.decodingError) return reject("CONTENT_ENCODING_ERROR", "TRANSPORT");
+  if (/^\s*<(?:!doctype\s+html|html)\b/i.test(prefix)) return reject("SEC_HTML_WRAPPER", "XML_STRUCTURE", prefix.search(/</), "html");
+  if (!content.includes("<")) return reject("RESPONSE_NOT_XML", "XML_STRUCTURE");
+  if (/<\?xml/i.test(content) && !/^\uFEFF?<\?xml\s+version=(['"])[^'"]+\1(?:\s+encoding=(['"])[A-Za-z][A-Za-z0-9._-]*\2)?(?:\s+standalone=(['"])(?:yes|no)\3)?\s*\?>/i.test(content)) {
+    return reject("XML_DECLARATION_INVALID", "XML_STRUCTURE", content.search(/<\?xml/i), "xml");
+  }
+  const doctype = content.search(/<!DOCTYPE(?:\s|>)/i);
+  if (doctype >= 0) return reject("DOCTYPE_PRESENT", "XML_STRUCTURE", doctype, "DOCTYPE");
+  for (let i = 0; i < content.length; i++) {
+    const cp = content.codePointAt(i)!;
+    if (!(cp === 9 || cp === 10 || cp === 13 || (cp >= 0x20 && cp <= 0xd7ff) || (cp >= 0xe000 && cp <= 0xfffd) || (cp >= 0x10000 && cp <= 0x10ffff))) {
+      return reject("ILLEGAL_XML_CHARACTER", "XML_STRUCTURE", i);
+    }
+    if (cp > 0xffff) i++;
+  }
+  for (const reference of content.matchAll(/&#(?:x[0-9a-f]+|\d+);/gi)) {
+    const token = reference[0];
+    const cp = /^&#x/i.test(token) ? Number.parseInt(token.slice(3, -1), 16) : Number(token.slice(2, -1));
+    const legal = Number.isSafeInteger(cp) && (cp === 9 || cp === 10 || cp === 13
+      || (cp >= 0x20 && cp <= 0xd7ff) || (cp >= 0xe000 && cp <= 0xfffd)
+      || (cp >= 0x10000 && cp <= 0x10ffff));
+    if (!legal) return reject("INVALID_ENTITY", "XML_STRUCTURE", reference.index ?? null);
+  }
+  const invalidEntity = /&(?!(?:amp|lt|gt|apos|quot);|#\d+;|#x[0-9a-f]+;)/i.exec(content);
+  if (invalidEntity) return reject("INVALID_ENTITY", "XML_STRUCTURE", invalidEntity.index ?? null);
+  const firstMarkup = content.search(/</);
+  if (firstMarkup > 0 && content.slice(0, firstMarkup).trim()) return reject("INVALID_DOCUMENT_ORDER", "XML_STRUCTURE", 0);
+  const structure = validateXmlStructure(content);
+  if (!structure.valid) {
+    const last = content.trimEnd();
+    if (last && !last.endsWith(">")) return reject("XML_TRUNCATED", "XML_STRUCTURE", last.length);
+    const tags = [...content.matchAll(/<\/?([A-Za-z_][\w:.-]*)\b[^>]*>/g)];
+    const stack: string[] = [];
+    for (const tag of tags) {
+      const full = tag[0], name = tag[1];
+      if (full.startsWith("</")) {
+        if (stack[stack.length - 1] !== name) return reject("XML_MISNESTED_TAG", "XML_STRUCTURE", tag.index ?? null, name);
+        stack.pop();
+      } else if (!full.endsWith("/>")) stack.push(name);
+    }
+    if (stack.length) return reject("XML_UNCLOSED_TAG", "XML_STRUCTURE", content.length, stack[stack.length - 1]);
+    const roots = (content.match(/<(?!\/|!|\?)[A-Za-z_][\w:.-]*\b[^>]*\/>/g) ?? []).length;
+    if (roots > 1) return reject("MULTIPLE_ROOT_ELEMENTS", "XML_STRUCTURE");
+    return reject("INVALID_DOCUMENT_ORDER", "XML_STRUCTURE");
+  }
+  if (!rootElement || rootElement.split(":").pop()?.toLowerCase() !== "informationtable") {
+    return reject(rootElement ? "WRONG_DOCUMENT_SELECTED" : "RESPONSE_NOT_XML", "INFOTABLE_ROOT");
+  }
+  if (!isInfoTableXml(content)) return reject("UNEXPECTED_SEC_FORMAT", "INFOTABLE_ROOT");
+  return { ...base, validatorStage: "PARSER", rejectionCode: null };
+}
 
 function rowsOf(result: unknown): any[] {
   const candidate = result as { rows?: any[] };
@@ -392,26 +505,54 @@ async function sourceRowsForAccession(
   filerCik: string,
   groups: ProductionDiagnosticGroup[],
   fetchText: SecTextFetcher,
-): Promise<Map<ProductionDiagnosticGroup, { rows: SourceRowEvidence[]; error: string | null; complete: boolean }>> {
-  const out = new Map<ProductionDiagnosticGroup, { rows: SourceRowEvidence[]; error: string | null; complete: boolean }>(
-    groups.map((group) => [group, { rows: [], error: null, complete: true }]),
+): Promise<Map<ProductionDiagnosticGroup, { rows: SourceRowEvidence[]; error: string | null; complete: boolean; document: SourceDocumentDiagnostic | null }>> {
+  const out = new Map<ProductionDiagnosticGroup, { rows: SourceRowEvidence[]; error: string | null; complete: boolean; document: SourceDocumentDiagnostic | null }>(
+    groups.map((group) => [group, { rows: [], error: null, complete: true, document: null }]),
   );
+  let diagnostic: SourceDocumentDiagnostic | null = null;
   try {
     if (!/^\d{18}$/.test(accessionNumber) || !/^\d+$/.test(filerCik)) {
       throw new Error("SOURCE_FILING_IDENTITY_INVALID");
     }
     const indexUrl = filingIndexUrl(filerCik, accessionNumber);
     assertSecGovUrl(indexUrl);
-    const filename = findInfoTableDocumentFilename(await fetchText(indexUrl));
+    const index = normalizedFetch(await fetchText(indexUrl));
+    const selection = selectInfoTableDocument(index.text, filerCik, accessionNumber);
+    const filename = selection.filename;
     if (!filename || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.(xml)$/i.test(filename)) {
+      diagnostic = {
+        indexUrl, documentUrl: null, selectedFilename: null, selectedHref: selection.href, selectedPath: selection.path,
+        selectedDocumentType: selection.documentType, selectedDescription: selection.description, selectedSize: selection.size, selectedIndexRow: selection.indexRow, selectionRejection: selection.rejection, httpStatus: index.status, contentType: index.contentType, detectedEncoding: index.detectedEncoding ?? null,
+        byteLength: index.byteLength, signature: null, rootElement: null, validatorStage: "INDEX_SELECTION",
+        rejectionCode: "WRONG_DOCUMENT_SELECTED", safeOffset: null, safeElement: null,
+      };
       throw new Error("INFOTABLE_DOCUMENT_FILENAME_REJECTED");
     }
-    const documentUrl = filingDocUrl(filerCik, accessionNumber, filename);
+    if (!selection.path) throw new Error("INFOTABLE_DOCUMENT_PATH_REJECTED");
+    const documentUrl = new URL(selection.path, "https://www.sec.gov").toString();
     assertSecGovUrl(documentUrl);
-    const content = await fetchText(documentUrl);
-    if (!isInfoTableXml(content)) throw new Error("INFOTABLE_DOCUMENT_CONTENT_REJECTED");
-    const parsed = parseInfoTableXml(content);
-    const completeness = validateInfoTableCompleteness(content, parsed);
+    diagnostic = {
+      indexUrl, documentUrl, selectedFilename: filename, selectedHref: selection.href, selectedPath: selection.path,
+      selectedDocumentType: selection.documentType, selectedDescription: selection.description, selectedSize: selection.size,
+      selectedIndexRow: selection.indexRow, selectionRejection: selection.rejection, httpStatus: null, contentType: null,
+      detectedEncoding: null,
+      byteLength: null, signature: null, rootElement: null, validatorStage: "TRANSPORT", rejectionCode: null,
+      safeOffset: null, safeElement: null,
+    };
+    const response = normalizedFetch(await fetchText(documentUrl));
+    diagnostic = { ...inspectInfoTableDocument(response.text, response), indexUrl, documentUrl, selectedFilename: filename,
+      selectedHref: selection.href, selectedPath: selection.path, selectedDocumentType: selection.documentType,
+      selectedDescription: selection.description, selectedSize: selection.size, selectedIndexRow: selection.indexRow,
+      selectionRejection: selection.rejection };
+    // A wrong/non-XML response is unavailable.  For malformed XML retain any
+    // safely parsed rows but mark completeness false below: that distinction
+    // preserves the existing fail-closed provenance classification.
+    if (diagnostic.rejectionCode && ["RESPONSE_NOT_XML", "SEC_HTML_WRAPPER", "WRONG_DOCUMENT_SELECTED",
+      "SEC_ERROR_RESPONSE", "UNEXPECTED_SEC_FORMAT", "CONTENT_ENCODING_ERROR"].includes(diagnostic.rejectionCode)) {
+      throw new Error(`INFOTABLE_DOCUMENT_CONTENT_REJECTED:${diagnostic.rejectionCode}`);
+    }
+    const parsed = parseInfoTableXml(response.text);
+    const completeness = validateInfoTableCompleteness(response.text, parsed);
     for (const group of groups) {
       const matches = parsed.holdings
         .map((row, rowOrdinal) => ({ row, rowOrdinal }))
@@ -421,11 +562,28 @@ async function sourceRowsForAccession(
           ...holding, rawAsFiledReportedValue, sourceReportedValueUnit, normalizedReportedValueUsd,
           accessionNumber, documentFilename: filename, rowOrdinal: rowOrdinal + 1, nativeId: null,
         }));
-      out.set(group, { rows: matches, error: null, complete: completeness.complete && Boolean(group.filingDate) });
+      out.set(group, { rows: matches, error: null, complete: completeness.complete && Boolean(group.filingDate), document: diagnostic });
     }
   } catch (error: any) {
+    if (Number.isInteger(error?.status)) {
+      if (diagnostic) {
+        diagnostic = { ...diagnostic, httpStatus: error.status, contentType: error.contentType ?? null,
+          byteLength: error.byteLength ?? null, validatorStage: "TRANSPORT", rejectionCode: "SEC_ERROR_RESPONSE" };
+      } else {
+        let safeIndexUrl: string | null = null;
+        try { safeIndexUrl = filingIndexUrl(filerCik, accessionNumber); } catch { /* report invalid identity without URL */ }
+        diagnostic = {
+          indexUrl: safeIndexUrl, documentUrl: null, selectedFilename: null,
+          selectedHref: null, selectedPath: null, selectedDocumentType: null, selectedDescription: null, selectedSize: null,
+          selectedIndexRow: null, selectionRejection: null, httpStatus: error.status, contentType: error.contentType ?? null,
+          byteLength: error.byteLength ?? null, signature: null, rootElement: null, validatorStage: "TRANSPORT",
+          detectedEncoding: null,
+          rejectionCode: "SEC_ERROR_RESPONSE", safeOffset: null, safeElement: null,
+        };
+      }
+    }
     const message = String(error?.message ?? error).slice(0, 300);
-    for (const group of groups) out.set(group, { rows: [], error: message, complete: false });
+    for (const group of groups) out.set(group, { rows: [], error: message, complete: false, document: diagnostic });
   }
   return out;
 }
@@ -448,6 +606,10 @@ export async function runProductionSourceIdentityDiagnostic(
   fetchText: SecTextFetcher,
 ): Promise<{
   findings: GroupFinding[];
+  /** One safe record per fetched accession, avoiding repeated document evidence. */
+  sourceDocuments: Array<SourceDocumentDiagnostic & {
+    accessionNumber: string; filerCik: string; filerName: string | null; filingType: string; filingDate: string; periodOfReport: string;
+  }>;
   symbolStatus: Record<string, string>;
   conditionalAggregateImpact: Record<string, unknown>;
   summary: Record<string, unknown>;
@@ -467,6 +629,7 @@ export async function runProductionSourceIdentityDiagnostic(
       const result = evidence.get(group)!;
       findings.push({
         ...group, sourceRows: result.rows, sourceError: result.error,
+        sourceDocument: result.document,
         sourceMatchCount: result.error ? null : result.rows.length,
         classification: classifySourceMatch(result.error ? null : result.rows.length, group.physicalRows, result.complete),
         conditionalRedundantRows: group.physicalRows - 1,
@@ -476,12 +639,32 @@ export async function runProductionSourceIdentityDiagnostic(
     }
   }
   const confirmed = findings.filter((f) => f.classification === "INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED");
+  const sourceDocuments = Array.from(byAccession.entries()).map(([accessionNumber, accessionGroups]) => {
+    const group = accessionGroups[0];
+    const document = findings.find((finding) => finding.accessionNumber === accessionNumber)?.sourceDocument;
+    let safeIndexUrl: string | null = null;
+    try { safeIndexUrl = filingIndexUrl(group.filerCik, accessionNumber); } catch { /* invalid identity is reported without constructing a URL */ }
+    return {
+      accessionNumber, filerCik: group.filerCik, filerName: group.filerName, filingType: group.filingType,
+      filingDate: group.filingDate, periodOfReport: group.periodOfReport,
+      ...(document ?? {
+        indexUrl: safeIndexUrl, documentUrl: null, selectedFilename: null,
+        selectedHref: null, selectedPath: null, selectedDocumentType: null, selectedDescription: null,
+        selectedSize: null, selectedIndexRow: null, selectionRejection: "NO_DIAGNOSTIC",
+        httpStatus: null, contentType: null, byteLength: null, signature: null, rootElement: null,
+        detectedEncoding: null,
+        validatorStage: "TRANSPORT" as const, rejectionCode: "OTHER_VALIDATION_FAILURE" as const,
+        safeOffset: null, safeElement: null,
+      }),
+    };
+  });
   const classificationCounts = Object.fromEntries(
     (["SOURCE_ROWS_CONFIRM_MULTIPLE", "INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED", "SOURCE_MATCH_AMBIGUOUS", "SOURCE_UNAVAILABLE"] as const)
       .map((classification) => [classification, findings.filter((finding) => finding.classification === classification).length]),
   );
   return {
     findings,
+    sourceDocuments,
     symbolStatus: deriveSymbolStatus(findings),
     conditionalAggregateImpact: {
       potentialIfStoredRowsAreDuplicate: {

@@ -34,6 +34,8 @@ export class SecHttpError extends Error {
   constructor(
     public readonly status: number,
     public readonly url: string,
+    public readonly contentType: string | null = null,
+    public readonly byteLength: number | null = null,
   ) {
     super(`SEC EDGAR HTTP ${status} for ${url}`);
     this.name = "SecHttpError";
@@ -92,6 +94,15 @@ export async function secFetch(
   cacheKey?: string,
   signal?: AbortSignal,
 ): Promise<string> {
+  return (await secFetchDetailed(url, cacheKey, signal)).legacyText;
+}
+
+/** Safe response metadata for read-only diagnostics; existing secFetch callers retain text-only API. */
+export async function secFetchDetailed(
+  url: string,
+  cacheKey?: string,
+  signal?: AbortSignal,
+): Promise<{ text: string; legacyText: string; status: number; contentType: string | null; byteLength: number; decodingError: boolean; detectedEncoding: string }> {
   const cfg = getInstitutionalConfig();
   if (!cfg.secUserAgent) {
     throw new SecUserAgentMissingError();
@@ -101,7 +112,8 @@ export async function secFetch(
   if (cacheKey) {
     const cached = indexCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < INDEX_CACHE_TTL_MS) {
-      return cached.data;
+      return { text: cached.data, legacyText: cached.data, status: 200, contentType: null,
+        byteLength: Buffer.byteLength(cached.data, "utf8"), decodingError: false, detectedEncoding: "UTF-8" };
     }
   }
 
@@ -119,7 +131,10 @@ export async function secFetch(
     try {
       const res = await fetch(url, { headers, signal });
 
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type");
       if (res.status === 429 || res.status === 503) {
+        lastErr = new SecHttpError(res.status, url, contentType, bytes.byteLength);
         // Rate limited — wait longer
         const retryAfterMs = parseInt(res.headers.get("Retry-After") ?? "5", 10) * 1000;
         await new Promise<void>((r) => setTimeout(r, Math.min(retryAfterMs, 30_000)));
@@ -127,16 +142,40 @@ export async function secFetch(
       }
 
       if (!res.ok) {
-        throw new SecHttpError(res.status, url);
+        throw new SecHttpError(res.status, url, contentType, bytes.byteLength);
       }
 
-      const text = await res.text();
+      // Keep the historical fetch().text()-equivalent UTF-8 result separately
+      // from the BOM/XML-aware diagnostic decoding.
+      const legacyText = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      let detectedEncoding = "UTF-8";
+      if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0x3c && bytes[1] === 0x00)) detectedEncoding = "UTF-16LE";
+      else if ((bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0x00 && bytes[1] === 0x3c)) detectedEncoding = "UTF-16BE";
+      const declaration = legacyText.slice(0, 300).match(/<\?xml[^>]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1]?.toUpperCase();
+      if (declaration && !["UTF-8", "UTF8"].includes(declaration)) detectedEncoding = declaration;
+      let decodingError = false;
+      let text = legacyText;
+      const decoderName = detectedEncoding === "UTF-16LE" ? "utf-16le"
+        : detectedEncoding === "UTF-16BE" ? "utf-16be"
+          : detectedEncoding === "UTF-8" || detectedEncoding === "UTF8" ? "utf-8" : null;
+      if (!decoderName) decodingError = true;
+      else {
+        text = new TextDecoder(decoderName, { fatal: false }).decode(bytes);
+        try { new TextDecoder(decoderName, { fatal: true }).decode(bytes); } catch { decodingError = true; }
+        const decodedDeclaration = text.slice(0, 300).match(/<\?xml[^>]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1]?.toUpperCase();
+        if (decodedDeclaration && !["UTF-8", "UTF8", "UTF-16", "UTF-16LE", "UTF-16BE"].includes(decodedDeclaration)) {
+          detectedEncoding = decodedDeclaration;
+          decodingError = true;
+        }
+      }
 
       if (cacheKey) {
-        indexCache.set(cacheKey, { data: text, cachedAt: Date.now() });
+        indexCache.set(cacheKey, { data: legacyText, cachedAt: Date.now() });
       }
 
-      return text;
+      return {
+        text, legacyText, status: res.status, contentType, byteLength: bytes.byteLength, decodingError, detectedEncoding,
+      };
     } catch (err: any) {
       if (err instanceof SecHttpError && err.status >= 400 && err.status < 500 && err.status !== 429) {
         // Non-retryable client error (404, 403, etc.)

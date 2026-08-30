@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseInfoTableXml,
   findInfoTableDocumentFilename,
+  selectInfoTableDocument,
   extractPeriodOfReport,
   extractFiledDate,
   extractFilerCik,
@@ -258,7 +259,7 @@ COMPANY CONFORMED NAME:	BLACKROCK INC
 describe("A — Filing document discovery", () => {
   it("A20 — finds XML infotable filename from index HTML", () => {
     const html = `<table><tr><td><a href="0001364742-24-000007-index.htm">Index</a></td></tr>
-      <tr><td><a href="infotable.xml">Information Table</a></td></tr></table>`;
+      <tr><td><a href="infotable.xml">Information Table</a></td><td>INFORMATION TABLE</td></tr></table>`;
     expect(findInfoTableDocumentFilename(html)).toBe("infotable.xml");
   });
 
@@ -266,6 +267,33 @@ describe("A — Filing document discovery", () => {
     expect(isInfoTableXml(`<?xml version="1.0"?><informationTable><infoTable/></informationTable>`)).toBe(true);
     expect(isInfoTableXml(`<informationTable><infoTable/></informationTable>`)).toBe(true);
     expect(isInfoTableXml(`<html><body>not xml</body></html>`)).toBe(false);
+  });
+
+  it("A21b — selects only the authoritative Information Table row, not primary XML or schema", () => {
+    const index = `<table>
+      <tr><td><a href="primary.xml">primary.xml</a></td><td>13F-HR</td><td>Primary Document</td></tr>
+      <tr><td><a href='/Archives/edgar/data/1/000000000124000001/info&#x2d;table.xml'>info-table.xml</a></td><td>INFORMATION TABLE</td><td>Information Table</td></tr>
+      <tr><td><a href="informationtable.xsd">informationtable.xsd</a></td><td>EX-101.SCH</td><td>Schema</td></tr>
+    </table>`;
+    expect(findInfoTableDocumentFilename(index)).toBe("info-table.xml");
+    expect(findInfoTableDocumentFilename(`${index}<tr><td><a href="second.xml">second</a></td><td>INFORMATION TABLE</td></tr>`)).toBeNull();
+    expect(findInfoTableDocumentFilename(`<tr><td><a href="../info.xml">x</a></td><td>INFORMATION TABLE</td></tr>`)).toBeNull();
+    expect(findInfoTableDocumentFilename(`<tr><td><a href="infotable.xml">Information Table</a></td><td>13F-HR</td></tr>`)).toBeNull();
+    expect(findInfoTableDocumentFilename(`<tr><td><a href="primary.xml">Information Table</a></td><td>Primary Document</td></tr>`)).toBeNull();
+  });
+
+  it("resolves nested and absolute documents only inside the expected filing directory", () => {
+    const row = (href: string) => `<tr><td><a href="${href}">document</a></td><td>INFORMATION TABLE</td></tr>`;
+    expect(selectInfoTableDocument(row("nested/table.xml"), "0000000001", "000000000124000001").path)
+      .toBe("/Archives/edgar/data/1/000000000124000001/nested/table.xml");
+    expect(selectInfoTableDocument(row("/Archives/edgar/data/1/000000000124000001/table.xml"), "1", "000000000124000001").path)
+      .toBe("/Archives/edgar/data/1/000000000124000001/table.xml");
+    expect(selectInfoTableDocument(row("/Archives/edgar/data/2/000000000224000001/table.xml"), "1", "000000000124000001").rejection)
+      .toBe("NO_CANDIDATE");
+    expect(selectInfoTableDocument(`<a href="nested/table.xml">Information Table</a>`, "1", "000000000124000001").path)
+      .toBe("/Archives/edgar/data/1/000000000124000001/nested/table.xml");
+    expect(selectInfoTableDocument(`<a href="/Archives/edgar/data/2/000000000224000001/table.xml">Information Table</a>`, "1", "000000000124000001").rejection)
+      .toBe("NO_CANDIDATE");
   });
 });
 

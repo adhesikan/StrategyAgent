@@ -6,6 +6,7 @@ import {
   loadProductionDiagnosticGroups,
   normalizePgDate,
   normalizeSourceHoldingValue,
+  inspectInfoTableDocument,
   runProductionSourceIdentityDiagnostic,
   sourceRowMatchesGroup,
   validateXmlStructure,
@@ -50,6 +51,43 @@ describe("production source identity diagnostic", () => {
     expect(() => assertSecGovUrl("https://www.sec.gov/Archives/x")).not.toThrow();
   });
 
+  it("emits safe, structured validation evidence without including a document body", () => {
+    const metadata = { status: 200, contentType: "text/html", byteLength: 42 };
+    expect(inspectInfoTableDocument("<html><body>SEC request rate threshold exceeded</body></html>", metadata))
+      .toMatchObject({ rejectionCode: "SEC_HTML_WRAPPER", validatorStage: "XML_STRUCTURE", signature: "<html>", rootElement: "html" });
+    expect(inspectInfoTableDocument("<!DOCTYPE informationTable [<!ENTITY x SYSTEM 'file:///nope'>]><informationTable/>", metadata))
+      .toMatchObject({ rejectionCode: "DOCTYPE_PRESENT", safeElement: "DOCTYPE" });
+    expect(inspectInfoTableDocument("\uFEFF<!-- SEC --><?pi ok?><informationTable><infoTable/></informationTable>", metadata))
+      .toMatchObject({ rejectionCode: null, rootElement: "informationTable", validatorStage: "PARSER" });
+    expect(inspectInfoTableDocument("<informationTable><infoTable>&unknown;</infoTable>", metadata))
+      .toMatchObject({ rejectionCode: "INVALID_ENTITY" });
+  });
+
+  it("classifies each structural validator failure with a bounded safe location", () => {
+    const meta = { status: 200, contentType: "application/xml", byteLength: 1 };
+    const cases: Array<[string, any, string]> = [
+      ["plain SEC text", meta, "RESPONSE_NOT_XML"],
+      ["<?xml broken?><informationTable><infoTable/></informationTable>", meta, "XML_DECLARATION_INVALID"],
+      ["<informationTable", meta, "XML_TRUNCATED"],
+      ["<informationTable><infoTable/>", meta, "XML_UNCLOSED_TAG"],
+      ["<informationTable><x></informationTable></x>", meta, "XML_MISNESTED_TAG"],
+      ["<informationTable/><informationTable/>", meta, "MULTIPLE_ROOT_ELEMENTS"],
+      ["text<informationTable><infoTable/></informationTable>", meta, "INVALID_DOCUMENT_ORDER"],
+      ["<other><infoTable/></other>", meta, "WRONG_DOCUMENT_SELECTED"],
+      ["<informationTable></informationTable>", meta, "UNEXPECTED_SEC_FORMAT"],
+    ];
+    for (const [body, metadata, code] of cases) {
+      expect(inspectInfoTableDocument(body, metadata).rejectionCode).toBe(code);
+    }
+    expect(inspectInfoTableDocument("<informationTable><infoTable/></informationTable>", { ...meta, status: 503 }).rejectionCode).toBe("SEC_ERROR_RESPONSE");
+    expect(inspectInfoTableDocument("<informationTable><infoTable/></informationTable>", { ...meta, decodingError: true }).rejectionCode).toBe("CONTENT_ENCODING_ERROR");
+    expect(inspectInfoTableDocument("<informationTable><infoTable/></informationTable>".slice(0, -1), meta).rejectionCode).toBe("XML_TRUNCATED");
+    for (const entity of ["&#0;", "&#x0;", "&#55296;", "&#xD800;", "&#1114112;", "&#x110000;"]) {
+      expect(inspectInfoTableDocument(`<informationTable><infoTable>${entity}</infoTable></informationTable>`, meta))
+        .toMatchObject({ rejectionCode: "INVALID_ENTITY", safeOffset: expect.any(Number) });
+    }
+  });
+
   it("matches persisted material fields exactly, including nulls", () => {
     const group: any = {
       accessionNumber: "a", filerCik: "1", symbol: "AAPL", cusip: "037833100",
@@ -89,6 +127,26 @@ describe("production source identity diagnostic", () => {
     const queryText = JSON.stringify(seen[0]).toUpperCase();
     expect(queryText).toContain("SELECT");
     expect(queryText).not.toMatch(/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP)\b/);
+  });
+
+  it("carries selected SEC row metadata and accepts BOM/comment/PI XML end-to-end", async () => {
+    const fetched: string[] = [];
+    const report = await runProductionSourceIdentityDiagnostic(
+      { async execute() { return { rows: groups().map((group) => ({ ...group, accession_number: "000000000124999999" })) }; } },
+      async (url) => {
+        fetched.push(url);
+        return url.endsWith("-index.html")
+        ? { text: `<tr><td><a href="nested/infotable.xml">filing</a></td><td>Information Table</td><td>INFORMATION TABLE</td><td>123</td></tr>`, status: 200, contentType: "text/html", byteLength: 120 }
+        : { text: `\uFEFF<!-- SEC --><?safe ok?>${xml(1).replace('<?xml version="1.0"?>', "")}`, status: 200, contentType: "application/xml", byteLength: 100 };
+      },
+    );
+    expect(report.sourceDocuments).toHaveLength(1);
+    expect(report.sourceDocuments[0]).toMatchObject({
+      selectedFilename: "infotable.xml", selectedDocumentType: "Information Table",
+      selectedPath: "/Archives/edgar/data/1/000000000124999999/nested/infotable.xml",
+      selectedIndexRow: 1, selectedSize: "123", rootElement: "informationTable", rejectionCode: null,
+    });
+    expect(new URL(fetched[1]).pathname).toBe(report.sourceDocuments[0].selectedPath);
   });
 
   it("reports source multiple rows independently from confirmed stored duplication", async () => {

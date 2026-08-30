@@ -228,39 +228,90 @@ export function parseInfoTableXml(xml: string): ParseResult {
  * Given the HTML index page of a filing, find the InfoTable XML document filename.
  * Returns the filename (not the full URL) of the primary holdings document.
  */
-export function findInfoTableDocumentFilename(indexHtml: string): string | null {
-  // Look for the InfoTable type or primary document in the filing index
-  // Common patterns:
-  // - type="informationTable" in the SGML header
-  // - "infotable.xml" or similar filename
-  // - Listed as primary document
+export type InfoTableSelectionRejection = "NONE" | "NO_CANDIDATE" | "MULTIPLE_CANDIDATES" | "WRONG_CANDIDATE";
+export interface InfoTableDocumentSelection {
+  filename: string | null;
+  href: string | null;
+  path: string | null;
+  documentType: string | null;
+  description: string | null;
+  size: string | null;
+  indexRow: number | null;
+  rejection: InfoTableSelectionRejection;
+}
 
-  // Try to find XML file listed in the index
-  const xmlMatch = indexHtml.match(
-    /href="([^"]*infotable[^"]*\.xml)"[^>]*>/i,
-  ) ?? indexHtml.match(
-    /href="([^"]*\.xml)"[^>]*>.*?information\s*table/i,
-  ) ?? indexHtml.match(
-    /href="([^"]*\.xml)"[^>]*>/i,
-  );
-
-  if (xmlMatch) {
-    const href = xmlMatch[1];
-    // Filing index HTML may use an absolute Archives path, but never permit
-    // path traversal to become a direct-document filename.
+export function selectInfoTableDocument(indexHtml: string, filingCik?: string, accessionNoDashes?: string): InfoTableDocumentSelection {
+  /*
+   * The index's "Document" column is not authoritative by itself: primary
+   * 13F HTML, schemas, and exhibits are frequently XML too.  Only accept an
+   * XML anchor in a row whose SEC type/description identifies it as the
+   * Information Table.  Deliberately return null for zero or multiple
+   * candidates; guessing would defeat the provenance diagnostic.
+   */
+  const decode = (value: string) => value
+    .replace(/&amp;/gi, "&").replace(/&#x2f;/gi, "/").replace(/&#47;/g, "/")
+    .replace(/&quot;/gi, '"').replace(/&#39;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(Number.parseInt(decimal, 10)));
+  const strip = (value: string) => decode(value).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const candidates: Array<InfoTableDocumentSelection> = [];
+  const expectedPath = filingCik && accessionNoDashes
+    ? `/Archives/edgar/data/${filingCik.replace(/^0+/, "")}/${accessionNoDashes}/`
+    : null;
+  const resolveHref = (rawHref: string): { href: string; path: string; filename: string } | null => {
+    const href = decode(rawHref).trim();
     if (href.includes("..") || href.includes("\\") || /[?#]/.test(href)) return null;
-    return href.split("/").pop() ?? null;
+    try {
+      const resolved = new URL(href, expectedPath ? `https://www.sec.gov${expectedPath}` : "https://www.sec.gov/Archives/");
+      if (resolved.protocol !== "https:" || !["www.sec.gov", "sec.gov"].includes(resolved.hostname)) return null;
+      if (expectedPath && !resolved.pathname.startsWith(expectedPath)) return null;
+      const filename = resolved.pathname.split("/").pop() ?? "";
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.xml$/i.test(filename)) return null;
+      if (/\.(xsd|xsl|xslt)$/i.test(filename) || /(?:schema|stylesheet|summary)/i.test(filename)) return null;
+      return { href, path: resolved.pathname, filename };
+    } catch { return null; }
+  };
+  const rows = indexHtml.match(/<tr\b[\s\S]*?<\/tr\s*>/gi) ?? [];
+  for (const [rowIndex, row] of rows.entries()) {
+    const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td\s*>/gi)].map((cell) => strip(cell[1]));
+    // SEC's filing-index columns are Document, Description, Type, Size.
+    // Require an entire Type or Description cell, never a filename or an
+    // incidental phrase elsewhere in a row.
+    const normalized = (value: string) => value.replace(/\s+/g, " ").trim().toUpperCase();
+    // The first cell contains the document anchor/filename and is never
+    // metadata evidence. SEC's Description/Type columns follow it.
+    const metadataCells = cells.slice(1);
+    const type = metadataCells.find((cell) => ["INFORMATION TABLE", "INFOTABLE"].includes(normalized(cell))) ?? null;
+    const description = metadataCells.find((cell) => ["INFORMATION TABLE", "INFOTABLE"].includes(normalized(cell))) ?? null;
+    if (!type && !description) continue;
+    const anchors = row.matchAll(/<a\b[^>]*\bhref\s*=\s*(["'])([\s\S]*?)\1[^>]*>/gi);
+    for (const anchor of anchors) {
+      const resolved = resolveHref(anchor[2] ?? "");
+      if (!resolved) continue;
+      candidates.push({
+        filename: resolved.filename, href: resolved.href, path: resolved.path, documentType: type, description,
+        size: cells.find((cell) => /^\d[\d,]*$/.test(cell)) ?? null, indexRow: rowIndex + 1, rejection: "NONE",
+      });
+    }
   }
-
-  // Try text format (older filings use .txt or 13F_HR format)
-  const txtMatch = indexHtml.match(/href="([^"]*13f[^"]*\.(txt|htm))"[^>]*>/i);
-  if (txtMatch) {
-    const href = txtMatch[1];
-    if (href.includes("..") || href.includes("\\") || /[?#]/.test(href)) return null;
-    return href.split("/").pop() ?? null;
+  // A legacy fragment has no table metadata, but an anchor's *visible text*
+  // exactly equal to Information Table is an explicit, narrow equivalent.
+  if (!rows.length) {
+    for (const anchor of indexHtml.matchAll(/<a\b[^>]*\bhref\s*=\s*(["'])([\s\S]*?)\1[^>]*>([\s\S]*?)<\/a\s*>/gi)) {
+      if (strip(anchor[3]).replace(/\s+/g, " ").trim().toUpperCase() !== "INFORMATION TABLE") continue;
+      const resolved = resolveHref(anchor[2] ?? "");
+      if (resolved) candidates.push({ filename: resolved.filename, href: resolved.href, path: resolved.path,
+        documentType: "INFORMATION TABLE", description: "INFORMATION TABLE", size: null, indexRow: null, rejection: "NONE" });
+    }
   }
+  if (candidates.length === 1) return candidates[0];
+  return { filename: null, href: null, path: null, documentType: null, description: null, size: null, indexRow: null,
+    rejection: candidates.length > 1 ? "MULTIPLE_CANDIDATES" : "NO_CANDIDATE" };
+}
 
-  return null;
+/** Compatibility helper for callers that need only the safe filename. */
+export function findInfoTableDocumentFilename(indexHtml: string, filingCik?: string, accessionNoDashes?: string): string | null {
+  return selectInfoTableDocument(indexHtml, filingCik, accessionNoDashes).filename;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,9 +359,8 @@ export function extractFilerName(headerText: string): string | null {
  * Whether a document looks like an XML InfoTable (vs. a text/HTML index).
  */
 export function isInfoTableXml(content: string): boolean {
-  const trimmed = content.trimStart();
-  return (
-    (trimmed.startsWith("<?xml") || trimmed.startsWith("<informationTable")) &&
-    trimmed.toLowerCase().includes("infotable")
-  );
+  const trimmed = content.replace(/^\uFEFF/, "").trimStart();
+  const root = trimmed.match(/^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*|<\?[\s\S]*?\?>\s*)*<([A-Za-z_][\w:.-]*)\b/i);
+  return root?.[1].split(":").pop()?.toLowerCase() === "informationtable"
+    && /<(?:(?:[A-Za-z_][\w.-]*):)?infotable\b/i.test(content);
 }

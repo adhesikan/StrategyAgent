@@ -1,15 +1,15 @@
 #!/usr/bin/env tsx
 /** Railway-production, SELECT-only SEC source-identity diagnostic. */
 import { sql } from "drizzle-orm";
-import { secFetch } from "../server/services/institutional/sec-client";
+import { secFetchDetailed } from "../server/services/institutional/sec-client";
 import { runProductionSourceIdentityDiagnostic } from "../server/services/institutional/production-source-identity-diagnostic";
 
 const SEC_FETCH_TIMEOUT_MS = 30_000;
-export async function fetchSecWithTimeout(url: string): Promise<string> {
+export async function fetchSecWithTimeout(url: string): Promise<{ text: string; legacyText: string; status: number; contentType: string | null; byteLength: number; decodingError: boolean; detectedEncoding: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SEC_FETCH_TIMEOUT_MS);
   try {
-    return await secFetch(url, undefined, controller.signal);
+    return await secFetchDetailed(url, undefined, controller.signal);
   } finally {
     clearTimeout(timeout);
   }

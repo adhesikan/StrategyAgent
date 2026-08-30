@@ -17,4 +17,7 @@ after persistence.
 Do not repair, deduplicate, or claim parser/ingestion duplication from stored
 field equality alone. A conclusive future workflow must persist and reconcile
 the SEC source-row identifier. Treat malformed, incomplete, or non-exact source
-evidence as unresolved rather than safe.
+evidence as unresolved rather than safe. For source reconciliation, a filename
+is not authoritative by itself: require explicit Information Table metadata
+from the filing index, fetch the exact validated same-accession path, and retain
+body-free transport/encoding/validator evidence for every attempted accession.

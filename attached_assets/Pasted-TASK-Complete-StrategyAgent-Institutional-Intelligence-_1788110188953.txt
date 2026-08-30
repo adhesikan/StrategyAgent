@@ -1,0 +1,449 @@
+TASK — Complete StrategyAgent Institutional Intelligence Coverage and Navigation
+
+Repository:
+StrategyAgent / VCP Trader AI
+
+IMPORTANT CONTEXT
+
+Production institutional acceptance has passed for the original validated symbols:
+
+AAPL
+NVDA
+MSFT
+COST
+
+Those symbols now render real Institutional Intelligence successfully.
+
+However, broader production usage is NOT ready.
+
+Example:
+
+JPM reaches the Institutional Intelligence Stock View but currently shows:
+
+- Accumulation score: Unavailable
+- Reported holders: 0
+- Reported shares: unavailable
+- Mapping coverage: 0%
+- Signal: unavailable
+- Trend classification: unavailable
+- Breadth direction: unavailable
+- no holder rows
+- no reported increases
+- no reported reductions
+- no accumulation components
+
+The page indicates mapping/data insufficiency.
+
+Additionally, the following Institutional Intelligence navigation tabs are not functioning correctly for ANY stock:
+
+- Trends
+- Rotation
+- Institutional discovery
+- Multibagger discovery
+
+Stock View is the only substantially working path.
+
+This must be fixed BEFORE wiring institutional.stockmetrics.pro to StrategyAgent.
+
+DO NOT:
+- start StockMetrics centralization
+- modify institutional.stockmetrics.pro
+- modify CongressFlow
+- modify Research
+- redesign the Institutional Intelligence UI
+- weaken existing production acceptance checks
+- rerun the previous four-symbol production repair blindly
+- hard-code JPM or any other ticker
+- fabricate mappings
+- guess ticker/CUSIP relationships
+- delete legitimate SEC source rows
+- change validated AAPL/NVDA/MSFT/COST semantics
+- enable new user-facing claims unsupported by 13F data
+
+OBJECTIVE
+
+Make StrategyAgent Institutional Intelligence function as a GENERIC institutional research backend/product rather than a four-symbol repaired demo.
+
+There are TWO bounded workstreams.
+
+==================================================
+WORKSTREAM A — GENERAL STOCK COVERAGE
+==================================================
+
+Determine why JPM and other legitimate 13F-reportable securities do not resolve into usable Institutional Intelligence.
+
+Do NOT assume the cause.
+
+Trace JPM end-to-end:
+
+symbol
+→ canonical security identity
+→ CUSIP/security mappings
+→ effective 13F holdings
+→ reliable mapping
+→ quarterly aggregates
+→ signal/trend inputs
+→ Institutional Stock View
+
+For JPM report exactly:
+
+1. canonical symbol/security identity
+2. associated CUSIP(s)
+3. number of effective holding rows
+4. number reliably mapped
+5. mapping status/source
+6. available quarters
+7. whether aggregate rows exist
+8. whether signal rows exist
+9. exact first stage at which usable data disappears
+
+Then determine whether JPM is representative of the broader unmapped universe.
+
+IMPORTANT EXISTING FACT
+
+The historical production dataset previously contained approximately:
+
+562k effective holding rows
+
+while only the initial validated symbols were repaired/mapped.
+
+Therefore do not treat four-symbol success as sufficient product coverage.
+
+GENERAL SOLUTION
+
+Implement the correct scalable mapping/aggregation path for the broader reliable universe.
+
+The system must:
+
+- use deterministic/reviewable security mapping
+- preserve CUSIP as canonical filing identity
+- avoid guessed tickers
+- distinguish reliable mappings from ambiguous mappings
+- support multiple legitimate CUSIPs associated with one symbol/security
+- preserve legitimate multiple SEC source rows
+- continue excluding options/PRN where common-equity rules require
+- preserve positive-share eligibility rules
+- use effective filings/amendment semantics
+- keep canonical reported_value in USD
+- use CUSIP-based QoQ manager comparison
+
+Do NOT attempt to force 100% mapping coverage.
+
+Ambiguous securities should remain unmapped.
+
+A symbol with insufficient reliable evidence should show an honest unavailable/partial state rather than fabricated data.
+
+REUSE EXISTING INFRASTRUCTURE
+
+Before building anything new, inspect:
+
+- institutional_security_mappings
+- security master/reference data
+- existing mapping services
+- ingestion mapping logic
+- aggregation services
+- repair tooling
+- source-provenance logic
+
+Prefer extending the validated mapping pipeline over creating a second mapping system.
+
+Do not create another temporary four-symbol repair script.
+
+The result must be a repeatable general pipeline.
+
+==================================================
+WORKSTREAM B — MAKE ALL INSTITUTIONAL TABS FUNCTIONAL
+==================================================
+
+Inspect the Institutional Intelligence frontend navigation and backend dependencies for:
+
+1. Stock View
+2. Trends
+3. Rotation
+4. Institutional discovery
+5. Multibagger discovery
+
+For each tab determine:
+
+- route/component
+- API endpoint(s)
+- service dependencies
+- required persisted tables/snapshots
+- current failure mode
+- whether backend data exists
+- whether feature flag or route wiring blocks it
+
+Do not replace functional backend logic with mocked data.
+
+---------------------------------
+TRENDS
+---------------------------------
+
+Make Trends operational using the validated institutional trend services.
+
+It should expose useful multi-quarter institutional research such as:
+
+- share/holder trend
+- accumulation/distribution patterns
+- breadth
+- changes across quarters
+- signal history where supported
+
+Use existing validated trend calculations.
+
+---------------------------------
+ROTATION
+---------------------------------
+
+Make Rotation operational using existing sector/theme institutional intelligence.
+
+Production acceptance already verified persisted:
+
+- sector intelligence snapshots
+- theme intelligence snapshots
+
+Use those existing services/data.
+
+Do not create a second rotation engine unless the existing implementation is genuinely missing.
+
+---------------------------------
+INSTITUTIONAL DISCOVERY
+---------------------------------
+
+Make Institutional Discovery operational.
+
+Use deterministic filtering/ranking over available institutional evidence.
+
+Examples of valid discovery dimensions:
+
+- newly reported positions
+- increasing reported participation
+- decreasing reported participation
+- breadth changes
+- manager participation changes
+- signal classifications
+- sector/theme alignment
+
+Do not label this:
+Smart Money
+Best Stocks
+Conviction Buys
+
+Maintain research-oriented language.
+
+---------------------------------
+MULTIBAGGER DISCOVERY
+---------------------------------
+
+First inspect what this tab was originally designed to do.
+
+Do NOT invent a new investment-prediction engine merely because the tab exists.
+
+If existing implementation has deterministic criteria, wire/fix those.
+
+If the tab is incomplete by design, report that clearly before implementing materially new scoring logic.
+
+Any output must remain research/context rather than promising future returns.
+
+==================================================
+DATA AVAILABILITY STATES
+==================================================
+
+The UI must distinguish:
+
+AVAILABLE
+
+PARTIAL
+
+INSUFFICIENT_HISTORY
+
+UNMAPPED
+
+UNSUPPORTED
+
+NO_REPORTED_POSITION
+
+UPSTREAM_ERROR
+
+Do not use:
+
+Reported holders = 0
+
+when the real condition is mapping failure or unavailable data.
+
+Zero must mean a genuine validated zero.
+
+For JPM currently, determine whether 0 holders is actually true or merely a consequence of mapping failure.
+
+If mapping coverage is 0%, holder count should not misleadingly imply that no institutions report JPM.
+
+==================================================
+USER EXPERIENCE CLEANUP
+==================================================
+
+Fix the existing presentation issue where backend floating-point precision leaks into the UI.
+
+Example:
+
+38.63636363636364
+
+should display:
+
+38.6
+
+Presentation formatting only.
+Do not change calculations.
+
+Add concise accessible tooltips for non-obvious institutional metrics, including:
+
+- Accumulation score
+- Reported holders
+- Reported shares
+- Reported value
+- Mapping coverage
+- Signal
+- Trend classification
+- Breadth direction
+- Breadth
+- Data Quality
+- Accumulation
+- Concentration
+- Entrants vs Exits
+- Newly reported
+- Increased
+- Reduced
+- No longer reported
+- Comparable managers
+- Confidence
+- Data as of
+
+Explain what a metric measures, not whether it is bullish/bearish or good/bad.
+
+==================================================
+VALIDATION
+==================================================
+
+Do NOT validate only the original four symbols.
+
+Use a broader representative validation set.
+
+At minimum:
+
+AAPL
+NVDA
+MSFT
+COST
+JPM
+
+Then select additional symbols representing different mapping/history cases, preferably:
+
+- another large bank
+- healthcare
+- industrial
+- consumer
+- ETF if supported
+- security with multiple CUSIPs if available
+- genuinely unmapped/ambiguous security
+
+Do not hard-code their outputs.
+
+Validate:
+
+- correct security identity
+- mapping behavior
+- stock analytics
+- QoQ aggregates
+- trends
+- signal behavior
+- holder lists
+- availability states
+- navigation tabs
+
+Regression requirement:
+
+AAPL/NVDA/MSFT/COST must remain consistent with the production-accepted behavior.
+
+==================================================
+SAFETY
+==================================================
+
+If broader production mappings or aggregates require writes:
+
+STOP before executing production writes.
+
+Produce:
+
+- exact proposed mapping population
+- reliable vs ambiguous count
+- expected holdings affected
+- aggregate rows to generate/update
+- signal rows affected
+- sector/theme refresh effects
+- deterministic plan/hash if appropriate
+- rollback/idempotency strategy
+
+Then report for approval.
+
+Do not perform a broad production APPLY automatically.
+
+Development/test database writes are permitted where normal for testing.
+
+==================================================
+TESTS
+==================================================
+
+Add regression coverage for:
+
+- generic security mapping
+- multiple CUSIPs per symbol
+- reliable mapping
+- ambiguous mapping remains unmapped
+- unmapped does not display misleading zero holders
+- no-reported-position genuine zero
+- common-equity exclusions
+- positive-share rule
+- Stock View
+- Trends
+- Rotation
+- Institutional Discovery
+- Multibagger route behavior
+- API failure states
+- null preservation
+- decimal formatting
+- tooltip rendering/accessibility
+
+Run:
+
+- focused institutional tests
+- full institutional suite
+- production build
+- git diff --check
+- independent architectural review
+
+==================================================
+COMPLETION REPORT
+==================================================
+
+Report:
+
+1. Exact JPM root cause
+2. Whether JPM represents a broader coverage issue
+3. Current global mapping coverage
+4. General mapping solution implemented/proposed
+5. Any production writes required
+6. Stock View status
+7. Trends status
+8. Rotation status
+9. Institutional Discovery status
+10. Multibagger Discovery status
+11. Files changed
+12. Tests/results
+13. Build result
+14. Review result
+15. Commit SHA
+16. Whether a guarded production mapping/aggregation operation is required
+17. Exact next command if production action requires approval
+
+STOP after this task.
+
+Do not begin institutional.stockmetrics.pro API wiring yet.

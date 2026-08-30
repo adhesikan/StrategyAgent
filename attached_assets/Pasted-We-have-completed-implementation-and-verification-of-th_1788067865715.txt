@@ -1,0 +1,120 @@
+We have completed implementation and verification of the Institutional
+Intelligence repair.
+
+CURRENT STATUS
+
+- Final architecture review: PASS
+- No critical findings
+- No high findings
+- Full Institutional Intelligence test suite: PASS
+- Production build: PASS
+- Guarded apply safety test: PASS
+- Development database remained unchanged
+- Application restart/log check: PASS
+- No production writes have occurred
+- No production deploy/feature enablement has occurred
+
+NEXT TASK
+
+Perform the production repair in a controlled, staged manner.
+
+IMPORTANT
+
+Do not enable:
+INSTITUTIONAL_INTELLIGENCE_ENABLED
+
+Do not delete or recreate raw 13F data.
+
+Do not run a full SEC historical re-download unless the existing persisted
+data is proven unusable.
+
+Do not guess ambiguous ticker/CUSIP mappings.
+
+Do not overwrite raw CUSIP values.
+
+Do not expose database credentials.
+
+PHASE 1 — PRODUCTION PREFLIGHT
+
+Run the repair tool against the production Railway database in DRY-RUN mode.
+
+Before any write, verify:
+
+1. Production database is the intended database.
+2. Raw institutional data still exists at approximately:
+   - 1,394 filings
+   - 562k holdings
+   - ~970 effective managers
+   - 41 effective historical quarters
+3. Mapping coverage is still effectively zero or near-zero.
+4. Aggregate rows are still zero or incomplete.
+5. No unexpected schema drift exists.
+
+Perform explicit identity validation for:
+
+AAPL
+CUSIP: 037833100
+
+NVDA
+CUSIP: 67066G104
+
+MSFT
+CUSIP: 594918104
+
+COST
+CUSIP: 22160K105
+
+Because previous diagnostics showed suspicious issuer-name/CUSIP combinations,
+do NOT continue automatically if the preflight cannot establish that the
+persisted raw records are structurally valid.
+
+If parser/data corruption is detected:
+STOP BEFORE WRITES.
+
+Report exactly what is wrong.
+
+PHASE 2 — REPAIR PLAN
+
+If preflight passes, report the exact counts that WOULD be changed:
+
+- new security mappings
+- existing mappings applied
+- holdings receiving reliable symbols
+- holdings remaining unmapped
+- aggregate rows to create/update
+- symbol signal rows to create/update
+- sector snapshot rows to rebuild
+- theme snapshot rows to rebuild
+
+Mappings must be deterministic/reliable.
+
+Ambiguous mappings remain unmapped.
+
+Put/call positions must remain separate.
+
+reported_value is already USD and must NOT be multiplied by 1000.
+
+Quarter-over-quarter comparisons must use CUSIP/security identity, not ticker.
+
+STOP AFTER DRY RUN.
+
+DO NOT APPLY PRODUCTION WRITES YET.
+
+RETURN
+
+PRODUCTION PREFLIGHT
+DATABASE SAFETY CHECK
+RAW DATA VALIDATION
+AAPL VALIDATION
+NVDA VALIDATION
+MSFT VALIDATION
+COST VALIDATION
+MAPPING PLAN
+AGGREGATION PLAN
+SIGNAL PLAN
+SECTOR/THEME REBUILD PLAN
+EXPECTED WRITE COUNTS
+WARNINGS
+GO / NO-GO RECOMMENDATION
+
+STOP.

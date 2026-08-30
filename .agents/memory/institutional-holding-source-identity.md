@@ -24,3 +24,8 @@ body-free transport/encoding/validator evidence for every attempted accession.
 SEC may list both an XSL-rendered `.html` representation and the raw `.xml`
 Information Table with the same type/sequence; select only the raw XML document
 label outside viewer/XSL paths, and fail closed if distinct raw candidates remain.
+
+For controlled production repair, source-confirmed multiple rows are preserved
+and aggregate-eligible; confirmed ingestion/persistence duplication, ambiguous
+matches, and unavailable evidence block. Bind the body-free provenance result
+to the repair plan hash and rerun it inside the write transaction before writes.

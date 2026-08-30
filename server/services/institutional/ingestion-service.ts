@@ -288,7 +288,7 @@ async function updateEffectivenessForFiler(
 // Aggregate recomputation for a symbol after ingestion
 // ---------------------------------------------------------------------------
 
-async function recomputeAggregateForSymbol(
+export async function recomputeAggregateForSymbol(
   symbol: string,
   periodOfReport: string,
   prevPeriodOfReport: string | null,
@@ -460,6 +460,124 @@ async function recomputeAggregateForSymbol(
         generatedAt: new Date(),
       },
     });
+}
+
+export interface InstitutionalAggregateRebuildResult {
+  symbolCount: number;
+  /** Bounded diagnostic sample (maximum 100 symbols). */
+  symbols: string[];
+  quarters: number;
+  rebuilt: number;
+  failed: number;
+  failures: Array<{ symbol: string; periodOfReport: string; error: string }>;
+  durationMs: number;
+}
+
+export function previousCalendarQuarterEnd(periodOfReport: string): string | null {
+  const match = /^(\d{4})-(03-31|06-30|09-30|12-31)$/.exec(periodOfReport);
+  if (!match) return null;
+  const year = Number(match[1]);
+  switch (match[2]) {
+    case "03-31": return `${year - 1}-12-31`;
+    case "06-30": return `${year}-03-31`;
+    case "09-30": return `${year}-06-30`;
+    case "12-31": return `${year}-09-30`;
+    default: return null;
+  }
+}
+
+/**
+ * Rebuild persisted aggregates from holdings that are already in the database.
+ * This never downloads or ingests SEC data. Quarters are processed oldest-first
+ * so each aggregate receives the correct previous comparable quarter.
+ */
+export async function rebuildInstitutionalAggregates(opts: {
+  symbols?: string[];
+} = {}): Promise<InstitutionalAggregateRebuildResult> {
+  const startedAt = Date.now();
+  let symbols = Array.from(
+    new Set((opts.symbols ?? []).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)),
+  ).sort();
+
+  if (symbols.length === 0) {
+    const rows = await db
+      .selectDistinct({ symbol: institutional13fHoldings.mappedSymbol })
+      .from(institutional13fHoldings)
+      .innerJoin(
+        institutional13fFilings,
+        and(
+          eq(institutional13fHoldings.accessionNumber, institutional13fFilings.accessionNumber),
+          eq(institutional13fFilings.isEffective, true),
+        ),
+      )
+      .where(
+        and(
+          inArray(institutional13fHoldings.mappingStatus, ["exact", "reviewed"]),
+          sql`${institutional13fHoldings.mappedSymbol} IS NOT NULL`,
+        ),
+      );
+    symbols = rows.map((row) => row.symbol!).filter(Boolean).sort();
+  }
+
+  let rebuilt = 0;
+  let failed = 0;
+  let quarterCount = 0;
+  const failures: InstitutionalAggregateRebuildResult["failures"] = [];
+
+  for (const symbol of symbols) {
+    const periodRows = await db
+      .selectDistinct({ periodOfReport: institutional13fHoldings.periodOfReport })
+      .from(institutional13fHoldings)
+      .innerJoin(
+        institutional13fFilings,
+        and(
+          eq(institutional13fHoldings.accessionNumber, institutional13fFilings.accessionNumber),
+          eq(institutional13fFilings.isEffective, true),
+        ),
+      )
+      .where(
+        and(
+          eq(institutional13fHoldings.mappedSymbol, symbol),
+          inArray(institutional13fHoldings.mappingStatus, ["exact", "reviewed"]),
+        ),
+      );
+
+    const periods = periodRows
+      .map((row) => String(row.periodOfReport))
+      .sort((a, b) => a.localeCompare(b));
+    quarterCount += periods.length;
+
+    for (let index = 0; index < periods.length; index++) {
+      const periodOfReport = periods[index];
+      const expectedPrevious = previousCalendarQuarterEnd(periodOfReport);
+      const prevPeriodOfReport = expectedPrevious && periods.includes(expectedPrevious)
+        ? expectedPrevious
+        : null;
+      try {
+        await recomputeAggregateForSymbol(symbol, periodOfReport, prevPeriodOfReport);
+        rebuilt++;
+      } catch (error: any) {
+        failed++;
+        if (failures.length < 100) {
+          failures.push({
+            symbol,
+            periodOfReport,
+            error: String(error?.message ?? error).slice(0, 200),
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    symbolCount: symbols.length,
+    symbols: symbols.slice(0, 100),
+    quarters: quarterCount,
+    rebuilt,
+    failed,
+    failures,
+    durationMs: Date.now() - startedAt,
+  };
 }
 
 

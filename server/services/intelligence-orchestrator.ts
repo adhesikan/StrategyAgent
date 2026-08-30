@@ -14,7 +14,11 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { institutionalSymbolSignals } from "../../shared/schema";
-import { getLatestRanking } from "./opportunity-ranking-engine";
+import {
+  computeRankingForSnapshot,
+  getLatestRanking,
+} from "./opportunity-ranking-engine";
+import { getLatestValidSnapshot } from "./opportunity-snapshot-store";
 import { getAllThemes } from "../config/theme-registry";
 import {
   computeSectorSnapshot,
@@ -146,7 +150,7 @@ async function loadInstitutionalSignals(): Promise<InstitutionalSignalSummary[]>
     sql`
       SELECT DISTINCT ON (symbol) symbol, label, score
       FROM institutional_symbol_signals
-      WHERE status = 'active'
+      WHERE status = 'available'
       ORDER BY symbol, calculated_at DESC
     `,
   );
@@ -171,6 +175,11 @@ interface PrecomputationStatus {
   running:          boolean;
 }
 
+export type IntelligencePrecomputationResult =
+  | { status: "completed"; sectorCount: number; themeCount: number; rankedCount: number; durationMs: number }
+  | { status: "blocked"; reason: "no_ranking_available"; durationMs: number }
+  | { status: "failed"; error: string; durationMs: number };
+
 const _precomputeStatus: PrecomputationStatus = {
   lastAttemptAt:    null,
   lastSuccessAt:    null,
@@ -190,7 +199,7 @@ export function getPrecomputationStatus(): Readonly<PrecomputationStatus> {
 // Main orchestration entry point
 // ---------------------------------------------------------------------------
 
-export async function runIntelligencePrecomputation(): Promise<void> {
+export async function runIntelligencePrecomputation(): Promise<IntelligencePrecomputationResult> {
   const startedAt = Date.now();
   _precomputeStatus.lastAttemptAt = new Date().toISOString();
   _precomputeStatus.running       = true;
@@ -199,14 +208,29 @@ export async function runIntelligencePrecomputation(): Promise<void> {
   structuredLog("info", { event: "intelligence_precomputation_started" });
 
   try {
-    const ranking = getLatestRanking();
+    let ranking = getLatestRanking();
+    if (!ranking) {
+      const persistedSnapshot = await getLatestValidSnapshot();
+      if (persistedSnapshot) {
+        ranking = await computeRankingForSnapshot(persistedSnapshot, null);
+        structuredLog("info", {
+          event: "intelligence_precomputation_ranking_restored",
+          snapshotId: persistedSnapshot.id,
+          completedAt: persistedSnapshot.completedAt,
+        });
+      }
+    }
     if (!ranking) {
       structuredLog("info", {
         event: "intelligence_precomputation_skipped",
         reason: "no_ranking_available",
       });
       _precomputeStatus.running = false;
-      return;
+      return {
+        status: "blocked",
+        reason: "no_ranking_available",
+        durationMs: Date.now() - startedAt,
+      };
     }
 
     const [symbolSectors, institutionalSignals, prevSectorMap, prevThemeMap] = await Promise.all([
@@ -259,6 +283,13 @@ export async function runIntelligencePrecomputation(): Promise<void> {
       rankedCount:  rankedSymbols.length,
       durationMs:   Date.now() - startedAt,
     });
+    return {
+      status: "completed",
+      sectorCount: sectorSnapshot.sectors.length,
+      themeCount: themeSnapshot.themes.length,
+      rankedCount: rankedSymbols.length,
+      durationMs: Date.now() - startedAt,
+    };
   } catch (err: any) {
     const msg = String(err?.message ?? err).slice(0, 300);
     _precomputeStatus.lastErrorMessage = msg;
@@ -267,6 +298,11 @@ export async function runIntelligencePrecomputation(): Promise<void> {
       error:      msg,
       durationMs: Date.now() - startedAt,
     });
+    return {
+      status: "failed",
+      error: msg,
+      durationMs: Date.now() - startedAt,
+    };
   } finally {
     _precomputeStatus.running = false;
   }

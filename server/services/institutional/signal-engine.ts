@@ -34,7 +34,7 @@
 //   insufficient : managerCountLatest < 2  → score = null
 
 import { db } from "../../db";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import {
   institutionalQuarterlyAggregates,
   institutionalSymbolSignals,
@@ -807,7 +807,7 @@ export async function rebuildInstitutionalSignalForSymbol(symbol: string): Promi
     .from(institutionalQuarterlyAggregates)
     .where(eq(institutionalQuarterlyAggregates.symbol, symbol))
     .orderBy(desc(institutionalQuarterlyAggregates.periodOfReport))
-    .limit(2);
+    .limit(1);
 
   if (rows.length === 0) {
     // No data at all — return unavailable, nothing to upsert
@@ -837,7 +837,19 @@ export async function rebuildInstitutionalSignalForSymbol(symbol: string): Promi
     return unavailable;
   }
 
-  const [current, previous] = rows;
+  const [current] = rows;
+  const [previous] = current.prevPeriodOfReport
+    ? await db
+        .select()
+        .from(institutionalQuarterlyAggregates)
+        .where(
+          and(
+            eq(institutionalQuarterlyAggregates.symbol, symbol),
+            eq(institutionalQuarterlyAggregates.periodOfReport, current.prevPeriodOfReport),
+          ),
+        )
+        .limit(1)
+    : [];
   const signal = buildInstitutionalSignal(current, previous ?? null);
 
   // Upsert into institutional_symbol_signals

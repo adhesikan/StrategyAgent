@@ -187,3 +187,99 @@ The state machine is pure (no DB calls) and lives in `server/services/institutio
 - [ ] Wait for first READY quarter (check status script)
 - [ ] Set `INSTITUTIONAL_INTELLIGENCE_ENABLED=true` on main web service
 - [ ] Verify Research Package → Institutional tab shows data
+
+## Existing-data production repair
+
+Use this flow only when SEC filings and holdings already exist but reliable
+CUSIP mappings, aggregates, signals, or sector/theme snapshots are missing.
+It does not download SEC data and it does not change the public feature flag.
+
+### 1. Keep the public feature disabled
+
+Confirm `INSTITUTIONAL_INTELLIGENCE_ENABLED=false`. The repair command refuses
+write mode while the public feature is enabled.
+
+### 2. Run the read-only plan
+
+```bash
+npx tsx scripts/repair-institutional-production-data.ts
+```
+
+Review the database identity, schema result, duplicate/orphan checks, all four
+expected CUSIP traces, mapping status counts, rows to update, aggregate scope,
+blocking issues, and the SHA-256 `planHash`. Dry-run uses SELECT statements only.
+
+Stop if any blocking issue is reported. In particular, do not proceed when an
+expected CUSIP points at a different symbol, an existing holding has a conflicting
+symbol, duplicate holding groups exist, or one of AAPL/NVDA/MSFT/COST is absent.
+
+### 3. Explicitly apply the reviewed plan
+
+Copy the hash from the immediately preceding dry-run:
+
+```bash
+npx tsx scripts/repair-institutional-production-data.ts \
+  --apply \
+  --environment production \
+  --confirm REPAIR_INSTITUTIONAL_PRODUCTION_DATA \
+  --plan-hash <DRY_RUN_PLAN_HASH> \
+  --database-name <DATABASE_NAME_FROM_DRY_RUN> \
+  --checkpoint-file /tmp/institutional-repair-checkpoint.json
+```
+
+Write mode uses a dedicated transaction-scoped PostgreSQL advisory lock. It
+re-runs the preflight under `REPEATABLE READ` and aborts if the plan hash changed.
+Only `mapped_symbol` and `mapping_status` are updated on effective holdings, and
+only from exact/reviewed mapping references. Raw CUSIP, issuer, class, value,
+shares, put/call, PRN type, filing identity, and historical filings are untouched.
+
+The four verified mappings are inserted or promoted idempotently. Heuristic,
+probable, ambiguous, unmapped, and rejected references are never promoted.
+Aggregates are rebuilt oldest-first so each quarter uses its actual preceding
+comparable quarter. Put/call and PRN rows remain excluded by the aggregation
+engine. Signals use the latest two aggregate quarters.
+
+Sector/theme rebuilding restores the latest valid opportunity snapshot from
+PostgreSQL when the one-off repair process has no in-memory ranking. If no valid
+persisted snapshot exists, the checkpoint records that stage as `blocked`; it
+never claims success. Run a normal Opportunity Engine scan so it persists a valid
+snapshot, then resume from snapshots:
+
+```bash
+npx tsx scripts/repair-institutional-production-data.ts \
+  --apply \
+  --environment production \
+  --confirm REPAIR_INSTITUTIONAL_PRODUCTION_DATA \
+  --plan-hash <FRESH_DRY_RUN_PLAN_HASH> \
+  --database-name <DATABASE_NAME_FROM_DRY_RUN> \
+  --checkpoint-file /tmp/institutional-repair-checkpoint.json \
+  --from-stage snapshots
+```
+
+Always run a fresh dry-run before a resume because mapped counts and therefore
+the plan hash change after a completed stage. Resume also verifies the existing
+checkpoint's database identity, post-mapping plan hash, and all prior stage
+completion records. Do not point `--from-stage` at a new or unrelated file.
+
+### 4. Validate without writes
+
+```bash
+npx tsx scripts/audit-institutional-production-data.ts
+npx tsx scripts/audit-institutional-readiness.ts
+```
+
+The production-data audit reports mapping coverage, holder/manager counts,
+comparable quarters, activity counts, aggregate freshness, signal status, and
+sector/theme snapshot freshness for AAPL, NVDA, MSFT, and COST.
+
+### Recovery and rollback
+
+- Before the mapping transaction commits, any failure rolls back the entire
+  mapping stage automatically.
+- After mapping commits, downstream stages are derived and idempotent. Fix the
+  reported cause, run a fresh dry-run, and resume from the failed stage.
+- Do not manually reverse mapped rows based only on a checkpoint count. If a
+  verified mapping itself was wrong, disable the public feature, restore the
+  affected database from the Railway backup/checkpoint, then rerun validation.
+- Do not run SEC backfill as a repair shortcut: it is unnecessary and can make
+  incident diagnosis harder.

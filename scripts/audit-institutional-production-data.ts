@@ -9,6 +9,7 @@
 
 import { db } from "../server/db";
 import { sql } from "drizzle-orm";
+import { validateInstitutionalRepairSymbols } from "../server/services/institutional/production-repair";
 
 export const EXPECTED_SECURITY_CUSIPS = {
   AAPL: "037833100",
@@ -322,6 +323,17 @@ async function main(): Promise<void> {
       `);
       printRows(`OPTIONAL TABLE ${tableName}`, [{ present: true, ...rowsOf(result)[0] }]);
     }
+  }
+
+  try {
+    const repairValidation = await validateInstitutionalRepairSymbols();
+    printRows("REPAIR VALIDATION — AAPL, NVDA, MSFT, COST", repairValidation.symbols);
+    printRows("REPAIR VALIDATION — SECTOR/THEME SNAPSHOT FRESHNESS", [repairValidation.snapshots]);
+  } catch (error: any) {
+    printRows("REPAIR VALIDATION", [{
+      available: false,
+      reason: String(error?.message ?? error).slice(0, 200),
+    }]);
   }
 
   const mappingState = inferMappingPipelineState({

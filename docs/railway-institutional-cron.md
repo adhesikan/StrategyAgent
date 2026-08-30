@@ -249,11 +249,12 @@ sector, and theme rows that the reviewed plan would write or rebuild.
 
 Stop if any blocking issue is reported. In particular, do not proceed when an
 expected CUSIP points at a different symbol, an existing holding has a conflicting
-symbol, duplicate holding groups exist, or one of AAPL/NVDA/MSFT/COST is absent.
+symbol, source-identity-unresolved aggregate-eligible rows occur within the
+AAPL/NVDA/MSFT/COST repair scope, or one of those four symbols is absent.
 
-If `DUPLICATE_HOLDING_GROUPS_PRESENT` is the only blocker, do not delete or
-deduplicate holdings. Run the dedicated SELECT-only classifier from the Railway
-application shell:
+If an older dry run reports `DUPLICATE_HOLDING_GROUPS_PRESENT`, do not delete or
+deduplicate holdings. Deploy the corrected preflight and run the dedicated
+SELECT-only classifier from the Railway application shell:
 
 ```bash
 npx tsx scripts/classify-institutional-holding-duplicates.ts
@@ -266,6 +267,25 @@ also reports equity/PUT/CALL groups that the current key correctly keeps separat
 and explains the conditional AAPL/NVDA/MSFT/COST aggregate impact. The SEC bulk
 `INFOTABLE_SK` source-row identifier is not currently persisted, so stored rows
 alone cannot prove duplicate source rows or an actual overcount.
+
+The production classification completed on August 30, 2026 found 60,413 legacy
+key groups: 60,365 materially distinct groups and 48 identical-stored-material
+groups with unresolved source identity. AAPL, NVDA, MSFT, and COST had 64, 68,
+68, and 50 flagged groups respectively; every target group was materially
+distinct, with zero source-identity-unresolved target groups. Therefore:
+
+- `DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED` is the documented root cause for
+  the old global blocker.
+- Global materially distinct and source-identity-unresolved counts remain
+  visible as data-quality warnings.
+- Only source-identity-unresolved, aggregate-eligible rows inside the explicit
+  repair scope block the controlled repair.
+- No parser, ingestion, or database duplication claim is supported for the 48
+  unresolved groups.
+
+Future SEC ingestion should preserve `INFOTABLE_SK`, or an equivalent stable
+source-row identifier, so exact source duplication can be determined. That
+schema/data migration is intentionally outside this repair.
 
 ### 3. Explicitly apply the reviewed plan
 

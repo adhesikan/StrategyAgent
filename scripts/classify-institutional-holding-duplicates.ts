@@ -428,7 +428,7 @@ async function main(): Promise<void> {
   console.log("  PARSER_DUPLICATION: cannot be proven from stored rows because INFOTABLE_SK was discarded.");
   console.log("  INGESTION_DUPLICATION: identical-material groups may indicate it, but source identity is required to prove it.");
   console.log("  AMENDMENT_HANDLING_PROBLEM: supported only if effective/superseded filing state is inconsistent.");
-  console.log("  DATABASE_DUPLICATION: repeated identical-material rows exist physically; source redundancy remains unresolved.");
+  console.log("  STORED_ROW_REPETITION_OBSERVED: identical-material rows exist physically; source redundancy remains unresolved.");
   console.log("\nNO-GO: do not run the production repair until this output is reviewed.");
   console.log("=== Classification complete — production data unchanged ===\n");
 }

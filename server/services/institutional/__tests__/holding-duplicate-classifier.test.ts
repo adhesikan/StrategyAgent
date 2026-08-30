@@ -72,6 +72,14 @@ describe("institutional holding duplicate identity", () => {
       stored(),
       stored({ votingSole: 0, votingShared: 100 }),
     ])).toBe("MATERIALLY_DISTINCT_VOTING_AUTHORITY");
+    expect(classifyStoredDuplicateGroup([
+      stored(),
+      stored({ otherManager: "02" }),
+    ])).toBe("MATERIALLY_DISTINCT_OTHER_MANAGER");
+    expect(classifyStoredDuplicateGroup([
+      stored(),
+      stored({ reportedShares: 101, reportedValue: 1010 }),
+    ])).toBe("MATERIALLY_DISTINCT_REPORTED_AMOUNT");
   });
 
   it("does not classify common stock and PUT/CALL lines as one duplicate group", () => {

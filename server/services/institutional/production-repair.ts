@@ -33,6 +33,7 @@ export interface ExpectedSecurityTrace {
   effectiveHoldingRows: number;
   mappedHoldingRows: number;
   conflictingHoldingRows: number;
+  sourceIdentityUnresolvedEligibleGroups: number;
   issuerIdentityMatched: boolean;
   referenceSymbol: string | null;
   referenceStatus: string | null;
@@ -49,6 +50,15 @@ export interface InstitutionalRepairPreflight {
   schemaReady: boolean;
   publicFeatureEnabled: boolean;
   duplicateHoldingGroups: number;
+  duplicateClassification: {
+    materiallyDistinctGroups: number;
+    sourceIdentityUnresolvedGroups: number;
+    affectedFilings: number;
+    affectedCusips: number;
+    exactSourceDuplicateCount: "UNDETERMINABLE_WITHOUT_INFOTABLE_SK";
+    rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED";
+  };
+  dataQualityWarnings: string[];
   orphanHoldingRows: number;
   mappingCounts: Record<string, number>;
   dataQuality: {
@@ -201,13 +211,37 @@ export function getRepairStageBlockingIssues(
   return [];
 }
 
+export function getRepairScopeDuplicateBlockingIssues(
+  expectedSecurities: ExpectedSecurityTrace[],
+): string[] {
+  return expectedSecurities
+    .filter((trace) => trace.sourceIdentityUnresolvedEligibleGroups > 0)
+    .map((trace) => `SOURCE_IDENTITY_UNRESOLVED_IN_REPAIR_SCOPE:${trace.symbol}`);
+}
+
+export function buildDuplicateDataQualityWarnings(input: {
+  materiallyDistinctGroups: number;
+  sourceIdentityUnresolvedGroups: number;
+}): string[] {
+  return [
+    ...(input.materiallyDistinctGroups > 0
+      ? [
+        "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED",
+        `MATERIALLY_DISTINCT_LEGACY_KEY_GROUPS:${input.materiallyDistinctGroups}`,
+      ]
+      : []),
+    ...(input.sourceIdentityUnresolvedGroups > 0
+      ? [`SOURCE_IDENTITY_UNRESOLVED_GLOBAL:${input.sourceIdentityUnresolvedGroups}`]
+      : []),
+  ];
+}
+
 export function getRepairBlockingIssues(
   preflight: Omit<InstitutionalRepairPreflight, "blockingIssues" | "planHash">,
 ): string[] {
   const issues: string[] = [];
   if (!preflight.schemaReady) issues.push("INSTITUTIONAL_SCHEMA_MISSING_OR_INCOMPATIBLE");
   if (preflight.publicFeatureEnabled) issues.push("PUBLIC_FEATURE_MUST_REMAIN_DISABLED");
-  if (preflight.duplicateHoldingGroups > 0) issues.push("DUPLICATE_HOLDING_GROUPS_PRESENT");
   if (preflight.orphanHoldingRows > 0) issues.push("ORPHAN_HOLDINGS_PRESENT");
   if (preflight.dataQuality.effectiveFilings === 0) {
     issues.push("NO_EFFECTIVE_FILINGS");
@@ -234,6 +268,7 @@ export function getRepairBlockingIssues(
     }
     if (trace.mappingAction === "conflict") issues.push(`EXPECTED_CUSIP_CONFLICT:${trace.symbol}`);
   }
+  issues.push(...getRepairScopeDuplicateBlockingIssues(preflight.expectedSecurities));
   if (preflight.plan.conflictingMappedHoldings > 0) {
     issues.push("CONFLICTING_EXISTING_HOLDING_MAPPINGS");
   }
@@ -299,6 +334,15 @@ export async function loadInstitutionalRepairPreflight(
       schemaReady: false,
       publicFeatureEnabled: process.env.INSTITUTIONAL_INTELLIGENCE_ENABLED === "true",
       duplicateHoldingGroups: 0,
+      duplicateClassification: {
+        materiallyDistinctGroups: 0,
+        sourceIdentityUnresolvedGroups: 0,
+        affectedFilings: 0,
+        affectedCusips: 0,
+        exactSourceDuplicateCount: "UNDETERMINABLE_WITHOUT_INFOTABLE_SK" as const,
+        rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED" as const,
+      },
+      dataQualityWarnings: [],
       orphanHoldingRows: 0,
       mappingCounts: {},
       dataQuality: {
@@ -320,6 +364,7 @@ export async function loadInstitutionalRepairPreflight(
         effectiveHoldingRows: 0,
         mappedHoldingRows: 0,
         conflictingHoldingRows: 0,
+        sourceIdentityUnresolvedEligibleGroups: 0,
         issuerIdentityMatched: false,
         referenceSymbol: null,
         referenceStatus: null,
@@ -359,6 +404,52 @@ export async function loadInstitutionalRepairPreflight(
       INNER JOIN institutional_13f_filings f
         ON f.accession_number = h.accession_number
        AND f.is_effective = TRUE
+    ),
+    target_unresolved_groups AS (
+      SELECT cusip, COUNT(*)::int AS group_count
+      FROM (
+        SELECT
+          h.accession_number,
+          h.cusip,
+          h.class_title,
+          h.issuer_name,
+          h.figi,
+          h.reported_value,
+          h.reported_shares,
+          h.shares_prn_type,
+          h.investment_discretion,
+          h.other_manager,
+          h.voting_sole,
+          h.voting_shared,
+          h.voting_none,
+          h.filer_cik,
+          h.period_of_report,
+          h.filing_date
+        FROM effective_holdings h
+        WHERE h.cusip IN (${sql.join(expectedCusips.map((cusip) => sql`${cusip}`), sql`, `)})
+          AND h.put_call IS NULL
+          AND h.shares_prn_type IS DISTINCT FROM 'PRN'
+          AND h.reported_shares > 0
+        GROUP BY
+          h.accession_number,
+          h.cusip,
+          h.class_title,
+          h.issuer_name,
+          h.figi,
+          h.reported_value,
+          h.reported_shares,
+          h.shares_prn_type,
+          h.investment_discretion,
+          h.other_manager,
+          h.voting_sole,
+          h.voting_shared,
+          h.voting_none,
+          h.filer_cik,
+          h.period_of_report,
+          h.filing_date
+        HAVING COUNT(*) > 1
+      ) unresolved
+      GROUP BY cusip
     )
     SELECT
       h.cusip,
@@ -375,9 +466,11 @@ export async function loadInstitutionalRepairPreflight(
           END
       )::int AS conflicting_holding_rows,
       MAX(m.mapped_symbol) AS reference_symbol,
-      MAX(m.mapping_status) AS reference_status
+      MAX(m.mapping_status) AS reference_status,
+      COALESCE(MAX(u.group_count), 0)::int AS source_identity_unresolved_eligible_groups
     FROM effective_holdings h
     LEFT JOIN institutional_security_mappings m ON m.cusip = h.cusip
+    LEFT JOIN target_unresolved_groups u ON u.cusip = h.cusip
     WHERE h.cusip IN (${sql.join(expectedCusips.map((cusip) => sql`${cusip}`), sql`, `)})
     GROUP BY h.cusip
   `));
@@ -391,6 +484,9 @@ export async function loadInstitutionalRepairPreflight(
       effectiveHoldingRows: asCount(row.effective_holding_rows),
       mappedHoldingRows: asCount(row.mapped_holding_rows),
       conflictingHoldingRows: asCount(row.conflicting_holding_rows),
+      sourceIdentityUnresolvedEligibleGroups: asCount(
+        row.source_identity_unresolved_eligible_groups,
+      ),
       referenceSymbol: row.reference_symbol ? String(row.reference_symbol) : null,
       referenceStatus: row.reference_status ? String(row.reference_status) : null,
       issuerIdentityMatched: issuerNamesMatchExpectedSymbol(
@@ -402,13 +498,38 @@ export async function loadInstitutionalRepairPreflight(
   });
 
   const duplicateRows = rowsOf(await executor.execute(sql`
-    SELECT COUNT(*)::int AS count
-    FROM (
-      SELECT accession_number, cusip, class_title, COALESCE(put_call, '')
+    WITH group_stats AS (
+      SELECT
+        accession_number,
+        cusip,
+        class_title,
+        COALESCE(put_call, '') AS put_call_key,
+        COUNT(DISTINCT ROW(
+          issuer_name,
+          figi,
+          reported_value,
+          reported_shares,
+          shares_prn_type,
+          investment_discretion,
+          other_manager,
+          voting_sole,
+          voting_shared,
+          voting_none,
+          filer_cik,
+          period_of_report,
+          filing_date
+        ))::int AS material_variant_count
       FROM institutional_13f_holdings
       GROUP BY accession_number, cusip, class_title, COALESCE(put_call, '')
       HAVING COUNT(*) > 1
-    ) duplicates
+    )
+    SELECT
+      COUNT(*)::int AS current_key_groups,
+      COUNT(*) FILTER (WHERE material_variant_count > 1)::int AS materially_distinct_groups,
+      COUNT(*) FILTER (WHERE material_variant_count = 1)::int AS source_identity_unresolved_groups,
+      COUNT(DISTINCT accession_number)::int AS affected_filings,
+      COUNT(DISTINCT cusip)::int AS affected_cusips
+    FROM group_stats
   `));
   const orphanRows = rowsOf(await executor.execute(sql`
     SELECT COUNT(*)::int AS count
@@ -560,6 +681,17 @@ export async function loadInstitutionalRepairPreflight(
   `));
   const planRow = planRows[0] ?? {};
 
+  const duplicateRow = duplicateRows[0] ?? {};
+  const duplicateClassification = {
+    materiallyDistinctGroups: asCount(duplicateRow.materially_distinct_groups),
+    sourceIdentityUnresolvedGroups: asCount(duplicateRow.source_identity_unresolved_groups),
+    affectedFilings: asCount(duplicateRow.affected_filings),
+    affectedCusips: asCount(duplicateRow.affected_cusips),
+    exactSourceDuplicateCount: "UNDETERMINABLE_WITHOUT_INFOTABLE_SK" as const,
+    rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED" as const,
+  };
+  const dataQualityWarnings = buildDuplicateDataQualityWarnings(duplicateClassification);
+
   const base = {
     databaseIdentity: {
       database: String(identity.database ?? "unknown"),
@@ -569,7 +701,9 @@ export async function loadInstitutionalRepairPreflight(
     },
     schemaReady,
     publicFeatureEnabled: process.env.INSTITUTIONAL_INTELLIGENCE_ENABLED === "true",
-    duplicateHoldingGroups: asCount(duplicateRows[0]?.count),
+    duplicateHoldingGroups: asCount(duplicateRow.current_key_groups),
+    duplicateClassification,
+    dataQualityWarnings,
     orphanHoldingRows: asCount(orphanRows[0]?.count),
     mappingCounts,
     dataQuality: {

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   INSTITUTIONAL_REPAIR_CONFIRMATION,
   VERIFIED_REPAIR_MAPPINGS,
+  buildDuplicateDataQualityWarnings,
   buildInstitutionalRepairPlanHash,
   classifyExpectedSecurityTrace,
   evaluateInstitutionalRepairValidation,
   getRepairBlockingIssues,
+  getRepairScopeDuplicateBlockingIssues,
   getRepairStageBlockingIssues,
   issuerNamesMatchExpectedSymbol,
   shouldRunRepairStage,
@@ -103,6 +105,18 @@ describe("institutional production repair safety", () => {
       schemaReady: true,
       publicFeatureEnabled: false,
       duplicateHoldingGroups: 2,
+      duplicateClassification: {
+        materiallyDistinctGroups: 2,
+        sourceIdentityUnresolvedGroups: 0,
+        affectedFilings: 2,
+        affectedCusips: 2,
+        exactSourceDuplicateCount: "UNDETERMINABLE_WITHOUT_INFOTABLE_SK",
+        rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED",
+      },
+      dataQualityWarnings: [
+        "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED",
+        "MATERIALLY_DISTINCT_LEGACY_KEY_GROUPS:2",
+      ],
       orphanHoldingRows: 1,
       mappingCounts: {},
       dataQuality: {
@@ -124,6 +138,7 @@ describe("institutional production repair safety", () => {
         effectiveHoldingRows: index === 0 ? 0 : 1,
         mappedHoldingRows: 0,
         conflictingHoldingRows: index === 1 ? 1 : 0,
+        sourceIdentityUnresolvedEligibleGroups: index === 2 ? 1 : 0,
         issuerIdentityMatched: true,
         referenceSymbol: null,
         referenceStatus: null,
@@ -151,13 +166,42 @@ describe("institutional production repair safety", () => {
         targetHoldingDigest: "holdings",
       },
     });
-    expect(issues).toContain("DUPLICATE_HOLDING_GROUPS_PRESENT");
+    expect(issues).not.toContain("DUPLICATE_HOLDING_GROUPS_PRESENT");
+    expect(issues).toContain("SOURCE_IDENTITY_UNRESOLVED_IN_REPAIR_SCOPE:MSFT");
     expect(issues).toContain("ORPHAN_HOLDINGS_PRESENT");
     expect(issues).toContain("EXPECTED_CUSIP_NOT_PRESENT:AAPL");
     expect(issues).toContain("EXPECTED_CUSIP_CONFLICT:NVDA");
     expect(issues).toContain("CONFLICTING_EXISTING_HOLDING_MAPPINGS");
     expect(issues).toContain("NO_EFFECTIVE_FILINGS");
     expect(issues).toContain("INSUFFICIENT_HISTORICAL_QUARTERS");
+  });
+
+  it("treats global duplicate classifications as warnings and blocks only unresolved target rows", () => {
+    const cleanTargets = VERIFIED_REPAIR_MAPPINGS.map((mapping) => ({
+      ...mapping,
+      issuerNames: [mapping.issuerName],
+      effectiveHoldingRows: 10,
+      mappedHoldingRows: 0,
+      conflictingHoldingRows: 0,
+      sourceIdentityUnresolvedEligibleGroups: 0,
+      issuerIdentityMatched: true,
+      referenceSymbol: null,
+      referenceStatus: null,
+      mappingAction: "insert_reviewed" as const,
+    }));
+    expect(getRepairScopeDuplicateBlockingIssues(cleanTargets)).toEqual([]);
+    expect(buildDuplicateDataQualityWarnings({
+      materiallyDistinctGroups: 60_365,
+      sourceIdentityUnresolvedGroups: 48,
+    })).toEqual([
+      "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED",
+      "MATERIALLY_DISTINCT_LEGACY_KEY_GROUPS:60365",
+      "SOURCE_IDENTITY_UNRESOLVED_GLOBAL:48",
+    ]);
+    expect(getRepairScopeDuplicateBlockingIssues([
+      ...cleanTargets.slice(0, 3),
+      { ...cleanTargets[3], sourceIdentityUnresolvedEligibleGroups: 2 },
+    ])).toEqual(["SOURCE_IDENTITY_UNRESOLVED_IN_REPAIR_SCOPE:COST"]);
   });
 
   it("stops when existing reliable mapping coverage is no longer near zero", () => {
@@ -171,6 +215,15 @@ describe("institutional production repair safety", () => {
       schemaReady: true,
       publicFeatureEnabled: false,
       duplicateHoldingGroups: 0,
+      duplicateClassification: {
+        materiallyDistinctGroups: 0,
+        sourceIdentityUnresolvedGroups: 0,
+        affectedFilings: 0,
+        affectedCusips: 0,
+        exactSourceDuplicateCount: "UNDETERMINABLE_WITHOUT_INFOTABLE_SK",
+        rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED",
+      },
+      dataQualityWarnings: [],
       orphanHoldingRows: 0,
       mappingCounts: { reviewed: 10 },
       dataQuality: {
@@ -192,6 +245,7 @@ describe("institutional production repair safety", () => {
         effectiveHoldingRows: 10,
         mappedHoldingRows: 0,
         conflictingHoldingRows: 0,
+        sourceIdentityUnresolvedEligibleGroups: 0,
         issuerIdentityMatched: true,
         referenceSymbol: null,
         referenceStatus: null,
@@ -241,6 +295,15 @@ describe("institutional production repair safety", () => {
       schemaReady: true,
       publicFeatureEnabled: false,
       duplicateHoldingGroups: 0,
+      duplicateClassification: {
+        materiallyDistinctGroups: 0,
+        sourceIdentityUnresolvedGroups: 0,
+        affectedFilings: 0,
+        affectedCusips: 0,
+        exactSourceDuplicateCount: "UNDETERMINABLE_WITHOUT_INFOTABLE_SK",
+        rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED",
+      },
+      dataQualityWarnings: [],
       orphanHoldingRows: 0,
       mappingCounts: {},
       dataQuality: {

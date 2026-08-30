@@ -287,6 +287,30 @@ Future SEC ingestion should preserve `INFOTABLE_SK`, or an equivalent stable
 source-row identifier, so exact source duplication can be determined. That
 schema/data migration is intentionally outside this repair.
 
+When the repair-scope query reports exactly 30 unresolved AAPL/NVDA/MSFT groups
+and zero COST groups, run the dedicated Railway production source diagnostic
+before considering any interpretation of those rows:
+
+```bash
+npx tsx scripts/diagnose-institutional-production-source-identity.ts \
+  --database-name <DATABASE_NAME_FROM_DRY_RUN> \
+  --project-id <EXPECTED_RAILWAY_PROJECT_ID> \
+  --service-id <EXPECTED_RAILWAY_SERVICE_ID> \
+  --environment-id <EXPECTED_RAILWAY_ENVIRONMENT_ID>
+```
+
+This command is SELECT-only and fetches only the required SEC filing index and
+Information Table documents, sequentially by full accession. It requires the
+Railway production identity guards and `SEC_USER_AGENT`, reports each source
+identity as accession + document filename + row ordinal (plus a native source
+ID when one is available; row ordinals are one-based), and always ends with
+`PRODUCTION APPLY: NO`.
+`SOURCE_ROWS_CONFIRM_MULTIPLE` is distinct from
+`INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED`; unavailable or non-exact
+source matches are not evidence for a repair. Future ingestion should persist
+the SEC `INFOTABLE_SK` whenever available, together with the source document
+filename and stable row ordinal.
+
 ### 3. Explicitly apply the reviewed plan
 
 Copy the hash from the immediately preceding dry-run:

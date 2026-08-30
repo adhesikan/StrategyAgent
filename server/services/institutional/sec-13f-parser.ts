@@ -244,11 +244,21 @@ export function findInfoTableDocumentFilename(indexHtml: string): string | null 
     /href="([^"]*\.xml)"[^>]*>/i,
   );
 
-  if (xmlMatch) return xmlMatch[1].split("/").pop() ?? null;
+  if (xmlMatch) {
+    const href = xmlMatch[1];
+    // Filing index HTML may use an absolute Archives path, but never permit
+    // path traversal to become a direct-document filename.
+    if (href.includes("..") || href.includes("\\") || /[?#]/.test(href)) return null;
+    return href.split("/").pop() ?? null;
+  }
 
   // Try text format (older filings use .txt or 13F_HR format)
   const txtMatch = indexHtml.match(/href="([^"]*13f[^"]*\.(txt|htm))"[^>]*>/i);
-  if (txtMatch) return txtMatch[1].split("/").pop() ?? null;
+  if (txtMatch) {
+    const href = txtMatch[1];
+    if (href.includes("..") || href.includes("\\") || /[?#]/.test(href)) return null;
+    return href.split("/").pop() ?? null;
+  }
 
   return null;
 }

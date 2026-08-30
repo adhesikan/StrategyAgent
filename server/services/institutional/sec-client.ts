@@ -197,15 +197,19 @@ export function quarterlyIndexUrl(year: number, qtr: string): string {
 
 /**
  * URL for the EDGAR filing index page (header) for a given CIK + accession.
- * Accession number should be normalized without dashes, e.g. "0001364742240000078".
+ * Accession number should be normalized without dashes, e.g. "000136474224000007".
  */
 export function filingIndexUrl(cik: string, accessionNoDashes: string): string {
+  const normalizedAccession = accessionNoDashes.replace(/-/g, "");
+  if (!/^\d{18}$/.test(normalizedAccession)) {
+    throw new Error("SEC_ACCESSION_INVALID: expected 18 digits (10-2-6)");
+  }
+  if (!/^\d+$/.test(cik.trim())) {
+    throw new Error("SEC_CIK_INVALID: expected numeric CIK");
+  }
   const cikTrimmed = cik.replace(/^0+/, "");
-  const accessionDashed = accessionNoDashes.replace(
-    /^(\d{10})(\d{6})(\d+)$/,
-    "$1-$2-$3",
-  );
-  return `${EDGAR_BASE}/Archives/edgar/data/${cikTrimmed}/${accessionNoDashes}/${accessionDashed}-index.htm`;
+  const accessionDashed = normalizedAccession.replace(/^(\d{10})(\d{2})(\d{6})$/, "$1-$2-$3");
+  return `${EDGAR_BASE}/Archives/edgar/data/${cikTrimmed}/${normalizedAccession}/${accessionDashed}-index.html`;
 }
 
 /**

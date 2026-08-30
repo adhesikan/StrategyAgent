@@ -16,4 +16,5 @@ after persistence.
 **How to apply:** Report any redundant-row/share impact as conditional only.
 Do not repair, deduplicate, or claim parser/ingestion duplication from stored
 field equality alone. A conclusive future workflow must persist and reconcile
-the SEC source-row identifier.
+the SEC source-row identifier. Treat malformed, incomplete, or non-exact source
+evidence as unresolved rather than safe.

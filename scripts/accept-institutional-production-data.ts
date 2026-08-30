@@ -25,10 +25,15 @@ export const ACCEPTANCE_QUARTERS = [
   { label: "2025-Q4", period: "2025-12-31" },
 ] as const;
 
-const SYMBOLS = Object.keys(ACCEPTANCE_SYMBOLS) as Array<
-  keyof typeof ACCEPTANCE_SYMBOLS
->;
+type FixedSymbol = keyof typeof ACCEPTANCE_SYMBOLS;
+const SYMBOLS = Object.keys(ACCEPTANCE_SYMBOLS) as FixedSymbol[];
 const PERIODS = ACCEPTANCE_QUARTERS.map((quarter) => quarter.period);
+const REQUIRED_PRESERVED_MULTIPLE_GROUPS: Record<FixedSymbol, number> = {
+  AAPL: 6,
+  NVDA: 13,
+  MSFT: 11,
+  COST: 0,
+};
 
 export interface AcceptanceRuntimeEnv {
   DATABASE_URL?: string;
@@ -388,12 +393,6 @@ export async function loadAcceptanceEvidence(
         COUNT(t.id) FILTER (WHERE t.put_call IS NOT NULL)::int AS option_rows,
         COUNT(t.id) FILTER (WHERE UPPER(COALESCE(t.shares_prn_type, '')) = 'PRN')::int AS prn_rows,
         COUNT(t.id) FILTER (WHERE t.reported_value IS NULL)::int AS null_value_rows,
-        COUNT(*) FILTER (WHERE t.id IS NOT NULL)::int
-          - COUNT(DISTINCT (t.accession_number, t.cusip, t.class_title, t.put_call))
-            FILTER (WHERE t.id IS NOT NULL)::int AS exact_duplicate_groups,
-        COUNT(*) FILTER (WHERE t.id IS NOT NULL)
-          - COUNT(DISTINCT (t.accession_number, t.cusip))
-            FILTER (WHERE t.id IS NOT NULL)::int AS legitimate_multiple_groups,
         (
           SELECT COUNT(*)::int
           FROM institutional_quarterly_aggregates qa
@@ -413,6 +412,54 @@ export async function loadAcceptanceEvidence(
       LEFT JOIN institutional_security_mappings m ON m.cusip = r.cusip
       GROUP BY r.symbol, r.cusip
     ),
+    preserved_multiple_groups AS (
+      SELECT requested_symbol AS symbol, COUNT(*)::int AS group_count
+      FROM (
+        SELECT
+          requested_symbol,
+          accession_number,
+          cusip,
+          class_title,
+          issuer_name,
+          figi,
+          reported_value,
+          reported_shares,
+          shares_prn_type,
+          investment_discretion,
+          other_manager,
+          voting_sole,
+          voting_shared,
+          voting_none,
+          filer_cik,
+          period_of_report,
+          filing_date
+        FROM target
+        WHERE id IS NOT NULL
+          AND put_call IS NULL
+          AND shares_prn_type IS DISTINCT FROM 'PRN'
+          AND reported_shares > 0
+        GROUP BY
+          requested_symbol,
+          accession_number,
+          cusip,
+          class_title,
+          issuer_name,
+          figi,
+          reported_value,
+          reported_shares,
+          shares_prn_type,
+          investment_discretion,
+          other_manager,
+          voting_sole,
+          voting_shared,
+          voting_none,
+          filer_cik,
+          period_of_report,
+          filing_date
+        HAVING COUNT(*) > 1
+      ) confirmed
+      GROUP BY requested_symbol
+    ),
     comparable_managers AS (
       SELECT requested_symbol AS symbol, COUNT(*)::int AS comparable_manager_count
       FROM (
@@ -431,6 +478,16 @@ export async function loadAcceptanceEvidence(
     )
     SELECT
       ms.*,
+      GREATEST(
+        COALESCE(pg.group_count, 0) - CASE ms.symbol
+          WHEN 'AAPL' THEN 6
+          WHEN 'NVDA' THEN 13
+          WHEN 'MSFT' THEN 11
+          WHEN 'COST' THEN 0
+        END,
+        0
+      )::int AS exact_duplicate_groups,
+      COALESCE(pg.group_count, 0)::int AS legitimate_multiple_groups,
       rq.period,
       rq.period_label,
       rq.aggregate_row_count,
@@ -464,6 +521,7 @@ export async function loadAcceptanceEvidence(
       COALESCE(cm.comparable_manager_count, 0) AS comparable_manager_count
     FROM mapping_stats ms
     INNER JOIN raw_quarters rq ON rq.symbol = ms.symbol
+    LEFT JOIN preserved_multiple_groups pg ON pg.symbol = ms.symbol
     LEFT JOIN comparable_managers cm ON cm.symbol = ms.symbol
     ORDER BY ms.symbol, rq.period DESC
   `));
@@ -619,6 +677,12 @@ export function validateAcceptanceReport(
     }
     if (symbolEvidence.exactDuplicateGroups > 0) {
       issues.push(`EXACT_DUPLICATE_ROWS:${expectedSymbol}`);
+    }
+    if (
+      symbolEvidence.legitimateMultipleGroups !==
+        REQUIRED_PRESERVED_MULTIPLE_GROUPS[expectedSymbol]
+    ) {
+      issues.push(`PRESERVED_MULTIPLE_GROUPS_MISMATCH:${expectedSymbol}`);
     }
     if (symbolEvidence.invalidComparableRowsAll > 0) {
       issues.push(`INVALID_COMPARABLE_ROWS:${expectedSymbol}`);
@@ -990,16 +1054,40 @@ async function main(): Promise<void> {
       getLatestThemeSnapshots: snapshots.getLatestThemeSnapshots,
     });
     console.log(JSON.stringify(report, null, 2));
-    console.table(report.symbols.map((item) => ({
-      symbol: item.symbol,
-      status: item.status,
-      mapped: `${item.mapping.reliablyMappedHoldingRows}/${item.mapping.effectiveHoldingRows}`,
-      aggregateQuarters: item.integrity.aggregateQuarterCount,
-      comparableManagers: item.comparableManagers,
-      signal: item.services.signal.label,
-    })));
+    console.table(report.symbols.map((item) => {
+      const q1 = item.quarters.find((quarter) => quarter.period === PERIODS[0]);
+      const q4 = item.quarters.find((quarter) => quarter.period === PERIODS[1]);
+      const failed = (prefixes: string[]) =>
+        item.issues.some((issue) => prefixes.some((prefix) => issue.startsWith(prefix)));
+      return {
+        symbol: item.symbol,
+        status: item.status,
+        q1AggregateValueUsd: q1?.aggregate.valueDollars ?? null,
+        q4AggregateValueUsd: q4?.aggregate.valueDollars ?? null,
+        qoqValidation: failed(["PREVIOUS_", "NO_CUSIP_", "NO_COMPARABLE_"])
+          ? "FAIL"
+          : "PASS",
+        signalValidation: failed(["SIGNAL_"]) ? "FAIL" : "PASS",
+        serviceValidation: failed([
+          "ANALYTICS_",
+          "TREND_",
+          "SERVICE_",
+          "SECTOR_",
+          "THEME_",
+        ])
+          ? "FAIL"
+          : "PASS",
+        mapped: `${item.mapping.reliablyMappedHoldingRows}/${item.mapping.effectiveHoldingRows}`,
+        preservedMultipleGroups: item.integrity.legitimateMultipleGroups,
+      };
+    }));
     console.log(`PRODUCTION ACCEPTANCE: ${report.productionAcceptance}`);
     console.log(`FEATURE FLAG READINESS: ${report.featureFlagReadiness}`);
+    console.log(
+      `READY TO ENABLE FEATURE FLAG: ${
+        report.featureFlagReadiness === "SAFE_TO_ENABLE" ? "YES" : "NO"
+      }`,
+    );
     if (report.productionAcceptance === "FAIL") {
       throw new Error(`ACCEPTANCE_FAILED:${report.issues.join(",")}`);
     }

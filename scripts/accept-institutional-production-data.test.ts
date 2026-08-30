@@ -14,6 +14,12 @@ import {
 function makeEvidence(overrides: Partial<RawSymbolEvidence> = {}): RawSymbolEvidence {
   const symbol = overrides.symbol ?? "AAPL";
   const cusip = overrides.cusip ?? ACCEPTANCE_SYMBOLS[symbol as keyof typeof ACCEPTANCE_SYMBOLS];
+  const preservedGroups: Record<string, number> = {
+    AAPL: 6,
+    NVDA: 13,
+    MSFT: 11,
+    COST: 0,
+  };
   return {
     symbol,
     cusip,
@@ -28,7 +34,7 @@ function makeEvidence(overrides: Partial<RawSymbolEvidence> = {}): RawSymbolEvid
     prnRows: 0,
     nullValueRows: 0,
     exactDuplicateGroups: 0,
-    legitimateMultipleGroups: 2,
+    legitimateMultipleGroups: preservedGroups[symbol] ?? 0,
     invalidComparableRowsAll: 0,
     effectiveManagerCount: 10,
     effectiveQuarterCount: 2,
@@ -293,5 +299,17 @@ describe("Railway institutional acceptance guards", () => {
     expect(report.symbols.map((item) => item.symbol)).toEqual([
       "AAPL", "NVDA", "MSFT", "COST",
     ]);
+  });
+
+  it("fails if a source-confirmed legitimate multiple group was removed", async () => {
+    const fixture = makeCompleteFixture();
+    fixture.symbols.find((item) => item.symbol === "AAPL")!.legitimateMultipleGroups = 5;
+
+    const issues = validateAcceptanceReport({
+      symbols: fixture.symbols,
+      snapshots: { sectorCount: 1, themeCount: 1 },
+    }, fixture.services);
+
+    expect(issues).toContain("PRESERVED_MULTIPLE_GROUPS_MISMATCH:AAPL");
   });
 });

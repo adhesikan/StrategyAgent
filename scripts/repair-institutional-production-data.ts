@@ -9,7 +9,9 @@
  *   --plan-hash <hash printed by a fresh dry run>
  *   --checkpoint-file <path>
  *
- * This command never downloads SEC data and never changes feature flags.
+ * This command never ingests or backfills SEC data and never changes feature
+ * flags. Preflight may fetch the bounded authoritative SEC source documents
+ * required to reconcile source identity in the explicit repair scope.
  */
 
 import { parseArgs } from "node:util";

@@ -1,0 +1,69 @@
+Provenance investigation is complete.
+
+Latest Railway production verification:
+
+SOURCE_ROWS_CONFIRM_MULTIPLE: 30
+INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED: 0
+SOURCE_MATCH_AMBIGUOUS: 0
+SOURCE_UNAVAILABLE: 0
+
+Symbol status:
+AAPL SAFE_FOR_CURRENT_REPAIR
+NVDA SAFE_FOR_CURRENT_REPAIR
+MSFT SAFE_FOR_CURRENT_REPAIR
+COST SAFE_FOR_CURRENT_REPAIR
+
+Both authoritative SEC Information Table documents parsed successfully.
+
+Do not create any more diagnostics.
+
+Objective:
+Make the existing production repair preflight consume the already-built SEC source-provenance reconciliation logic so legitimate source-confirmed multiple rows no longer block the repair.
+
+Requirements:
+
+1. Reuse the existing production-source-identity reconciliation service.
+Do not duplicate provenance logic.
+
+2. During repair dry-run/preflight, only for source-identity-unresolved aggregate-eligible rows in the explicit repair scope AAPL/NVDA/MSFT/COST:
+- reconcile them against authoritative SEC source rows;
+- SOURCE_ROWS_CONFIRM_MULTIPLE = safe, preserve and aggregate all rows;
+- INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED = blocking;
+- SOURCE_MATCH_AMBIGUOUS = blocking;
+- SOURCE_UNAVAILABLE = blocking.
+
+3. Do not alter or deduplicate stored holdings.
+
+4. Include the provenance result/digest in the repair plan hash so APPLY cannot use a plan whose source evidence changed.
+
+5. APPLY must rerun/revalidate the same preflight under the existing safety transaction before writes.
+
+6. Keep all existing Railway/database/environment guards.
+
+7. No schema changes.
+No ingestion/backfill.
+No feature flag changes.
+No new diagnostic scripts.
+
+8. Add focused tests for:
+- 30 source-confirmed multiple groups => repair scope allowed
+- confirmed duplication => blocked
+- ambiguous => blocked
+- unavailable => blocked
+- provenance change => plan hash changes
+- stored rows remain untouched
+
+9. Run:
+- focused tests
+- full institutional suite
+- production build
+- review
+
+Commit and push to origin/main.
+
+Then provide only the existing Railway production repair DRY-RUN command.
+
+Do not run production repair.
+Do not run APPLY.
+
+PRODUCTION APPLY: NO.

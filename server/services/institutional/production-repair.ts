@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
 import { db } from "../../db";
 import { sql } from "drizzle-orm";
+import { secFetchDetailed } from "./sec-client";
+import {
+  runProductionSourceIdentityDiagnostic,
+  type GroupFinding,
+  type SecFetchResult,
+  type SourceClassification,
+  type SourceDocumentDiagnostic,
+  type SqlExecutor as SourceIdentitySqlExecutor,
+} from "./production-source-identity-diagnostic";
 
 export const INSTITUTIONAL_REPAIR_CONFIRMATION = "REPAIR_INSTITUTIONAL_PRODUCTION_DATA";
 export const INSTITUTIONAL_REPAIR_LOCK_KEY = 774_412_004;
@@ -25,6 +34,72 @@ export const REPAIR_STAGE_ORDER: RepairStage[] = [
 type SqlExecutor = {
   execute(query: unknown): Promise<unknown>;
 };
+
+export type RepairSourceTextFetcher = (url: string) => Promise<string | SecFetchResult>;
+export type RepairSourceIdentityDiagnostic = Awaited<
+  ReturnType<typeof runProductionSourceIdentityDiagnostic>
+>;
+export type RepairSourceIdentityReconciler = (
+  executor: SourceIdentitySqlExecutor,
+  fetchText: RepairSourceTextFetcher,
+) => Promise<RepairSourceIdentityDiagnostic>;
+
+export interface RepairPreflightOptions {
+  fetchSource?: RepairSourceTextFetcher;
+  reconcileSourceIdentity?: RepairSourceIdentityReconciler;
+}
+
+export const REPAIR_SOURCE_CLASSIFICATIONS = [
+  "SOURCE_ROWS_CONFIRM_MULTIPLE",
+  "INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED",
+  "SOURCE_MATCH_AMBIGUOUS",
+  "SOURCE_UNAVAILABLE",
+] as const satisfies readonly SourceClassification[];
+
+export interface RepairProvenanceFinding {
+  symbol: string;
+  cusip: string;
+  accessionNumber: string;
+  periodOfReport: string;
+  classTitle: string;
+  physicalRows: number;
+  sourceMatchCount: number | null;
+  classification: SourceClassification;
+  sourceError: string | null;
+  sourceRows: Array<{
+    documentFilename: string;
+    rowOrdinal: number;
+    nativeId: string | null;
+    issuerName: string;
+    classTitle: string;
+    cusip: string;
+    figi: string | null;
+    reportedValue: number | null;
+    reportedShares: number | null;
+    sharesPrnType: string | null;
+    putCall: string | null;
+    investmentDiscretion: string | null;
+    otherManager: string | null;
+    votingSole: number | null;
+    votingShared: number | null;
+    votingNone: number | null;
+    rawAsFiledReportedValue: number | null;
+    sourceReportedValueUnit: "THOUSANDS_USD" | "USD";
+    normalizedReportedValueUsd: number | null;
+  }>;
+  sourceDocument: SourceDocumentDiagnostic | null;
+}
+
+export interface RepairProvenance {
+  status: "not_required" | "reconciled" | "unavailable";
+  unresolvedEligibleGroups: number;
+  reconciledGroups: number;
+  blockingGroups: number;
+  classificationCounts: Record<SourceClassification, number>;
+  findings: RepairProvenanceFinding[];
+  errorCode: string | null;
+  digest: string;
+}
 
 export interface ExpectedSecurityTrace {
   symbol: string;
@@ -75,6 +150,7 @@ export interface InstitutionalRepairPreflight {
     aggregateState: "incomplete" | "present";
   };
   expectedSecurities: ExpectedSecurityTrace[];
+  provenance?: RepairProvenance;
   plan: {
     effectiveHoldings: number;
     reliableMappingCandidates: number;
@@ -107,6 +183,13 @@ export interface MappingApplyResult {
   remainingTargetHoldings: number;
 }
 
+export interface RepairMappingApplyOptions {
+  database?: {
+    transaction<T>(operation: (executor: SqlExecutor) => Promise<T>): Promise<T>;
+  };
+  preflight?: RepairPreflightOptions;
+}
+
 function rowsOf(result: unknown): any[] {
   const candidate = result as { rows?: any[] };
   return candidate.rows ?? (Array.isArray(result) ? result : []);
@@ -130,6 +213,181 @@ export function buildInstitutionalRepairPlanHash(
   input: Omit<InstitutionalRepairPreflight, "planHash" | "blockingIssues">,
 ): string {
   return createHash("sha256").update(stableJson(input)).digest("hex");
+}
+
+const REPAIR_SOURCE_FETCH_TIMEOUT_MS = 30_000;
+
+async function fetchRepairSource(url: string): Promise<SecFetchResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REPAIR_SOURCE_FETCH_TIMEOUT_MS);
+  try {
+    return await secFetchDetailed(url, undefined, controller.signal);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function emptyClassificationCounts(): Record<SourceClassification, number> {
+  return Object.fromEntries(
+    REPAIR_SOURCE_CLASSIFICATIONS.map((classification) => [classification, 0]),
+  ) as Record<SourceClassification, number>;
+}
+
+function repairSourceRow(row: GroupFinding["sourceRows"][number]): RepairProvenanceFinding["sourceRows"][number] {
+  return {
+    documentFilename: row.documentFilename,
+    rowOrdinal: row.rowOrdinal,
+    nativeId: row.nativeId,
+    issuerName: row.issuerName,
+    classTitle: row.classTitle,
+    cusip: row.cusip,
+    figi: row.figi,
+    reportedValue: row.reportedValue,
+    reportedShares: row.reportedShares,
+    sharesPrnType: row.sharesPrnType,
+    putCall: row.putCall,
+    investmentDiscretion: row.investmentDiscretion,
+    otherManager: row.otherManager,
+    votingSole: row.votingSole,
+    votingShared: row.votingShared,
+    votingNone: row.votingNone,
+    rawAsFiledReportedValue: row.rawAsFiledReportedValue,
+    sourceReportedValueUnit: row.sourceReportedValueUnit,
+    normalizedReportedValueUsd: row.normalizedReportedValueUsd,
+  };
+}
+
+function repairFinding(finding: GroupFinding): RepairProvenanceFinding {
+  return {
+    symbol: finding.symbol,
+    cusip: finding.cusip,
+    accessionNumber: finding.accessionNumber,
+    periodOfReport: finding.periodOfReport,
+    classTitle: finding.classTitle,
+    physicalRows: finding.physicalRows,
+    sourceMatchCount: finding.sourceMatchCount,
+    classification: finding.classification,
+    sourceError: finding.sourceError,
+    sourceRows: finding.sourceRows.map(repairSourceRow),
+    sourceDocument: finding.sourceDocument,
+  };
+}
+
+function provenanceDigest(input: Omit<RepairProvenance, "digest">): string {
+  return createHash("sha256").update(stableJson(input)).digest("hex");
+}
+
+function buildUnavailableProvenance(
+  expectedSecurities: ExpectedSecurityTrace[],
+  errorCode: string | null,
+): RepairProvenance {
+  const unresolvedEligibleGroups = expectedSecurities.reduce(
+    (sum, trace) => sum + trace.sourceIdentityUnresolvedEligibleGroups,
+    0,
+  );
+  const classificationCounts = emptyClassificationCounts();
+  classificationCounts.SOURCE_UNAVAILABLE = unresolvedEligibleGroups;
+  const base = {
+    status: unresolvedEligibleGroups > 0 ? "unavailable" as const : "not_required" as const,
+    unresolvedEligibleGroups,
+    reconciledGroups: 0,
+    blockingGroups: unresolvedEligibleGroups,
+    classificationCounts,
+    findings: [],
+    errorCode,
+  };
+  return { ...base, digest: provenanceDigest(base) };
+}
+
+/**
+ * Converts the existing source-identity diagnostic into the repair's compact,
+ * body-free evidence contract. The source diagnostic remains the sole owner
+ * of SEC document selection, parsing, and classification.
+ */
+export function buildRepairProvenanceAssessment(
+  expectedSecurities: ExpectedSecurityTrace[],
+  diagnostic: RepairSourceIdentityDiagnostic | null,
+  errorCode: string | null = null,
+): RepairProvenance {
+  const unresolvedEligibleGroups = expectedSecurities.reduce(
+    (sum, trace) => sum + trace.sourceIdentityUnresolvedEligibleGroups,
+    0,
+  );
+  if (unresolvedEligibleGroups === 0) {
+    return buildUnavailableProvenance(expectedSecurities, null);
+  }
+  if (!diagnostic) return buildUnavailableProvenance(expectedSecurities, errorCode);
+
+  const findings = diagnostic.findings
+    .map(repairFinding)
+    .sort((a, b) => stableJson(a).localeCompare(stableJson(b)));
+  const classificationCounts = emptyClassificationCounts();
+  for (const finding of findings) classificationCounts[finding.classification]++;
+  const findingsBySymbol = new Map<string, number>();
+  for (const finding of findings) {
+    findingsBySymbol.set(finding.symbol, (findingsBySymbol.get(finding.symbol) ?? 0) + 1);
+  }
+  const missingGroups = expectedSecurities.reduce((sum, trace) => {
+    const difference = trace.sourceIdentityUnresolvedEligibleGroups
+      - (findingsBySymbol.get(trace.symbol) ?? 0);
+    return sum + Math.max(difference, 0);
+  }, 0);
+  const extraGroups = expectedSecurities.reduce((sum, trace) => {
+    const difference = (findingsBySymbol.get(trace.symbol) ?? 0)
+      - trace.sourceIdentityUnresolvedEligibleGroups;
+    return sum + Math.max(difference, 0);
+  }, 0);
+  const blockingGroups = findings.filter(
+    (finding) => finding.classification !== "SOURCE_ROWS_CONFIRM_MULTIPLE",
+  ).length + missingGroups + extraGroups;
+  const base = {
+    status: missingGroups > 0 || extraGroups > 0 ? "unavailable" as const : "reconciled" as const,
+    unresolvedEligibleGroups,
+    reconciledGroups: findings.length,
+    blockingGroups,
+    classificationCounts: {
+      ...classificationCounts,
+      SOURCE_UNAVAILABLE: classificationCounts.SOURCE_UNAVAILABLE + missingGroups,
+      SOURCE_MATCH_AMBIGUOUS: classificationCounts.SOURCE_MATCH_AMBIGUOUS + extraGroups,
+    },
+    findings,
+    errorCode,
+  };
+  return { ...base, digest: provenanceDigest(base) };
+}
+
+function repairProvenanceErrorCode(error: unknown): string {
+  const message = String((error as { message?: unknown })?.message ?? error);
+  const code = message.split(":", 1)[0].trim();
+  return /^[A-Z0-9_]+$/.test(code) ? code : "SOURCE_RECONCILIATION_FAILED";
+}
+
+async function reconcileRepairProvenance(
+  executor: SqlExecutor,
+  expectedSecurities: ExpectedSecurityTrace[],
+  options: RepairPreflightOptions,
+): Promise<RepairProvenance> {
+  const unresolvedEligibleGroups = expectedSecurities.reduce(
+    (sum, trace) => sum + trace.sourceIdentityUnresolvedEligibleGroups,
+    0,
+  );
+  if (unresolvedEligibleGroups === 0) {
+    return buildRepairProvenanceAssessment(expectedSecurities, null);
+  }
+  try {
+    const reconcile = options.reconcileSourceIdentity ?? runProductionSourceIdentityDiagnostic;
+    const diagnostic = await reconcile(
+      executor as SourceIdentitySqlExecutor,
+      options.fetchSource ?? fetchRepairSource,
+    );
+    return buildRepairProvenanceAssessment(expectedSecurities, diagnostic);
+  } catch (error) {
+    return buildRepairProvenanceAssessment(
+      expectedSecurities,
+      null,
+      repairProvenanceErrorCode(error),
+    );
+  }
 }
 
 export function validateRepairApplyRequest(input: {
@@ -213,7 +471,29 @@ export function getRepairStageBlockingIssues(
 
 export function getRepairScopeDuplicateBlockingIssues(
   expectedSecurities: ExpectedSecurityTrace[],
+  provenance?: RepairProvenance,
 ): string[] {
+  if (provenance) {
+    const issues: string[] = [];
+    for (const trace of expectedSecurities) {
+      if (trace.sourceIdentityUnresolvedEligibleGroups === 0) continue;
+      const findings = provenance.findings.filter((finding) => finding.symbol === trace.symbol);
+      for (const classification of REPAIR_SOURCE_CLASSIFICATIONS) {
+        if (
+          classification !== "SOURCE_ROWS_CONFIRM_MULTIPLE"
+          && findings.some((finding) => finding.classification === classification)
+        ) {
+          issues.push(`${classification}:${trace.symbol}`);
+        }
+      }
+      if (findings.length < trace.sourceIdentityUnresolvedEligibleGroups) {
+        issues.push(`SOURCE_UNAVAILABLE:${trace.symbol}`);
+      } else if (findings.length > trace.sourceIdentityUnresolvedEligibleGroups) {
+        issues.push(`SOURCE_MATCH_AMBIGUOUS:${trace.symbol}`);
+      }
+    }
+    return Array.from(new Set(issues));
+  }
   return expectedSecurities
     .filter((trace) => trace.sourceIdentityUnresolvedEligibleGroups > 0)
     .map((trace) => `SOURCE_IDENTITY_UNRESOLVED_IN_REPAIR_SCOPE:${trace.symbol}`);
@@ -268,7 +548,10 @@ export function getRepairBlockingIssues(
     }
     if (trace.mappingAction === "conflict") issues.push(`EXPECTED_CUSIP_CONFLICT:${trace.symbol}`);
   }
-  issues.push(...getRepairScopeDuplicateBlockingIssues(preflight.expectedSecurities));
+  issues.push(...getRepairScopeDuplicateBlockingIssues(
+    preflight.expectedSecurities,
+    preflight.provenance,
+  ));
   if (preflight.plan.conflictingMappedHoldings > 0) {
     issues.push("CONFLICTING_EXISTING_HOLDING_MAPPINGS");
   }
@@ -277,6 +560,7 @@ export function getRepairBlockingIssues(
 
 export async function loadInstitutionalRepairPreflight(
   executor: SqlExecutor = db as unknown as SqlExecutor,
+  options: RepairPreflightOptions = {},
 ): Promise<InstitutionalRepairPreflight> {
   const identityRows = rowsOf(await executor.execute(sql`
     SELECT
@@ -370,6 +654,7 @@ export async function loadInstitutionalRepairPreflight(
         referenceStatus: null,
         mappingAction: "insert_reviewed" as const,
       })),
+      provenance: buildRepairProvenanceAssessment([], null),
       plan: {
         effectiveHoldings: 0,
         reliableMappingCandidates: 0,
@@ -691,6 +976,7 @@ export async function loadInstitutionalRepairPreflight(
     rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED" as const,
   };
   const dataQualityWarnings = buildDuplicateDataQualityWarnings(duplicateClassification);
+  const provenance = await reconcileRepairProvenance(executor, expectedSecurities, options);
 
   const base = {
     databaseIdentity: {
@@ -713,6 +999,7 @@ export async function loadInstitutionalRepairPreflight(
         : "present" as const,
     },
     expectedSecurities,
+    provenance,
     plan: {
       effectiveHoldings: asCount(planRow.effective_holdings),
       reliableMappingCandidates: asCount(planRow.reliable_mapping_candidates),
@@ -745,15 +1032,18 @@ export async function loadInstitutionalRepairPreflight(
 
 export async function applyInstitutionalMappingRepair(
   expectedPlanHash: string,
+  options: RepairMappingApplyOptions = {},
 ): Promise<MappingApplyResult> {
-  return db.transaction(async (tx) => {
+  const database = options.database
+    ?? db as unknown as RepairMappingApplyOptions["database"];
+  return database!.transaction(async (tx) => {
     await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
     const lockRows = rowsOf(await tx.execute(
       sql`SELECT pg_try_advisory_xact_lock(${INSTITUTIONAL_REPAIR_LOCK_KEY}::bigint) AS locked`,
     ));
     if (lockRows[0]?.locked !== true) throw new Error("INSTITUTIONAL_REPAIR_LOCK_HELD");
 
-    const preflight = await loadInstitutionalRepairPreflight(tx as unknown as SqlExecutor);
+    const preflight = await loadInstitutionalRepairPreflight(tx, options.preflight);
     if (preflight.planHash !== expectedPlanHash) throw new Error("INSTITUTIONAL_REPAIR_PLAN_DRIFT");
     if (preflight.blockingIssues.length > 0) {
       throw new Error(`INSTITUTIONAL_REPAIR_PREFLIGHT_FAILED:${preflight.blockingIssues.join(",")}`);

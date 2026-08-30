@@ -192,7 +192,10 @@ The state machine is pure (no DB calls) and lives in `server/services/institutio
 
 Use this flow only when SEC filings and holdings already exist but reliable
 CUSIP mappings, aggregates, signals, or sector/theme snapshots are missing.
-It does not download SEC data and it does not change the public feature flag.
+It does not ingest or backfill SEC data and it does not change the public
+feature flag. If source identity is unresolved within the four-symbol repair
+scope, preflight fetches only the bounded authoritative SEC filing documents
+needed by the existing source-provenance reconciler.
 
 ### Production architecture and execution boundary
 
@@ -249,8 +252,9 @@ sector, and theme rows that the reviewed plan would write or rebuild.
 
 Stop if any blocking issue is reported. In particular, do not proceed when an
 expected CUSIP points at a different symbol, an existing holding has a conflicting
-symbol, source-identity-unresolved aggregate-eligible rows occur within the
-AAPL/NVDA/MSFT/COST repair scope, or one of those four symbols is absent.
+symbol, source provenance is unavailable, ambiguous, or confirms ingestion or
+persistence duplication within the AAPL/NVDA/MSFT/COST repair scope, or one of
+those four symbols is absent.
 
 If an older dry run reports `DUPLICATE_HOLDING_GROUPS_PRESENT`, do not delete or
 deduplicate holdings. Deploy the corrected preflight and run the dedicated
@@ -287,36 +291,15 @@ Future SEC ingestion should preserve `INFOTABLE_SK`, or an equivalent stable
 source-row identifier, so exact source duplication can be determined. That
 schema/data migration is intentionally outside this repair.
 
-When the repair-scope query reports exactly 30 unresolved AAPL/NVDA/MSFT groups
-and zero COST groups, run the dedicated Railway production source diagnostic
-before considering any interpretation of those rows:
+When the repair-scope query reports unresolved aggregate-eligible groups,
+the repair preflight automatically reuses the existing production source
+diagnostic service. It fetches only the required SEC filing index and
+Information Table documents, sequentially by full accession, and includes
+the resulting body-free provenance evidence and digest in the plan hash.
+APPLY reruns that same reconciliation under the existing repeatable-read
+transaction before any write.
 
-```bash
-npx tsx scripts/diagnose-institutional-production-source-identity.ts \
-  --database-name <DATABASE_NAME_FROM_DRY_RUN> \
-  --project-id <EXPECTED_RAILWAY_PROJECT_ID> \
-  --service-id <EXPECTED_RAILWAY_SERVICE_ID> \
-  --environment-id <EXPECTED_RAILWAY_ENVIRONMENT_ID>
-```
-
-This command is SELECT-only and fetches only the required SEC filing index and
-Information Table documents, sequentially by full accession. It requires the
-Railway production identity guards and `SEC_USER_AGENT`, reports each source
-identity as accession + document filename + row ordinal (plus a native source
-ID when one is available; row ordinals are one-based), and always ends with
-`PRODUCTION APPLY: NO`.
-For a follow-up provenance run after deploying the diagnostic hardening, use
-the exact same command:
-
-```bash
-npx tsx scripts/diagnose-institutional-production-source-identity.ts \
-  --database-name <DATABASE_NAME_FROM_DRY_RUN> \
-  --project-id <EXPECTED_RAILWAY_PROJECT_ID> \
-  --service-id <EXPECTED_RAILWAY_SERVICE_ID> \
-  --environment-id <EXPECTED_RAILWAY_ENVIRONMENT_ID>
-```
-
-Each finding now includes safe `sourceDocument` evidence before reconciliation:
+Each finding includes safe `sourceDocument` evidence before reconciliation:
 the index/document URLs, selected filename, HTTP status, Content-Type, byte
 length, root/signature, validator stage, and structured rejection code. It
 never prints a response body. `SOURCE_UNAVAILABLE` with a rejection code means
@@ -327,7 +310,9 @@ means the SEC source itself contains the multiple matching rows and those rows
 must remain preserved.
 `SOURCE_ROWS_CONFIRM_MULTIPLE` is distinct from
 `INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED`; unavailable or non-exact
-source matches are not evidence for a repair. Future ingestion should persist
+source matches block the repair. The production reconciliation on August 30,
+2026 classified all 30 scoped groups as `SOURCE_ROWS_CONFIRM_MULTIPLE`, so all
+source rows must be preserved and aggregated. Future ingestion should persist
 the SEC `INFOTABLE_SK` whenever available, together with the source document
 filename and stable row ordinal.
 

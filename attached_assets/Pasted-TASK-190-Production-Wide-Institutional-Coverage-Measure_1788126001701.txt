@@ -1,0 +1,287 @@
+TASK #190 — Production-Wide Institutional Coverage Measurement and Remediation Readiness
+
+PURPOSE
+
+Run the Task #189 generic institutional coverage analyzer against the LIVE Railway production database in READ-ONLY mode.
+
+This is the final production-wide measurement before deciding whether to execute the generic remediation.
+
+This is NOT:
+- a ticker-by-ticker audit
+- another root-cause investigation
+- another architecture task
+- another mapping algorithm change
+- a production write
+- an ingestion run
+
+Task #189 already implemented the systemic resolver/pipeline solution.
+
+Do not reopen that work unless this production run proves a material implementation defect.
+
+==================================================
+1. SAFETY
+==================================================
+
+Production READ ONLY.
+
+DO NOT:
+- run APPLY
+- modify mappings
+- update holdings
+- rebuild aggregates
+- rebuild signals
+- rebuild snapshots
+- run ingestion
+- change feature flags
+- modify schema
+- manually repair securities
+- create ticker-specific fixes
+
+Confirm before analysis:
+
+- Railway project/service/environment identity
+- expected production database identity
+- analyzer is in dry-run/read-only mode
+- APPLY path is not invoked
+
+Never print:
+- DATABASE_URL
+- API keys
+- tokens
+- passwords
+- credentials
+
+==================================================
+2. RUN THE TASK #189 PRODUCTION-WIDE ANALYZER
+==================================================
+
+Use the generic resolver-backed coverage analyzer created in Task #189.
+
+Analyze the ENTIRE eligible institutional production population.
+
+Do not sample individual tickers.
+
+Report the production funnel:
+
+Stage
+Distinct CUSIPs/securities
+Holding rows
+Reported USD value
+% retained
+
+Include:
+
+- effective filings
+- effective holdings
+- eligible common-equity holdings
+- trusted mappings
+- ambiguous mappings
+- conflicting mappings
+- unsupported securities
+- insufficient-evidence securities
+- mapped holdings
+- quarterly aggregates
+- signals
+- sector/theme materialization
+
+==================================================
+3. CURRENT PRODUCTION COVERAGE
+==================================================
+
+Calculate CURRENT trusted production coverage by:
+
+A. distinct eligible CUSIPs
+B. eligible holding rows
+C. reported USD value
+
+Report:
+
+Trusted
+Ambiguous
+Conflicting
+Unsupported
+Insufficient Evidence
+
+for each measurement.
+
+Reported-value coverage is especially important.
+
+Do NOT define success as 100%.
+
+Zero guessed mappings remains mandatory.
+
+==================================================
+4. PROJECTED COVERAGE AFTER GENERIC REMEDIATION
+==================================================
+
+Using ONLY Task #189 deterministic resolver rules, calculate projected post-remediation coverage.
+
+Report before → projected after for:
+
+Trusted CUSIP coverage
+Trusted holding-row coverage
+Trusted reported-value coverage
+
+Also report projected remaining:
+
+Ambiguous
+Conflicting
+Unsupported
+Insufficient Evidence
+
+Do not resolve those categories merely to increase coverage.
+
+==================================================
+5. PROPOSED PRODUCTION WRITES
+==================================================
+
+Generate the exact remediation plan WITHOUT APPLYING IT.
+
+Report:
+
+Mappings:
+- existing trusted
+- deterministic mappings inserted
+- mappings promoted
+- remaining unresolved
+
+Holdings:
+- currently mapped
+- newly mapped
+- remaining unmapped
+
+Aggregates:
+- securities affected
+- quarters affected
+- inserts
+- updates
+
+Signals:
+- inserts
+- updates
+
+Sector/theme:
+- snapshots affected/rebuilt
+
+Also identify any other persisted object Task #189 would modify.
+
+==================================================
+6. PLAN SAFETY
+==================================================
+
+Validate:
+
+- deterministic plan
+- stable plan hash
+- idempotency
+- rollback/checkpoint strategy
+- production identity guards
+- feature-flag safety
+- no ambiguous/conflicting mapping promotion
+- no legitimate SEC source-row deletion
+- effective filing/amendment semantics preserved
+- common-equity eligibility preserved
+- options/PRN exclusions preserved
+- positive-share rules preserved
+- reported_value remains canonical USD
+- QoQ remains CUSIP-based
+- multiple legitimate CUSIPs remain supported
+
+Run the dry-run twice if necessary to prove the same unchanged production state produces the same plan/hash.
+
+==================================================
+7. DOWNSTREAM IMPACT
+==================================================
+
+Report projected production availability after remediation for the generic population:
+
+Stock View
+Trends
+Rotation
+Institutional Discovery
+Multibagger Discovery
+
+Do not test ticker-by-ticker.
+
+Report whether each capability will have:
+
+READY
+PARTIAL
+BLOCKED
+
+and why.
+
+If a feature is blocked because its backend implementation itself does not exist, say so explicitly.
+
+==================================================
+8. DECISION
+==================================================
+
+End with exactly one production recommendation:
+
+READY_FOR_APPLY
+
+or
+
+NOT_READY_FOR_APPLY
+
+READY_FOR_APPLY requires:
+
+- deterministic trusted resolver behavior
+- no guessed mappings
+- stable dry-run plan/hash
+- production safety guards passing
+- projected material improvement in institutional coverage
+- no material regression identified in validated institutional semantics
+
+If NOT_READY_FOR_APPLY, identify the specific blocker.
+
+Do NOT propose another broad diagnostic task unless an actual blocker was discovered by this production run.
+
+==================================================
+9. COMPLETION REPORT
+==================================================
+
+Return:
+
+CURRENT PRODUCTION COVERAGE
+
+Metric | Trusted | Ambiguous | Conflicting | Unsupported | Insufficient
+
+PROJECTED POST-REMEDIATION COVERAGE
+
+Metric | Before | After | Improvement
+
+PROPOSED WRITES
+
+Object | Inserts | Updates | Deletes/Replacements | Notes
+
+DOWNSTREAM READINESS
+
+Capability | Current | Projected | Blocker
+
+SAFETY VALIDATION
+
+Check | PASS/FAIL
+
+REMEDIATION PLAN HASH
+
+<hash>
+
+FINAL DECISION
+
+READY_FOR_APPLY
+or
+NOT_READY_FOR_APPLY
+
+If READY_FOR_APPLY:
+
+Provide the exact guarded production APPLY command using the fresh validated plan hash.
+
+DO NOT EXECUTE IT.
+
+STOP.
+
+Do not start another task.
+Do not perform APPLY.
+Do not perform ticker-specific diagnostics.

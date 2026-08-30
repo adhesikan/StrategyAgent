@@ -10,7 +10,10 @@ vi.mock("../../../db", () => ({
   },
 }));
 
-import { loadManagerPortfolioValues } from "../analytics/stock-analytics-repository";
+import {
+  loadManagerPortfolioValues,
+  selectAlignedStockFilings,
+} from "../analytics/stock-analytics-repository";
 
 function totalsQuery(rows: unknown[]) {
   return {
@@ -54,5 +57,57 @@ describe("stock analytics portfolio denominators", () => {
     expect(put).toEqual({ "manager-1": 150 });
     expect(call).toEqual({ "manager-1": 150 });
     expect(selectMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps latest holder details pinned to a lagging canonical aggregate quarter", () => {
+    const rows = [
+      {
+        accessionNumber: "newer-filing",
+        managerId: "manager-1",
+        managerName: "Example Manager",
+        periodOfReport: "2026-09-30",
+        filingDate: "2026-11-01",
+        isEffective: true,
+      },
+      {
+        accessionNumber: "canonical-quarter-filing",
+        managerId: "manager-1",
+        managerName: "Example Manager",
+        periodOfReport: "2026-06-30",
+        filingDate: "2026-08-01",
+        isEffective: true,
+      },
+    ];
+
+    const selected = selectAlignedStockFilings(rows, "latest", {
+      quarter: {
+        year: 2026,
+        quarter: 2,
+        label: "2026-Q2",
+        periodEndDate: "2026-06-30",
+      },
+      previousQuarter: null,
+      previousReportingManagerCount: null,
+      reportingManagerCount: 1,
+      aggregateReportedShares: 100,
+      aggregateReportedValue: 1_000,
+      previousQuarterShares: null,
+      previousQuarterValue: null,
+      reportedSharesChange: null,
+      reportedSharesChangePercent: null,
+      newPositionCount: 1,
+      increasedPositionCount: 0,
+      reducedPositionCount: 0,
+      exitedPositionCount: 0,
+      unchangedCount: 0,
+      eligibleHoldingCount: 1,
+      excludedHoldingCount: 0,
+      coverageStatus: "complete",
+    });
+
+    expect(selected?.currentQuarter.periodEndDate).toBe("2026-06-30");
+    expect(selected?.currentFilings.map((filing) => filing.accessionNumber)).toEqual([
+      "canonical-quarter-filing",
+    ]);
   });
 });

@@ -325,6 +325,24 @@ describe("stock institutional analytics", () => {
       },
     });
     expect(result.topReportedHolders).toHaveLength(4);
+
+    input.canonicalAggregate = {
+      ...input.canonicalAggregate,
+      aggregateReportedShares: null,
+      aggregateReportedValue: null,
+      previousQuarterShares: null,
+      reportedSharesChange: null,
+      reportedSharesChangePercent: null,
+    };
+    const unavailableCanonicalTotals =
+      computeStockInstitutionalAnalytics(input);
+    expect(unavailableCanonicalTotals).toMatchObject({
+      aggregateReportedShares: null,
+      previousAggregateReportedShares: null,
+      aggregateReportedShareChange: null,
+      aggregateReportedShareChangePct: null,
+      aggregateReportedValueDollars: null,
+    });
   });
 
   it("does not apply the common-equity aggregate to option analytics", () => {

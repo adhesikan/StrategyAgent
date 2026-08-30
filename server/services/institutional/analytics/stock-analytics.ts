@@ -651,9 +651,9 @@ export function computeStockInstitutionalAnalytics(
         reducedReportedHolderCount,
         noLongerReportedHolderCount,
       };
-  const summaryShareChange =
-    canonical?.reportedSharesChange ??
-    reconstructedAggregateReportedShareChange;
+  const summaryShareChange = canonical
+    ? canonical.reportedSharesChange
+    : reconstructedAggregateReportedShareChange;
   const breadth = canonical
     ? buildCanonicalBreadth(canonical)
     : buildBreadth(changes);
@@ -667,16 +667,18 @@ export function computeStockInstitutionalAnalytics(
     previousReportedHolderCount,
     holderCountChange,
     ...summaryChanges,
-    aggregateReportedShares:
-      canonical?.aggregateReportedShares ?? reconstructedAggregateReportedShares,
-    previousAggregateReportedShares:
-      canonical?.previousQuarterShares ??
-      reconstructedPreviousAggregateReportedShares,
+    aggregateReportedShares: canonical
+      ? canonical.aggregateReportedShares
+      : reconstructedAggregateReportedShares,
+    previousAggregateReportedShares: canonical
+      ? canonical.previousQuarterShares
+      : reconstructedPreviousAggregateReportedShares,
     aggregateReportedShareChange: summaryShareChange,
     aggregateReportedShareChangePct:
       canonical ? canonicalShareChangePercent : reconstructedAggregateReportedShareChangePct,
-    aggregateReportedValueDollars:
-      canonical?.aggregateReportedValue ?? reconstructedAggregateReportedValue,
+    aggregateReportedValueDollars: canonical
+      ? canonical.aggregateReportedValue
+      : reconstructedAggregateReportedValue,
     averagePortfolioWeight: average(weights),
     medianPortfolioWeight: median(weights),
     topReportedHolders: sortByReportedValue(currentHolders).slice(0, topN),

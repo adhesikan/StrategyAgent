@@ -205,6 +205,22 @@ export function selectEffectiveStockFilings(
 }
 
 /**
+ * Canonical summaries and reconstructed holder details must describe the same
+ * period. A lagging aggregate therefore pins detail selection to its resolved
+ * quarter instead of allowing "latest" to advance to a newer filing.
+ */
+export function selectAlignedStockFilings(
+  rows: EffectiveStockFilingCandidate[],
+  requestedQuarter: FundPortfolioXRayQuarterSelector,
+  canonicalAggregate: CanonicalInstitutionalQuarterAggregate | null,
+): EffectiveStockFilingSelection | null {
+  return selectEffectiveStockFilings(
+    rows,
+    canonicalAggregate?.quarter ?? requestedQuarter,
+  );
+}
+
+/**
  * Full reported filing value is the denominator for every stock position
  * type. In particular, a PUT/CALL numerator must not be divided by the
  * manager's options-only value, and common equity must not omit options/PRN.
@@ -353,9 +369,10 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       })),
       cohortManagerIds,
     );
-    const selected = selectEffectiveStockFilings(
+    const selected = selectAlignedStockFilings(
       eligibleFilingRows,
       query.quarter,
+      canonicalAggregate,
     );
     if (!selected) {
       return canonicalAggregate

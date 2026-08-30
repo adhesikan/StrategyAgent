@@ -1,0 +1,212 @@
+PRODUCTION DUPLICATE CLASSIFICATION IS COMPLETE.
+
+RESULT
+
+The existing global duplicate blocker is a false-positive design.
+
+Production classification:
+
+current duplicate groups: 60,413
+materially distinct groups: 60,365
+source-identity-unresolved identical groups: 48
+
+Therefore approximately 99.92% of groups currently called duplicates are
+legitimate materially distinct holding rows.
+
+Exact SEC source duplication cannot be determined for the remaining 48
+groups because INFOTABLE_SK was not persisted historically.
+
+IMPORTANT FOUR-SYMBOL RESULT
+
+AAPL:
+64 flagged groups
+64 materially distinct
+0 source-identity-unresolved identical groups
+
+NVDA:
+68 flagged groups
+68 materially distinct
+0 source-identity-unresolved identical groups
+
+MSFT:
+68 flagged groups
+68 materially distinct
+0 source-identity-unresolved identical groups
+
+COST:
+50 flagged groups
+50 materially distinct
+0 source-identity-unresolved identical groups
+
+The current repair scope is limited to:
+
+AAPL 037833100
+NVDA 67066G104
+MSFT 594918104
+COST 22160K105
+
+TASK
+
+Correct the production repair preflight duplicate validation.
+
+DO NOT modify production data.
+DO NOT deduplicate holdings.
+DO NOT delete rows.
+DO NOT modify raw filings.
+DO NOT run repair APPLY.
+DO NOT enable Institutional Intelligence.
+DO NOT rerun SEC ingestion.
+
+1. REMOVE THE INVALID GLOBAL BLOCKER
+
+The repair must no longer return NO-GO merely because rows share:
+
+accession_number
+cusip
+class_title
+put_call
+
+That is not a valid canonical holding identity.
+
+The classification proved that materially distinct rows legitimately share
+that coarse key.
+
+2. DO NOT CHANGE THE DATABASE UNIQUE INDEX AS PART OF THIS TASK
+
+Do not attempt to fix this by:
+
+- using NULLS NOT DISTINCT
+- adding arbitrary fields to the existing unique index
+- deleting rows
+- collapsing rows
+- rewriting historical holdings
+
+Schema redesign is separate from this controlled repair.
+
+3. ADD REPAIR-SCOPE DUPLICATE SAFETY
+
+For the securities included in the current repair plan, detect whether
+materially identical aggregate-eligible holding rows exist where source
+identity cannot be resolved.
+
+The relevant scope is the holdings that would actually participate in the
+planned mapping/aggregation operation.
+
+For the current production data this should result in:
+
+AAPL: 0 unresolved groups
+NVDA: 0 unresolved groups
+MSFT: 0 unresolved groups
+COST: 0 unresolved groups
+
+If any planned repair symbol has unresolved materially-identical
+aggregate-eligible rows:
+
+NO-GO.
+
+Otherwise:
+
+do not block the repair because unrelated securities elsewhere in the
+historical table contain unresolved rows.
+
+4. PRESERVE GLOBAL DATA-QUALITY REPORTING
+
+Continue reporting:
+
+global materially distinct groups
+global unresolved identical groups
+affected filings
+affected CUSIPs
+
+But classify these as informational/data-quality warnings unless they
+intersect the repair scope.
+
+For current production data, the 48 unresolved groups should remain visible
+as a warning such as:
+
+SOURCE_IDENTITY_UNRESOLVED_GLOBAL = 48
+
+They must not be silently ignored.
+
+5. ROOT-CAUSE CLASSIFICATION
+
+Document:
+
+DUPLICATE_CHECK_FALSE_POSITIVE = confirmed
+
+for the old global duplicate blocker.
+
+Do NOT claim:
+
+PARSER_DUPLICATION
+INGESTION_DUPLICATION
+DATABASE_DUPLICATION
+
+for the 48 unresolved groups because INFOTABLE_SK was not persisted and
+source duplication cannot be proven.
+
+6. FUTURE INGESTION PROVENANCE
+
+Add a backlog/documentation item recommending that future SEC ingestion
+preserve the source information-table row identifier:
+
+INFOTABLE_SK
+
+or an equivalent stable source-row identity.
+
+Do not perform the schema/data migration in this task unless it is strictly
+required for the current repair. It should not be required.
+
+7. AGGREGATION SAFETY
+
+Confirm again that aggregate eligibility:
+
+- uses only effective filings
+- excludes PUT/CALL from common-equity totals
+- excludes PRN where required by existing rules
+- preserves separate legitimate holding rows
+- does not collapse rows using ticker
+- performs QoQ identity using CUSIP/security identity
+- does not multiply reported_value by 1000
+
+8. TESTS
+
+Add/adjust tests demonstrating:
+
+- materially distinct rows sharing the old coarse key do NOT block repair
+- different other_manager rows remain distinct
+- different voting authority rows remain distinct
+- different reported amounts remain distinct
+- different investment discretion remains distinct
+- PUT/CALL remain distinct/excluded appropriately
+- unresolved identical rows for a TARGET repair symbol cause NO-GO
+- unresolved identical rows outside the repair scope produce a warning but
+  do not block the scoped repair
+- AAPL/NVDA/MSFT/COST-style clean target groups permit GO
+- no production writes occur during dry run
+
+9. RUN VERIFICATION
+
+Run the repair-focused tests.
+Run the Institutional Intelligence suite.
+Run production build.
+
+Commit and push the correction.
+
+RETURN
+
+TASK STATUS
+ROOT CAUSE
+OLD DUPLICATE RULE
+NEW DUPLICATE SAFETY RULE
+GLOBAL WARNING BEHAVIOR
+REPAIR-SCOPE BLOCKING BEHAVIOR
+AGGREGATION SAFETY
+FILES CHANGED
+TEST RESULTS
+BUILD RESULT
+COMMIT
+PUSH STATUS
+NEXT RAILWAY DRY-RUN COMMAND
+
+STOP.

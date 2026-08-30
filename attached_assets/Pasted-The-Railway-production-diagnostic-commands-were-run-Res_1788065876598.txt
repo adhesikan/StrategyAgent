@@ -1,0 +1,151 @@
+The Railway production diagnostic commands were run.
+
+Results:
+
+npx tsx scripts/audit-institutional-readiness.ts
+and
+npx tsx scripts/institutional-ingestion-status.ts
+
+both ran successfully against the Railway DATABASE_URL.
+
+Important production findings:
+
+- schema ready
+- SEC configured
+- ingestion enabled
+- public Institutional Intelligence disabled
+- total holdings = 562,552
+- mapped holdings = 0
+- unmapped holdings = 562,552
+- quarterly aggregate rows = 0
+- available aggregate quarters = 0
+- comparable symbols = 0
+
+Pipeline status shows raw data:
+
+2026-Q1: 397 filings / 172,211 holdings
+2025-Q4: 756 filings / 290,223 holdings
+2025-Q3: 34 filings / 53,506 holdings
+2025-Q2: 24 filings / 17,438 holdings
+
+However, the readiness audit shows completedIngestionRuns = 0 and
+empty_not_published ingestion-run states.
+
+We then attempted the recommended psql read-only query from Railway
+Shell, but the Railway application image does not contain psql:
+
+bash: psql: command not found
+
+TASK:
+
+Use the repository's existing Node/TypeScript database infrastructure
+to provide the missing READ-ONLY production diagnostics.
+
+Prefer extending an existing diagnostic script if appropriate rather
+than introducing unnecessary tooling.
+
+DO NOT:
+- modify database data
+- run ingestion
+- run backfill
+- seed mappings
+- generate aggregates
+- deploy
+- alter schema
+- install psql
+- change environment variables
+
+We need to determine exactly where the existing 562,552 holdings stop
+being usable.
+
+Produce/read the following values from DATABASE_URL:
+
+1. institutional_13f_filings total rows
+2. is_effective=true filing rows
+3. distinct effective managers
+4. distinct effective reporting quarters
+5. latest effective reporting quarter
+6. institutional_13f_holdings total rows
+7. holdings joined to effective filings
+8. effective holdings with mapped_symbol IS NOT NULL
+9. effective holdings mapped to AAPL
+10. effective holdings mapped to NVDA
+11. effective holdings mapped to MSFT
+12. institutional_quarterly_aggregates total rows
+
+Also diagnose the discrepancy between:
+
+readiness audit:
+completedIngestionRuns = 0
+and empty_not_published runs
+
+versus ingestion status:
+2026-Q1 = 397 filings / 172,211 holdings
+2025-Q4 = 756 filings / 290,223 holdings
+2025-Q3 = 34 filings / 53,506 holdings
+2025-Q2 = 24 filings / 17,438 holdings
+
+Determine whether those counts represent:
+- persisted raw data,
+- discovered source records,
+- partially processed data,
+- effective filings,
+- or something else.
+
+Also inspect mapping state without modifying it:
+
+- distinct CUSIPs in effective holdings
+- distinct mapped symbols
+- count of NULL mapped_symbol
+- count by mapping_status if available
+- number of institutional_security_mappings rows
+- mapping-method/status distribution
+- whether institutional_security_mappings contains mappings that have
+  not been applied to institutional_13f_holdings
+- whether the mapping pipeline was ever executed against these
+  562,552 holdings
+
+For AAPL, NVDA, MSFT, and COST:
+determine whether their expected CUSIPs occur in raw holdings even if
+mapped_symbol is NULL.
+
+IMPORTANT:
+
+If a suitable read-only diagnostic script already exists, tell me the
+exact command to run in Railway Shell.
+
+If a small diagnostic-only script must be added, make it explicitly
+read-only and safe for production, add tests if appropriate, and tell
+me the exact Railway Shell command.
+
+Do not make any data corrections yet.
+
+Return:
+
+PRODUCTION DATA DIAGNOSIS
+
+EFFECTIVE FILINGS STATUS
+
+EFFECTIVE HOLDINGS STATUS
+
+MAPPING STATUS
+
+AAPL TRACE
+
+NVDA TRACE
+
+MSFT TRACE
+
+COST TRACE
+
+INGESTION-RUN DISCREPANCY
+
+AGGREGATE STATUS
+
+ROOT CAUSE
+
+RECOMMENDED REMEDIATION SEQUENCE
+
+EXACT READ-ONLY RAILWAY COMMAND
+
+STOP.

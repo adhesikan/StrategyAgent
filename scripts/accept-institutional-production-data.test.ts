@@ -182,6 +182,21 @@ describe("Railway institutional acceptance guards", () => {
     expect(source).not.toMatch(/ingestion|backfill/i);
   });
 
+  it("uses canonical positive-share eligibility for every raw common-equity total", () => {
+    const source = readFileSync(
+      new URL("./accept-institutional-production-data.ts", import.meta.url),
+      "utf8",
+    );
+    const rawQuarterBlock = source.slice(
+      source.indexOf("raw_quarters AS"),
+      source.indexOf("mapping_stats AS"),
+    );
+
+    expect(
+      rawQuarterBlock.match(/AND m\.reported_shares > 0/g),
+    ).toHaveLength(5);
+  });
+
   it("fails closed when either fixed quarter is absent", () => {
     const evidence = makeEvidence({
       symbol: "AAPL",

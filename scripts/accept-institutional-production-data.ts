@@ -355,6 +355,7 @@ export async function loadAcceptanceEvidence(
             AND m.mapping_status IN ('exact', 'reviewed')
             AND m.put_call IS NULL
             AND UPPER(COALESCE(m.shares_prn_type, '')) <> 'PRN'
+            AND m.reported_shares > 0
         )::int AS raw_common_rows,
         COUNT(m.id) FILTER (
           WHERE m.mapped_symbol = r.symbol
@@ -371,6 +372,7 @@ export async function loadAcceptanceEvidence(
             AND m.mapping_status IN ('exact', 'reviewed')
             AND m.put_call IS NULL
             AND UPPER(COALESCE(m.shares_prn_type, '')) <> 'PRN'
+            AND m.reported_shares > 0
             AND m.reported_value IS NULL
         )::int AS raw_common_rows_with_null_value,
         SUM(m.reported_shares) FILTER (
@@ -378,18 +380,21 @@ export async function loadAcceptanceEvidence(
             AND m.mapping_status IN ('exact', 'reviewed')
             AND m.put_call IS NULL
             AND UPPER(COALESCE(m.shares_prn_type, '')) <> 'PRN'
+            AND m.reported_shares > 0
         )::float8 AS raw_common_shares,
         SUM(m.reported_value) FILTER (
           WHERE m.mapped_symbol = r.symbol
             AND m.mapping_status IN ('exact', 'reviewed')
             AND m.put_call IS NULL
             AND UPPER(COALESCE(m.shares_prn_type, '')) <> 'PRN'
+            AND m.reported_shares > 0
         )::float8 AS raw_common_value,
         COUNT(DISTINCT m.filer_cik) FILTER (
           WHERE m.mapped_symbol = r.symbol
             AND m.mapping_status IN ('exact', 'reviewed')
             AND m.put_call IS NULL
             AND UPPER(COALESCE(m.shares_prn_type, '')) <> 'PRN'
+            AND m.reported_shares > 0
         )::int AS raw_common_manager_count
       FROM requested r
       CROSS JOIN fixed_quarters q

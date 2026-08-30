@@ -96,6 +96,31 @@ export interface EffectiveFundFiling {
   isEffective: boolean;
 }
 
+/**
+ * Normalized persisted common-equity aggregate. This is the authoritative
+ * source for stock summary and trend metrics; holder rows remain detail-only.
+ */
+export interface CanonicalInstitutionalQuarterAggregate {
+  quarter: InstitutionalQuarter;
+  previousQuarter: InstitutionalQuarter | null;
+  previousReportingManagerCount: number | null;
+  reportingManagerCount: number;
+  aggregateReportedShares: number | null;
+  aggregateReportedValue: number | null;
+  previousQuarterShares: number | null;
+  previousQuarterValue: number | null;
+  reportedSharesChange: number | null;
+  reportedSharesChangePercent: number | null;
+  newPositionCount: number;
+  increasedPositionCount: number;
+  reducedPositionCount: number;
+  exitedPositionCount: number;
+  unchangedCount: number;
+  eligibleHoldingCount: number;
+  excludedHoldingCount: number;
+  coverageStatus: "complete" | "partial" | "insufficient";
+}
+
 export interface FundPortfolioXRaySource {
   managerId: string;
   managerName: string;
@@ -131,6 +156,8 @@ export interface StockInstitutionalAnalyticsSource {
   managerPortfolioValues: Record<string, number | null>;
   currentFilingManagerIds: string[];
   comparableManagerIds: string[];
+  /** Present only for the unfiltered common-equity universe. */
+  canonicalAggregate?: CanonicalInstitutionalQuarterAggregate | null;
 }
 
 export interface StockInstitutionalRepositoryQuery {
@@ -178,6 +205,8 @@ export interface StockInstitutionalTrendQuarterSource {
   previousHoldings: EnrichedInstitutionalHolding[];
   currentFilingManagerIds: string[];
   comparableManagerIds: string[];
+  /** Present only for the unfiltered common-equity universe. */
+  canonicalAggregate?: CanonicalInstitutionalQuarterAggregate | null;
 }
 
 export interface StockInstitutionalTrendSource {

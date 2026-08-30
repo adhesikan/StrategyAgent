@@ -258,6 +258,52 @@ describe("multi-quarter stock institutional trend", () => {
     expect(result.classification).toBe("DISTRIBUTION");
   });
 
+  it("uses canonical aggregate history even when no reconstructed holdings are present", () => {
+    const q1 = source(Q1, null, [], []);
+    q1.canonicalAggregate = {
+      quarter: Q1,
+      previousQuarter: {
+        year: 2025,
+        quarter: 4,
+        label: "2025-Q4",
+        periodEndDate: "2025-12-31",
+      },
+      previousReportingManagerCount: 12,
+      reportingManagerCount: 10,
+      aggregateReportedShares: 900,
+      aggregateReportedValue: 129_610,
+      previousQuarterShares: 1_000,
+      previousQuarterValue: 130_000,
+      reportedSharesChange: -100,
+      reportedSharesChangePercent: -0.1,
+      newPositionCount: 1,
+      increasedPositionCount: 1,
+      reducedPositionCount: 3,
+      exitedPositionCount: 1,
+      unchangedCount: 4,
+      eligibleHoldingCount: 10,
+      excludedHoldingCount: 0,
+      coverageStatus: "complete",
+    };
+
+    const result = computeStockInstitutionalTrend({
+      symbol: "XYZ",
+      quarters: [q1],
+    });
+
+    expect(result.classification).toBe("DISTRIBUTION");
+    expect(result.dataQuality.status).toBe("complete");
+    expect(result.quarters[0]).toMatchObject({
+      reportedHolderCount: 10,
+      aggregateReportedShares: 900,
+      aggregateReportedValue: 129_610,
+      breadthChange: -2,
+      shareTrend: -10,
+      increaseReductionBalance: -0.33,
+      hasComparablePriorQuarter: true,
+    });
+  });
+
   it("classifies accelerating increases at the exact configured boundary", () => {
     expect(
       classifyStockInstitutionalTrend([metric(0.4), metric(0.6)]),
@@ -325,6 +371,26 @@ describe("multi-quarter stock institutional trend", () => {
       aggregateReportedValue: 150,
     });
 
+    quarter.canonicalAggregate = {
+      quarter: Q2,
+      previousQuarter: Q1,
+      previousReportingManagerCount: null,
+      reportingManagerCount: 0,
+      aggregateReportedShares: null,
+      aggregateReportedValue: null,
+      previousQuarterShares: null,
+      previousQuarterValue: null,
+      reportedSharesChange: null,
+      reportedSharesChangePercent: null,
+      newPositionCount: 0,
+      increasedPositionCount: 0,
+      reducedPositionCount: 0,
+      exitedPositionCount: 0,
+      unchangedCount: 0,
+      eligibleHoldingCount: 0,
+      excludedHoldingCount: 1,
+      coverageStatus: "insufficient",
+    };
     const puts = computeStockInstitutionalTrend({
       symbol: "XYZ",
       quarters: [quarter],
@@ -336,6 +402,7 @@ describe("multi-quarter stock institutional trend", () => {
       aggregateReportedValue: 999,
       increasedReportedHolderCount: 1,
     });
+    expect(puts.dataQuality.status).toBe("partial");
   });
 
   it("defaults service history to eight quarters and caps larger requests", async () => {

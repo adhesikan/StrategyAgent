@@ -11,6 +11,7 @@ import {
 } from "../security-position";
 import { stockInstitutionalRepository } from "./stock-analytics-repository";
 import type {
+  CanonicalInstitutionalQuarterAggregate,
   StockInstitutionalAnalyticsSource,
   StockInstitutionalRepository,
 } from "./repository";
@@ -54,6 +55,7 @@ export interface StockInstitutionalAnalyticsCalculationInput {
   managerPortfolioValues: Record<string, number | null>;
   currentFilingManagerIds: string[];
   comparableManagerIds: string[];
+  canonicalAggregate?: CanonicalInstitutionalQuarterAggregate | null;
 }
 
 export interface StockInstitutionalService {
@@ -388,12 +390,58 @@ function buildBreadth(
   };
 }
 
+function buildCanonicalBreadth(
+  aggregate: CanonicalInstitutionalQuarterAggregate,
+): InstitutionalBreadth {
+  const directional =
+    aggregate.newPositionCount +
+    aggregate.increasedPositionCount +
+    aggregate.reducedPositionCount +
+    aggregate.exitedPositionCount;
+  const total =
+    directional + aggregate.unchangedCount;
+  const breadthRatio =
+    directional === 0
+      ? 0
+      : roundPercent(
+          ((aggregate.newPositionCount +
+            aggregate.increasedPositionCount -
+            aggregate.reducedPositionCount -
+            aggregate.exitedPositionCount) /
+            directional) *
+            100,
+        ) / 100;
+  return {
+    scope: "managers",
+    totalEntityCount: total,
+    increasingEntityCount: aggregate.increasedPositionCount,
+    decreasingEntityCount: aggregate.reducedPositionCount,
+    newEntityCount: aggregate.newPositionCount,
+    exitedEntityCount: aggregate.exitedPositionCount,
+    breadthRatio,
+    direction:
+      breadthRatio > 0
+        ? "broadening"
+        : breadthRatio < 0
+          ? "narrowing"
+          : "balanced",
+  };
+}
+
 function buildTrend(
   input: StockInstitutionalAnalyticsCalculationInput,
   shareChange: number | null,
   changes: StockInstitutionalHolder[],
 ): InstitutionalTrend | null {
   if (!input.previousQuarter) return null;
+  const canonicalObservations = input.canonicalAggregate
+    ? input.canonicalAggregate.newPositionCount +
+      input.canonicalAggregate.increasedPositionCount +
+      input.canonicalAggregate.reducedPositionCount +
+      input.canonicalAggregate.exitedPositionCount +
+      input.canonicalAggregate.unchangedCount
+    : null;
+  const observations = canonicalObservations ?? changes.length;
   return {
     direction:
       shareChange === null
@@ -405,13 +453,13 @@ function buildTrend(
             : "stable",
     currentQuarter: input.quarter,
     comparisonQuarter: input.previousQuarter,
-    observations: changes.length,
+    observations,
     confidence:
       shareChange === null
         ? "insufficient"
-        : changes.length >= 10
+        : observations >= 10
           ? "high"
-          : changes.length >= 5
+          : observations >= 5
             ? "moderate"
             : "limited",
   };
@@ -426,6 +474,16 @@ function buildDataQuality(
     "Form 13F holdings are delayed and represent tracked reported positions only, not total institutional ownership.",
     "Quarter-over-quarter differences are reported filing comparisons, not exact trading activity.",
   ];
+  if (input.canonicalAggregate) {
+    warnings.push(
+      "Common-equity summary metrics come from the persisted canonical quarterly aggregate.",
+    );
+    return {
+      status: input.canonicalAggregate.coverageStatus,
+      coveragePercent: mappingCoverage.coveragePercent,
+      warnings,
+    };
+  }
   if (mappingCoverage.coveragePercent < 100) {
     warnings.push(
       "Some symbol candidates could not be mapped reliably and were excluded from holder totals.",
@@ -461,6 +519,12 @@ export function computeStockInstitutionalAnalytics(
 ): StockInstitutionalAnalytics {
   const symbol = input.symbol.trim().toUpperCase();
   const positionType = options.positionType ?? "COMMON_EQUITY";
+  const canonical =
+    positionType === "COMMON_EQUITY" ? input.canonicalAggregate ?? null : null;
+  const effectiveInput =
+    canonical === input.canonicalAggregate
+      ? input
+      : { ...input, canonicalAggregate: null };
   const topN = Math.max(1, Math.min(100, Math.floor(options.topN ?? 20)));
   const comparable = new Set(input.comparableManagerIds);
   const currentByManager = aggregateByManager(
@@ -490,38 +554,41 @@ export function computeStockInstitutionalAnalytics(
     currentByManager.has(holder.managerId),
   );
   const changes = holders.filter((holder) => holder.changeType !== null);
-  const comparisonComplete =
-    input.previousQuarter !== null &&
-    currentHolders.every((holder) => comparable.has(holder.managerId));
+  const comparisonComplete = canonical
+    ? canonical.previousQuarter !== null
+    : input.previousQuarter !== null &&
+      currentHolders.every((holder) => comparable.has(holder.managerId));
 
-  const aggregateReportedShares = sumNullable(
+  const reconstructedAggregateReportedShares = sumNullable(
     Array.from(currentByManager.values()).map(
       (position) => position.reportedShares,
     ),
   );
-  const previousAggregateReportedShares = input.previousQuarter
+  const reconstructedPreviousAggregateReportedShares = input.previousQuarter
     ? sumNullable(
         Array.from(previousByManager.values()).map(
           (position) => position.reportedShares,
         ),
       )
     : null;
-  const aggregateReportedShareChange =
+  const reconstructedAggregateReportedShareChange =
     comparisonComplete &&
-    previousAggregateReportedShares !== null &&
-    aggregateReportedShares !== null
-      ? aggregateReportedShares - previousAggregateReportedShares
+    reconstructedPreviousAggregateReportedShares !== null &&
+    reconstructedAggregateReportedShares !== null
+      ? reconstructedAggregateReportedShares -
+        reconstructedPreviousAggregateReportedShares
       : null;
-  const aggregateReportedShareChangePct =
-    aggregateReportedShareChange !== null &&
-    previousAggregateReportedShares !== null &&
-    previousAggregateReportedShares > 0
+  const reconstructedAggregateReportedShareChangePct =
+    reconstructedAggregateReportedShareChange !== null &&
+    reconstructedPreviousAggregateReportedShares !== null &&
+    reconstructedPreviousAggregateReportedShares > 0
       ? roundPercent(
-          (aggregateReportedShareChange / previousAggregateReportedShares) *
+          (reconstructedAggregateReportedShareChange /
+            reconstructedPreviousAggregateReportedShares) *
             100,
         )
       : null;
-  const aggregateReportedValue = sumNullable(
+  const reconstructedAggregateReportedValue = sumNullable(
     Array.from(currentByManager.values()).map(
       (position) => position.reportedValue,
     ),
@@ -534,13 +601,6 @@ export function computeStockInstitutionalAnalytics(
     symbol,
     positionType,
   );
-  const previousReportedHolderCount = input.previousQuarter
-    ? previousByManager.size
-    : null;
-  const holderCountChange =
-    comparisonComplete && previousReportedHolderCount !== null
-      ? currentByManager.size - previousReportedHolderCount
-      : null;
   const newlyReportedHolderCount = changes.filter(
     (holder) => holder.changeType === "NEW",
   ).length;
@@ -556,26 +616,67 @@ export function computeStockInstitutionalAnalytics(
   const noLongerReportedHolderCount = changes.filter(
     (holder) => holder.changeType === "EXITED",
   ).length;
-  const breadth = buildBreadth(changes);
+  const reportingManagerCount =
+    canonical?.reportingManagerCount ?? currentByManager.size;
+  const previousReportedHolderCount = canonical
+    ? canonical.previousReportingManagerCount
+    : input.previousQuarter
+      ? previousByManager.size
+      : null;
+  const holderCountChange =
+    canonical
+      ? previousReportedHolderCount === null
+        ? null
+        : reportingManagerCount - previousReportedHolderCount
+      : comparisonComplete && previousReportedHolderCount !== null
+        ? reportingManagerCount - previousReportedHolderCount
+        : null;
+  const canonicalShareChangePercent =
+    canonical?.reportedSharesChangePercent === null ||
+    canonical?.reportedSharesChangePercent === undefined
+      ? null
+      : roundPercent(canonical.reportedSharesChangePercent * 100);
+  const summaryChanges = canonical
+    ? {
+        newlyReportedHolderCount: canonical.newPositionCount,
+        increasedReportedHolderCount: canonical.increasedPositionCount,
+        unchangedReportedHolderCount: canonical.unchangedCount,
+        reducedReportedHolderCount: canonical.reducedPositionCount,
+        noLongerReportedHolderCount: canonical.exitedPositionCount,
+      }
+    : {
+        newlyReportedHolderCount,
+        increasedReportedHolderCount,
+        unchangedReportedHolderCount,
+        reducedReportedHolderCount,
+        noLongerReportedHolderCount,
+      };
+  const summaryShareChange =
+    canonical?.reportedSharesChange ??
+    reconstructedAggregateReportedShareChange;
+  const breadth = canonical
+    ? buildCanonicalBreadth(canonical)
+    : buildBreadth(changes);
 
   return {
     symbol,
     quarter: input.quarter,
     dataAsOf: input.dataAsOf,
-    reportingManagerCount: currentByManager.size,
-    reportedHolderCount: currentByManager.size,
+    reportingManagerCount,
+    reportedHolderCount: reportingManagerCount,
     previousReportedHolderCount,
     holderCountChange,
-    newlyReportedHolderCount,
-    increasedReportedHolderCount,
-    unchangedReportedHolderCount,
-    reducedReportedHolderCount,
-    noLongerReportedHolderCount,
-    aggregateReportedShares,
-    previousAggregateReportedShares,
-    aggregateReportedShareChange,
-    aggregateReportedShareChangePct,
-    aggregateReportedValueDollars: aggregateReportedValue,
+    ...summaryChanges,
+    aggregateReportedShares:
+      canonical?.aggregateReportedShares ?? reconstructedAggregateReportedShares,
+    previousAggregateReportedShares:
+      canonical?.previousQuarterShares ??
+      reconstructedPreviousAggregateReportedShares,
+    aggregateReportedShareChange: summaryShareChange,
+    aggregateReportedShareChangePct:
+      canonical ? canonicalShareChangePercent : reconstructedAggregateReportedShareChangePct,
+    aggregateReportedValueDollars:
+      canonical?.aggregateReportedValue ?? reconstructedAggregateReportedValue,
     averagePortfolioWeight: average(weights),
     medianPortfolioWeight: median(weights),
     topReportedHolders: sortByReportedValue(currentHolders).slice(0, topN),
@@ -602,21 +703,21 @@ export function computeStockInstitutionalAnalytics(
       : [],
     mappingCoverage,
     managerChangeCounts: {
-      new: newlyReportedHolderCount,
-      increased: increasedReportedHolderCount,
-      unchanged: unchangedReportedHolderCount,
-      reduced: reducedReportedHolderCount,
-      exited: noLongerReportedHolderCount,
+      new: summaryChanges.newlyReportedHolderCount,
+      increased: summaryChanges.increasedReportedHolderCount,
+      unchanged: summaryChanges.unchangedReportedHolderCount,
+      reduced: summaryChanges.reducedReportedHolderCount,
+      exited: summaryChanges.noLongerReportedHolderCount,
     },
     breadth,
     trend: buildTrend(
-      input,
-      aggregateReportedShareChange,
+      effectiveInput,
+      summaryShareChange,
       changes,
     ),
     dataQuality: buildDataQuality(
       mappingCoverage,
-      input,
+      effectiveInput,
       comparisonComplete,
     ),
     modelVersion: STOCK_INSTITUTIONAL_MODEL_VERSION,

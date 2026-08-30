@@ -12,6 +12,8 @@ import { db } from "../../../db";
 import {
   institutional13fFilings,
   institutional13fHoldings,
+  institutionalQuarterlyAggregates,
+  type InstitutionalQuarterlyAggregate,
 } from "@shared/schema";
 import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
@@ -21,6 +23,7 @@ import {
   getActiveManagerIdsForCohort,
 } from "../manager-cohort-service";
 import type {
+  CanonicalInstitutionalQuarterAggregate,
   EffectiveFundFiling,
   StockInstitutionalAnalyticsSource,
   StockInstitutionalRepository,
@@ -56,6 +59,45 @@ function previousQuarterPeriod(periodOfReport: string): string | null {
   const year = current.quarter === 1 ? current.year - 1 : current.year;
   const quarter = current.quarter === 1 ? 4 : current.quarter - 1;
   return parseQuarterIdentifier(`${year}-Q${quarter}`)?.periodEndDate ?? null;
+}
+
+function normalizeCoverageStatus(
+  value: string,
+): CanonicalInstitutionalQuarterAggregate["coverageStatus"] {
+  return value === "complete" || value === "partial"
+    ? value
+    : "insufficient";
+}
+
+function toCanonicalAggregate(
+  current: InstitutionalQuarterlyAggregate,
+  previous: InstitutionalQuarterlyAggregate | null,
+): CanonicalInstitutionalQuarterAggregate | null {
+  const quarter = createInstitutionalQuarter(dateText(current.periodOfReport));
+  const previousQuarter = current.prevPeriodOfReport
+    ? createInstitutionalQuarter(dateText(current.prevPeriodOfReport))
+    : null;
+  if (!quarter) return null;
+  return {
+    quarter,
+    previousQuarter,
+    previousReportingManagerCount: previous?.reportingManagerCount ?? null,
+    reportingManagerCount: current.reportingManagerCount,
+    aggregateReportedShares: current.aggregateReportedShares,
+    aggregateReportedValue: current.aggregateReportedValue,
+    previousQuarterShares: current.previousQuarterShares,
+    previousQuarterValue: current.previousQuarterValue,
+    reportedSharesChange: current.reportedSharesChange,
+    reportedSharesChangePercent: current.reportedSharesChangePercent,
+    newPositionCount: current.newPositionCount,
+    increasedPositionCount: current.increasedPositionCount,
+    reducedPositionCount: current.reducedPositionCount,
+    exitedPositionCount: current.exitedPositionCount,
+    unchangedCount: current.unchangedCount,
+    eligibleHoldingCount: current.eligibleHoldingCount,
+    excludedHoldingCount: current.excludedHoldingCount,
+    coverageStatus: normalizeCoverageStatus(current.coverageStatus),
+  };
 }
 
 type EnrichedHoldingsPageLoader = (
@@ -214,7 +256,53 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
           ? parsedQuarter.periodEndDate
           : null;
     }
-    if (selectedPeriod === null) {
+    const canonicalMode =
+      (query.options.positionType ?? "COMMON_EQUITY") === "COMMON_EQUITY" &&
+      query.options.cohort === undefined;
+    let canonicalAggregate: CanonicalInstitutionalQuarterAggregate | null = null;
+    if (canonicalMode) {
+      const canonicalRows = await db
+        .select()
+        .from(institutionalQuarterlyAggregates)
+        .where(
+          selectedPeriod
+            ? and(
+                eq(institutionalQuarterlyAggregates.symbol, query.symbol),
+                eq(institutionalQuarterlyAggregates.periodOfReport, selectedPeriod),
+              )
+            : eq(institutionalQuarterlyAggregates.symbol, query.symbol),
+        )
+        .orderBy(desc(institutionalQuarterlyAggregates.periodOfReport))
+        .limit(1);
+      const currentAggregate = canonicalRows[0];
+      if (currentAggregate) {
+        selectedPeriod = dateText(currentAggregate.periodOfReport);
+        const canonicalPreviousPeriod = currentAggregate.prevPeriodOfReport
+          ? dateText(currentAggregate.prevPeriodOfReport)
+          : null;
+        const previousRows = canonicalPreviousPeriod
+          ? await db
+              .select()
+              .from(institutionalQuarterlyAggregates)
+              .where(
+                and(
+                  eq(institutionalQuarterlyAggregates.symbol, query.symbol),
+                  eq(
+                    institutionalQuarterlyAggregates.periodOfReport,
+                    canonicalPreviousPeriod,
+                  ),
+                ),
+              )
+              .limit(1)
+          : [];
+        canonicalAggregate = toCanonicalAggregate(
+          currentAggregate,
+          previousRows[0] ?? null,
+        );
+        if (!canonicalAggregate) return null;
+      }
+    }
+    if (!canonicalAggregate && selectedPeriod === null) {
       const latestRows = await db
         .select({ periodOfReport: institutional13fFilings.periodOfReport })
         .from(institutional13fFilings)
@@ -226,7 +314,9 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
         : null;
     }
     if (!selectedPeriod) return null;
-    const previousPeriod = previousQuarterPeriod(selectedPeriod);
+    const previousPeriod =
+      canonicalAggregate?.previousQuarter?.periodEndDate ??
+      previousQuarterPeriod(selectedPeriod);
     const periods = previousPeriod
       ? [selectedPeriod, previousPeriod]
       : [selectedPeriod];
@@ -267,7 +357,22 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       eligibleFilingRows,
       query.quarter,
     );
-    if (!selected) return null;
+    if (!selected) {
+      return canonicalAggregate
+        ? {
+            symbol: query.symbol,
+            quarter: canonicalAggregate.quarter,
+            previousQuarter: canonicalAggregate.previousQuarter,
+            dataAsOf: canonicalAggregate.quarter.periodEndDate,
+            currentHoldings: [],
+            previousHoldings: [],
+            managerPortfolioValues: {},
+            currentFilingManagerIds: [],
+            comparableManagerIds: [],
+            canonicalAggregate,
+          }
+        : null;
+    }
 
     const currentAccessions = selected.currentFilings.map(
       (filing) => filing.accessionNumber,
@@ -292,9 +397,12 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
 
     return {
       symbol: query.symbol,
-      quarter: selected.currentQuarter,
-      previousQuarter: selected.previousQuarter,
-      dataAsOf: selected.currentQuarter.periodEndDate,
+      quarter: canonicalAggregate?.quarter ?? selected.currentQuarter,
+      previousQuarter:
+        canonicalAggregate?.previousQuarter ?? selected.previousQuarter,
+      dataAsOf:
+        canonicalAggregate?.quarter.periodEndDate ??
+        selected.currentQuarter.periodEndDate,
       currentHoldings,
       previousHoldings,
       managerPortfolioValues,
@@ -302,6 +410,7 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
         (filing) => filing.managerId,
       ),
       comparableManagerIds: selected.comparableManagerIds,
+      canonicalAggregate,
     };
   },
 };

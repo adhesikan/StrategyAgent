@@ -12,6 +12,7 @@ import {
 } from "../security-position";
 import { stockInstitutionalTrendRepository } from "./stock-trend-repository";
 import type {
+  CanonicalInstitutionalQuarterAggregate,
   StockInstitutionalTrendQuarterSource,
   StockInstitutionalTrendRepository,
 } from "./repository";
@@ -269,6 +270,56 @@ function buildQuarter(
   };
 }
 
+function buildCanonicalQuarter(
+  aggregate: CanonicalInstitutionalQuarterAggregate,
+): StockInstitutionalTrendQuarter {
+  const hasComparison =
+    aggregate.previousQuarter !== null &&
+    aggregate.previousQuarterShares !== null;
+  const directionalCount =
+    aggregate.newPositionCount +
+    aggregate.increasedPositionCount +
+    aggregate.reducedPositionCount +
+    aggregate.exitedPositionCount;
+  const comparableCount = directionalCount + aggregate.unchangedCount;
+  const increaseReductionBalance = !hasComparison
+    ? null
+    : directionalCount === 0
+      ? 0
+      : round(
+          (aggregate.newPositionCount +
+            aggregate.increasedPositionCount -
+            aggregate.reducedPositionCount -
+            aggregate.exitedPositionCount) /
+            directionalCount,
+        );
+  return {
+    quarter: aggregate.quarter,
+    reportedHolderCount: aggregate.reportingManagerCount,
+    newlyReportedHolderCount: aggregate.newPositionCount,
+    increasedReportedHolderCount: aggregate.increasedPositionCount,
+    reducedReportedHolderCount: aggregate.reducedPositionCount,
+    noLongerReportedHolderCount: aggregate.exitedPositionCount,
+    aggregateReportedShares: aggregate.aggregateReportedShares,
+    aggregateReportedValue: aggregate.aggregateReportedValue,
+    breadthChange:
+      aggregate.previousReportingManagerCount === null
+        ? null
+        : aggregate.reportingManagerCount -
+          aggregate.previousReportingManagerCount,
+    shareTrend:
+      aggregate.reportedSharesChangePercent === null
+        ? null
+        : round(aggregate.reportedSharesChangePercent * 100),
+    persistence:
+      !hasComparison || comparableCount === 0
+        ? null
+        : round((aggregate.unchangedCount / comparableCount) * 100),
+    increaseReductionBalance,
+    hasComparablePriorQuarter: hasComparison,
+  };
+}
+
 function quarterSignal(
   quarter: StockInstitutionalTrendQuarter,
 ): "accumulation" | "distribution" | "stable" | null {
@@ -345,7 +396,43 @@ export function classifyStockInstitutionalTrend(
 function buildDataQuality(
   input: StockInstitutionalTrendCalculationInput,
   quarters: StockInstitutionalTrendQuarter[],
+  useCanonicalAggregates: boolean,
 ): AnalyticsDataQuality {
+  const canonicalAggregates = useCanonicalAggregates
+    ? input.quarters
+    .map((source) => source.canonicalAggregate ?? null)
+    .filter(
+      (
+        aggregate,
+      ): aggregate is CanonicalInstitutionalQuarterAggregate =>
+        aggregate !== null,
+    )
+    : [];
+  if (
+    canonicalAggregates.length > 0 &&
+    canonicalAggregates.length === input.quarters.length
+  ) {
+    const latest = quarters[quarters.length - 1];
+    const complete = canonicalAggregates.every(
+      (aggregate) => aggregate.coverageStatus === "complete",
+    );
+    const insufficient = canonicalAggregates.every(
+      (aggregate) => aggregate.coverageStatus === "insufficient",
+    );
+    return {
+      status: insufficient
+        ? "insufficient"
+        : complete && latest?.hasComparablePriorQuarter
+          ? "complete"
+          : "partial",
+      coveragePercent: complete ? 100 : null,
+      warnings: [
+        "Form 13F holdings are delayed reported positions and do not establish total institutional ownership.",
+        "Reported value changes are not buying or selling signals because security price changes affect filing-time value.",
+        "Trend classifications use canonical persisted common-equity aggregates; no AI or LLM interpretation is used.",
+      ],
+    };
+  }
   const candidates = input.quarters.flatMap((source) => [
     ...source.currentHoldings,
     ...source.previousHoldings,
@@ -400,12 +487,20 @@ export function computeStockInstitutionalTrend(
     .sort((left, right) =>
       left.quarter.periodEndDate.localeCompare(right.quarter.periodEndDate),
     )
-    .map((source) => buildQuarter(source, symbol, positionType));
+    .map((source) =>
+      positionType === "COMMON_EQUITY" && source.canonicalAggregate
+        ? buildCanonicalQuarter(source.canonicalAggregate)
+        : buildQuarter(source, symbol, positionType),
+    );
   return {
     symbol,
     quarters,
     classification: classifyStockInstitutionalTrend(quarters),
-    dataQuality: buildDataQuality(input, quarters),
+    dataQuality: buildDataQuality(
+      input,
+      quarters,
+      positionType === "COMMON_EQUITY",
+    ),
     modelVersion: INSTITUTIONAL_TREND_MODEL_VERSION,
   };
 }

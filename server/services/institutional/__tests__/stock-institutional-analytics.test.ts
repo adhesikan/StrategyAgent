@@ -276,6 +276,89 @@ describe("stock institutional analytics", () => {
     expect(result.reportedHolderCount).toBe(4);
   });
 
+  it("uses the persisted common-equity aggregate for summary totals and activity", () => {
+    const input = baseInput();
+    input.canonicalAggregate = {
+      quarter: QUARTER,
+      previousQuarter: PREVIOUS_QUARTER,
+      previousReportingManagerCount: 12,
+      reportingManagerCount: 10,
+      aggregateReportedShares: 9_000,
+      aggregateReportedValue: 129_610,
+      previousQuarterShares: 10_000,
+      previousQuarterValue: 120_000,
+      reportedSharesChange: -1_000,
+      reportedSharesChangePercent: -0.1,
+      newPositionCount: 1,
+      increasedPositionCount: 2,
+      reducedPositionCount: 3,
+      exitedPositionCount: 4,
+      unchangedCount: 5,
+      eligibleHoldingCount: 10,
+      excludedHoldingCount: 2,
+      coverageStatus: "insufficient",
+    };
+
+    const result = computeStockInstitutionalAnalytics(input);
+
+    expect(result).toMatchObject({
+      reportingManagerCount: 10,
+      reportedHolderCount: 10,
+      previousReportedHolderCount: 12,
+      holderCountChange: -2,
+      aggregateReportedShares: 9_000,
+      previousAggregateReportedShares: 10_000,
+      aggregateReportedShareChange: -1_000,
+      aggregateReportedShareChangePct: -10,
+      aggregateReportedValueDollars: 129_610,
+      newlyReportedHolderCount: 1,
+      increasedReportedHolderCount: 2,
+      reducedReportedHolderCount: 3,
+      noLongerReportedHolderCount: 4,
+      unchangedReportedHolderCount: 5,
+      managerChangeCounts: {
+        new: 1,
+        increased: 2,
+        reduced: 3,
+        exited: 4,
+        unchanged: 5,
+      },
+    });
+    expect(result.topReportedHolders).toHaveLength(4);
+  });
+
+  it("does not apply the common-equity aggregate to option analytics", () => {
+    const input = baseInput();
+    input.canonicalAggregate = {
+      quarter: QUARTER,
+      previousQuarter: PREVIOUS_QUARTER,
+      previousReportingManagerCount: 50,
+      reportingManagerCount: 50,
+      aggregateReportedShares: 50_000,
+      aggregateReportedValue: 50_000,
+      previousQuarterShares: 40_000,
+      previousQuarterValue: 40_000,
+      reportedSharesChange: 10_000,
+      reportedSharesChangePercent: 0.25,
+      newPositionCount: 10,
+      increasedPositionCount: 10,
+      reducedPositionCount: 10,
+      exitedPositionCount: 10,
+      unchangedCount: 10,
+      eligibleHoldingCount: 50,
+      excludedHoldingCount: 0,
+      coverageStatus: "complete",
+    };
+
+    const result = computeStockInstitutionalAnalytics(input, {
+      positionType: "PUT",
+    });
+
+    expect(result.aggregateReportedShares).toBe(999);
+    expect(result.reportingManagerCount).toBe(1);
+    expect(result.dataQuality.status).toBe("complete");
+  });
+
   it("selects effective amendments once and keeps only comparable managers", () => {
     const rows: EffectiveStockFilingCandidate[] = [
       {

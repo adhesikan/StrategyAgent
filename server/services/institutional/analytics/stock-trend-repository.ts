@@ -6,9 +6,13 @@
  * per-manager/per-quarter request-time fetches are performed.
  */
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 import { db } from "../../../db";
-import { institutional13fFilings } from "@shared/schema";
+import {
+  institutional13fFilings,
+  institutionalQuarterlyAggregates,
+  type InstitutionalQuarterlyAggregate,
+} from "@shared/schema";
 import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
@@ -20,6 +24,7 @@ import {
   loadAllStockInstitutionalHoldings,
 } from "./stock-analytics-repository";
 import type {
+  CanonicalInstitutionalQuarterAggregate,
   EffectiveFundFiling,
   StockInstitutionalTrendQuarterSource,
   StockInstitutionalTrendRepository,
@@ -35,6 +40,45 @@ function dateText(value: string | Date): string {
   return value instanceof Date
     ? value.toISOString().slice(0, 10)
     : String(value).slice(0, 10);
+}
+
+function normalizeCoverageStatus(
+  value: string,
+): CanonicalInstitutionalQuarterAggregate["coverageStatus"] {
+  return value === "complete" || value === "partial"
+    ? value
+    : "insufficient";
+}
+
+function toCanonicalAggregate(
+  current: InstitutionalQuarterlyAggregate,
+  previous: InstitutionalQuarterlyAggregate | null,
+): CanonicalInstitutionalQuarterAggregate | null {
+  const quarter = createInstitutionalQuarter(dateText(current.periodOfReport));
+  const previousQuarter = current.prevPeriodOfReport
+    ? createInstitutionalQuarter(dateText(current.prevPeriodOfReport))
+    : null;
+  if (!quarter) return null;
+  return {
+    quarter,
+    previousQuarter,
+    previousReportingManagerCount: previous?.reportingManagerCount ?? null,
+    reportingManagerCount: current.reportingManagerCount,
+    aggregateReportedShares: current.aggregateReportedShares,
+    aggregateReportedValue: current.aggregateReportedValue,
+    previousQuarterShares: current.previousQuarterShares,
+    previousQuarterValue: current.previousQuarterValue,
+    reportedSharesChange: current.reportedSharesChange,
+    reportedSharesChangePercent: current.reportedSharesChangePercent,
+    newPositionCount: current.newPositionCount,
+    increasedPositionCount: current.increasedPositionCount,
+    reducedPositionCount: current.reducedPositionCount,
+    exitedPositionCount: current.exitedPositionCount,
+    unchangedCount: current.unchangedCount,
+    eligibleHoldingCount: current.eligibleHoldingCount,
+    excludedHoldingCount: current.excludedHoldingCount,
+    coverageStatus: normalizeCoverageStatus(current.coverageStatus),
+  };
 }
 
 function previousQuarterPeriod(periodOfReport: string): string | null {
@@ -112,6 +156,102 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
       let selectedPeriod = selectedPeriodFromQuarter(
         query.options.quarter ?? "latest",
       );
+      const canonicalMode =
+        (query.options.positionType ?? "COMMON_EQUITY") === "COMMON_EQUITY" &&
+        query.options.cohort === undefined;
+      if (canonicalMode) {
+        const rows = await db
+          .select()
+          .from(institutionalQuarterlyAggregates)
+          .where(
+            selectedPeriod
+              ? and(
+                  eq(institutionalQuarterlyAggregates.symbol, query.symbol),
+                  lte(
+                    institutionalQuarterlyAggregates.periodOfReport,
+                    selectedPeriod,
+                  ),
+                )
+              : eq(institutionalQuarterlyAggregates.symbol, query.symbol),
+          )
+          .orderBy(desc(institutionalQuarterlyAggregates.periodOfReport))
+          .limit(requestedCount);
+        if (
+          rows.length === 0 ||
+          (selectedPeriod &&
+            dateText(rows[0].periodOfReport) !== selectedPeriod)
+        ) {
+          return null;
+        }
+        const returnedPeriods = new Set(
+          rows.map((row) => dateText(row.periodOfReport)),
+        );
+        const missingPreviousPeriods = Array.from(
+          new Set(
+            rows
+              .map((row) =>
+                row.prevPeriodOfReport
+                  ? dateText(row.prevPeriodOfReport)
+                  : null,
+              )
+              .filter(
+                (period): period is string =>
+                  period !== null && !returnedPeriods.has(period),
+              ),
+          ),
+        );
+        const predecessorRows =
+          missingPreviousPeriods.length > 0
+            ? await db
+                .select()
+                .from(institutionalQuarterlyAggregates)
+                .where(
+                  and(
+                    eq(institutionalQuarterlyAggregates.symbol, query.symbol),
+                    inArray(
+                      institutionalQuarterlyAggregates.periodOfReport,
+                      missingPreviousPeriods,
+                    ),
+                  ),
+                )
+            : [];
+        const byPeriod = new Map(
+          [...rows, ...predecessorRows].map((row) => [
+            dateText(row.periodOfReport),
+            row,
+          ]),
+        );
+        const quarters = rows
+          .map((row): StockInstitutionalTrendQuarterSource | null => {
+            const previousPeriod = row.prevPeriodOfReport
+              ? dateText(row.prevPeriodOfReport)
+              : null;
+            const canonicalAggregate = toCanonicalAggregate(
+              row,
+              previousPeriod ? byPeriod.get(previousPeriod) ?? null : null,
+            );
+            if (!canonicalAggregate) return null;
+            return {
+              quarter: canonicalAggregate.quarter,
+              previousQuarter: canonicalAggregate.previousQuarter,
+              currentHoldings: [],
+              previousHoldings: [],
+              currentFilingManagerIds: [],
+              comparableManagerIds: [],
+              canonicalAggregate,
+            };
+          })
+          .filter(
+            (
+              quarter,
+            ): quarter is StockInstitutionalTrendQuarterSource =>
+              quarter !== null,
+          )
+          .reverse();
+        return quarters.length > 0
+          ? { symbol: query.symbol, quarters }
+          : null;
+      }
       if (!selectedPeriod) {
         const latest = await db
           .select({ periodOfReport: institutional13fFilings.periodOfReport })

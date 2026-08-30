@@ -25,6 +25,10 @@ export const ACCEPTANCE_QUARTERS = [
   { label: "2025-Q4", period: "2025-12-31" },
 ] as const;
 
+export const ANALYTICS_MAPPING_COVERAGE_SCOPE =
+  "latest_canonical_quarter_eligible_common_equity_rows_across_all_symbol_cusips";
+export const ANALYTICS_MAPPING_COVERAGE_UNIT = "percent_0_to_100";
+
 type FixedSymbol = keyof typeof ACCEPTANCE_SYMBOLS;
 const SYMBOLS = Object.keys(ACCEPTANCE_SYMBOLS) as FixedSymbol[];
 const PERIODS = ACCEPTANCE_QUARTERS.map((quarter) => quarter.period);
@@ -207,6 +211,7 @@ export interface AcceptanceSymbolReport {
       aggregateShares: number | null;
       aggregateValueDollars: number | null;
       mappingCoveragePercent: number | null;
+      mappingComparison: AnalyticsMappingComparison;
     };
     trend: { available: boolean; classification: string | null };
     signal: {
@@ -290,6 +295,89 @@ function quarterKey(symbol: string, period: string): string {
   return `${symbol}:${period}`;
 }
 
+export interface AnalyticsMappingComparison {
+  scope: typeof ANALYTICS_MAPPING_COVERAGE_SCOPE;
+  unit: typeof ANALYTICS_MAPPING_COVERAGE_UNIT;
+  expected: {
+    candidateHoldingCount: number | null;
+    reliablyMappedHoldingCount: number | null;
+    coveragePercent: number | null;
+  };
+  actual: {
+    candidateHoldingCount: number | null;
+    reliablyMappedHoldingCount: number | null;
+    coveragePercent: number | null;
+  };
+  differingOperands: string[];
+  matches: boolean;
+}
+
+export function compareAnalyticsMappingCoverage(
+  analytics: any,
+  current: RawQuarterEvidence | undefined,
+): AnalyticsMappingComparison {
+  const expectedCoveragePercent = current
+    ? current.mappingCandidateRows === 0
+      ? 0
+      : Math.round(
+          (current.reliablyMappedCandidateRows /
+            current.mappingCandidateRows) *
+            10_000,
+        ) / 100
+    : null;
+  const mappingCoverage = analytics?.mappingCoverage;
+  const actualCandidate = finiteNumber(mappingCoverage?.candidateHoldingCount)
+    ? mappingCoverage.candidateHoldingCount
+    : null;
+  const actualReliable = finiteNumber(
+    mappingCoverage?.reliablyMappedHoldingCount,
+  )
+    ? mappingCoverage.reliablyMappedHoldingCount
+    : null;
+  const actualPercent = finiteNumber(mappingCoverage?.coveragePercent)
+    ? mappingCoverage.coveragePercent
+    : null;
+  const differingOperands: string[] = [];
+  if (!current) differingOperands.push("expectedCurrentQuarter");
+  if (!mappingCoverage) differingOperands.push("actualMappingCoverage");
+  if (
+    actualCandidate !== (current?.mappingCandidateRows ?? null)
+  ) {
+    differingOperands.push("candidateHoldingCount");
+  }
+  if (
+    actualReliable !== (current?.reliablyMappedCandidateRows ?? null)
+  ) {
+    differingOperands.push("reliablyMappedHoldingCount");
+  }
+  if (actualPercent !== expectedCoveragePercent) {
+    differingOperands.push("coveragePercent");
+  }
+  if (
+    current &&
+    current.reliablyMappedCandidateRows !== current.mappingCandidateRows
+  ) {
+    differingOperands.push("expectedMappingIncomplete");
+  }
+  return {
+    scope: ANALYTICS_MAPPING_COVERAGE_SCOPE,
+    unit: ANALYTICS_MAPPING_COVERAGE_UNIT,
+    expected: {
+      candidateHoldingCount: current?.mappingCandidateRows ?? null,
+      reliablyMappedHoldingCount:
+        current?.reliablyMappedCandidateRows ?? null,
+      coveragePercent: expectedCoveragePercent,
+    },
+    actual: {
+      candidateHoldingCount: actualCandidate,
+      reliablyMappedHoldingCount: actualReliable,
+      coveragePercent: actualPercent,
+    },
+    differingOperands,
+    matches: differingOperands.length === 0,
+  };
+}
+
 /**
  * The query is a fixed, literal acceptance scope. Its only dynamic inputs are
  * the constants above, which prevents an operator from widening the check.
@@ -315,7 +403,47 @@ export async function loadAcceptanceEvidence(
         ON f.accession_number = h.accession_number
        AND f.is_effective = TRUE
     ),
-    target AS (
+    ranked_analytics_filings AS (
+      SELECT
+        f.accession_number,
+        f.filer_cik,
+        f.period_of_report,
+        ROW_NUMBER() OVER (
+          PARTITION BY f.filer_cik, f.period_of_report
+          ORDER BY f.filing_date DESC, f.accession_number DESC
+        ) AS filing_rank
+      FROM institutional_13f_filings f
+      WHERE f.is_effective = TRUE
+        AND f.period_of_report IN (
+          SELECT period_of_report FROM fixed_quarters
+        )
+    ),
+    selected_current_analytics_filings AS (
+      SELECT accession_number, filer_cik, period_of_report
+      FROM ranked_analytics_filings
+      WHERE filing_rank = 1
+        AND period_of_report = '2026-03-31'::date
+    ),
+    selected_previous_analytics_filings AS (
+      SELECT previous.accession_number, previous.filer_cik, previous.period_of_report
+      FROM ranked_analytics_filings previous
+      INNER JOIN selected_current_analytics_filings current
+        ON current.filer_cik = previous.filer_cik
+      WHERE previous.filing_rank = 1
+        AND previous.period_of_report = '2025-12-31'::date
+    ),
+    selected_analytics_filings AS (
+      SELECT * FROM selected_current_analytics_filings
+      UNION ALL
+      SELECT * FROM selected_previous_analytics_filings
+    ),
+    selected_analytics_holdings AS (
+      SELECT h.*
+      FROM institutional_13f_holdings h
+      INNER JOIN selected_analytics_filings f
+        ON f.accession_number = h.accession_number
+    ),
+    fixed_target AS (
       SELECT
         r.symbol AS requested_symbol,
         r.cusip AS requested_cusip,
@@ -326,6 +454,38 @@ export async function loadAcceptanceEvidence(
         ism.mapping_status AS institutional_mapping_status
       FROM requested r
       LEFT JOIN effective e ON e.cusip = r.cusip
+      LEFT JOIN security_master sm ON sm.cusip = e.cusip
+      LEFT JOIN institutional_security_mappings ism ON ism.cusip = e.cusip
+    ),
+    analytics_candidate_cusips AS (
+      SELECT r.symbol AS requested_symbol, sm.cusip
+      FROM requested r
+      INNER JOIN security_master sm
+        ON UPPER(sm.ticker) = r.symbol
+      UNION
+      SELECT r.symbol AS requested_symbol, e.cusip
+      FROM requested r
+      INNER JOIN selected_analytics_holdings e ON TRUE
+      LEFT JOIN security_master sm ON sm.cusip = e.cusip
+      LEFT JOIN institutional_security_mappings ism ON ism.cusip = e.cusip
+      WHERE UPPER(sm.ticker) = r.symbol
+         OR UPPER(ism.mapped_symbol) = r.symbol
+         OR UPPER(e.mapped_symbol) = r.symbol
+    ),
+    target AS (
+      SELECT
+        r.symbol AS requested_symbol,
+        candidate.cusip AS requested_cusip,
+        e.*,
+        sm.ticker AS security_master_symbol,
+        sm.review_status AS security_master_status,
+        ism.mapped_symbol AS institutional_mapping_symbol,
+        ism.mapping_status AS institutional_mapping_status
+      FROM requested r
+      LEFT JOIN analytics_candidate_cusips candidate
+        ON candidate.requested_symbol = r.symbol
+      LEFT JOIN selected_analytics_holdings e
+        ON e.cusip = candidate.cusip
       LEFT JOIN security_master sm ON sm.cusip = e.cusip
       LEFT JOIN institutional_security_mappings ism ON ism.cusip = e.cusip
     ),
@@ -529,7 +689,7 @@ export async function loadAcceptanceEvidence(
           WHERE qa.symbol = r.symbol
         ) AS aggregate_quarter_count
       FROM requested r
-      LEFT JOIN target t ON t.requested_symbol = r.symbol
+      LEFT JOIN fixed_target t ON t.requested_symbol = r.symbol
       LEFT JOIN institutional_security_mappings m ON m.cusip = r.cusip
       GROUP BY r.symbol, r.cusip
     ),
@@ -554,7 +714,7 @@ export async function loadAcceptanceEvidence(
           filer_cik,
           period_of_report,
           filing_date
-        FROM target
+        FROM fixed_target
         WHERE id IS NOT NULL
           AND put_call IS NULL
           AND shares_prn_type IS DISTINCT FROM 'PRN'
@@ -585,7 +745,7 @@ export async function loadAcceptanceEvidence(
       SELECT requested_symbol AS symbol, COUNT(*)::int AS comparable_manager_count
       FROM (
         SELECT requested_symbol, filer_cik
-        FROM target
+        FROM fixed_target
         WHERE id IS NOT NULL
           AND period_of_report IN ('2026-03-31'::date, '2025-12-31'::date)
           AND mapped_symbol = requested_symbol
@@ -905,23 +1065,7 @@ export function validateAcceptanceReport(
       ) {
         issues.push(`ANALYTICS_ACTIVITY_MISMATCH:${expectedSymbol}`);
       }
-      if (
-        !analytics.mappingCoverage ||
-        !current ||
-        analytics.mappingCoverage.candidateHoldingCount !==
-          current.mappingCandidateRows ||
-        analytics.mappingCoverage.reliablyMappedHoldingCount !==
-          current.reliablyMappedCandidateRows ||
-        analytics.mappingCoverage.coveragePercent !==
-          (current.mappingCandidateRows === 0
-            ? 0
-            : Math.round(
-                (current.reliablyMappedCandidateRows /
-                  current.mappingCandidateRows) *
-                  10_000,
-              ) / 100) ||
-        current.reliablyMappedCandidateRows !== current.mappingCandidateRows
-      ) {
+      if (!compareAnalyticsMappingCoverage(analytics, current).matches) {
         issues.push(`ANALYTICS_MAPPING_MISMATCH:${expectedSymbol}`);
       }
       const trendByPeriod = new Map(
@@ -1103,6 +1247,10 @@ export async function runAcceptance(
       )
       : null;
     const serviceResults = compactServiceResult(analytics, trend, signal);
+    const mappingComparison = compareAnalyticsMappingCoverage(
+      analytics,
+      current,
+    );
     servicesBySymbol.set(symbol, serviceResults);
     reportSymbols.push({
       symbol,
@@ -1161,6 +1309,7 @@ export async function runAcceptance(
           aggregateShares: analytics?.aggregateReportedShares ?? null,
           aggregateValueDollars: analytics?.aggregateReportedValueDollars ?? null,
           mappingCoveragePercent: analytics?.mappingCoverage?.coveragePercent ?? null,
+          mappingComparison,
         },
         trend: {
           available: Boolean(trend),
@@ -1259,6 +1408,19 @@ async function main(): Promise<void> {
           ? "FAIL"
           : "PASS",
         mapped: `${item.mapping.reliablyMappedHoldingRows}/${item.mapping.effectiveHoldingRows}`,
+        mappingExpected:
+          `${item.services.analytics.mappingComparison.expected.reliablyMappedHoldingCount}` +
+          `/${item.services.analytics.mappingComparison.expected.candidateHoldingCount}` +
+          ` (${item.services.analytics.mappingComparison.expected.coveragePercent}%)`,
+        mappingActual:
+          `${item.services.analytics.mappingComparison.actual.reliablyMappedHoldingCount}` +
+          `/${item.services.analytics.mappingComparison.actual.candidateHoldingCount}` +
+          ` (${item.services.analytics.mappingComparison.actual.coveragePercent}%)`,
+        mappingScope: item.services.analytics.mappingComparison.scope,
+        mappingUnit: item.services.analytics.mappingComparison.unit,
+        mappingDifferences:
+          item.services.analytics.mappingComparison.differingOperands.join(",") ||
+          "none",
         preservedMultipleGroups: item.integrity.legitimateMultipleGroups,
       };
     }));

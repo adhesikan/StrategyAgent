@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  ANALYTICS_MAPPING_COVERAGE_SCOPE,
+  ANALYTICS_MAPPING_COVERAGE_UNIT,
   ACCEPTANCE_QUARTERS,
   ACCEPTANCE_SYMBOLS,
   buildReadOnlyDatabaseUrl,
+  compareAnalyticsMappingCoverage,
   runAcceptance,
   validateAcceptanceReport,
   validateAcceptanceRuntime,
@@ -237,6 +240,50 @@ describe("Railway institutional acceptance guards", () => {
     expect(resolverBlock).toContain("THEN 'ambiguous'");
   });
 
+  it("uses all canonical and selected-filing CUSIPs for analytics mapping evidence", () => {
+    const source = readFileSync(
+      new URL("./accept-institutional-production-data.ts", import.meta.url),
+      "utf8",
+    );
+    const candidateBlock = source.slice(
+      source.indexOf("analytics_candidate_cusips AS"),
+      source.indexOf("target_resolved AS"),
+    );
+
+    expect(candidateBlock).toContain("INNER JOIN security_master sm");
+    expect(candidateBlock).toContain(
+      "INNER JOIN selected_analytics_holdings e ON TRUE",
+    );
+    expect(candidateBlock).toContain("UPPER(sm.ticker) = r.symbol");
+    expect(candidateBlock).toContain("UPPER(ism.mapped_symbol) = r.symbol");
+    expect(candidateBlock).toContain("UPPER(e.mapped_symbol) = r.symbol");
+  });
+
+  it("excludes superseded effective amendments from analytics mapping evidence", () => {
+    const source = readFileSync(
+      new URL("./accept-institutional-production-data.ts", import.meta.url),
+      "utf8",
+    );
+    const selectionBlock = source.slice(
+      source.indexOf("ranked_analytics_filings AS"),
+      source.indexOf("fixed_target AS"),
+    );
+
+    expect(selectionBlock).toContain(
+      "PARTITION BY f.filer_cik, f.period_of_report",
+    );
+    expect(selectionBlock).toContain(
+      "ORDER BY f.filing_date DESC, f.accession_number DESC",
+    );
+    expect(selectionBlock.match(/filing_rank = 1/g)).toHaveLength(2);
+    expect(selectionBlock).toContain(
+      "INNER JOIN selected_current_analytics_filings current",
+    );
+    expect(selectionBlock).toContain(
+      "INNER JOIN selected_analytics_filings f",
+    );
+  });
+
   it("fails closed when either fixed quarter is absent", () => {
     const evidence = makeEvidence({
       symbol: "AAPL",
@@ -298,6 +345,84 @@ describe("Railway institutional acceptance guards", () => {
       expect(issues).not.toContain(`ANALYTICS_MAPPING_MISMATCH:${symbol}`);
     },
   );
+
+  it.each([
+    ["AAPL", 308, 795],
+    ["NVDA", 335, 830],
+    ["MSFT", 336, 853],
+    ["COST", 100, 200],
+  ])(
+    "compares %s mapping against the latest-quarter population, not %i all-history rows",
+    (symbol, latestRows, historicalRows) => {
+      const evidence = makeEvidence({
+        symbol,
+        cusip:
+          ACCEPTANCE_SYMBOLS[symbol as keyof typeof ACCEPTANCE_SYMBOLS],
+        effectiveHoldingRows: historicalRows,
+        reliablyMappedHoldingRows: historicalRows,
+      });
+      evidence.quarterRows[0] = {
+        ...evidence.quarterRows[0],
+        mappingCandidateRows: latestRows,
+        reliablyMappedCandidateRows: latestRows,
+      };
+      const services = makeServices(evidence);
+
+      expect(
+        validateAcceptanceReport(
+          {
+            symbols: [evidence],
+            snapshots: { sectorCount: 1, themeCount: 1 },
+          },
+          services,
+        ),
+      ).not.toContain(`ANALYTICS_MAPPING_MISMATCH:${symbol}`);
+    },
+  );
+
+  it.each(["AAPL", "NVDA", "MSFT"])(
+    "identifies both count operands in the former %s fixed-CUSIP failure shape",
+    (symbol) => {
+      const evidence = makeEvidence({ symbol });
+      evidence.quarterRows[0] = {
+        ...evidence.quarterRows[0],
+        mappingCandidateRows: 308,
+        reliablyMappedCandidateRows: 308,
+      };
+      const services = makeServices(evidence);
+      services.get(symbol)!.analytics.mappingCoverage = {
+        candidateHoldingCount: 310,
+        reliablyMappedHoldingCount: 310,
+        coveragePercent: 100,
+      };
+
+      const comparison = compareAnalyticsMappingCoverage(
+        services.get(symbol)!.analytics,
+        evidence.quarterRows[0],
+      );
+
+      expect(comparison.differingOperands).toEqual([
+        "candidateHoldingCount",
+        "reliablyMappedHoldingCount",
+      ]);
+      expect(comparison.expected.coveragePercent).toBe(100);
+      expect(comparison.actual.coveragePercent).toBe(100);
+    },
+  );
+
+  it("distinguishes 100 percent from a ratio value of 1", () => {
+    const evidence = makeEvidence();
+    const services = makeServices(evidence);
+    services.get("AAPL")!.analytics.mappingCoverage.coveragePercent = 1;
+
+    const comparison = compareAnalyticsMappingCoverage(
+      services.get("AAPL")!.analytics,
+      evidence.quarterRows[0],
+    );
+
+    expect(comparison.unit).toBe(ANALYTICS_MAPPING_COVERAGE_UNIT);
+    expect(comparison.differingOperands).toEqual(["coveragePercent"]);
+  });
 
   it("fails analytics mapping acceptance for a genuinely unmapped eligible row", () => {
     const evidence = makeEvidence();
@@ -426,6 +551,22 @@ describe("Railway institutional acceptance guards", () => {
     expect(report.symbols.map((item) => item.symbol)).toEqual([
       "AAPL", "NVDA", "MSFT", "COST",
     ]);
+    expect(report.symbols[0].services.analytics.mappingComparison).toMatchObject({
+      scope: ANALYTICS_MAPPING_COVERAGE_SCOPE,
+      unit: ANALYTICS_MAPPING_COVERAGE_UNIT,
+      expected: {
+        candidateHoldingCount: 10,
+        reliablyMappedHoldingCount: 10,
+        coveragePercent: 100,
+      },
+      actual: {
+        candidateHoldingCount: 10,
+        reliablyMappedHoldingCount: 10,
+        coveragePercent: 100,
+      },
+      differingOperands: [],
+      matches: true,
+    });
   });
 
   it("fails if a source-confirmed legitimate multiple group was removed", async () => {

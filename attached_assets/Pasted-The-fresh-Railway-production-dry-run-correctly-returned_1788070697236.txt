@@ -1,0 +1,166 @@
+The fresh Railway production dry-run correctly returned NO-GO, but there is
+a discrepancy between the earlier duplicate classifier and the new repair
+scope guard.
+
+DO NOT RUN APPLY.
+DO NOT MODIFY PRODUCTION DATA.
+DO NOT DELETE OR DEDUPLICATE HOLDINGS.
+DO NOT weaken or bypass the new safety gate.
+
+EARLIER CLASSIFIER RESULT
+
+AAPL:
+source_identity_unresolved_identical_groups = 0
+
+NVDA:
+source_identity_unresolved_identical_groups = 0
+
+MSFT:
+source_identity_unresolved_identical_groups = 0
+
+COST:
+source_identity_unresolved_identical_groups = 0
+
+NEW REPAIR DRY-RUN RESULT
+
+AAPL:
+sourceIdentityUnresolvedEligibleGroups = 6
+
+NVDA:
+sourceIdentityUnresolvedEligibleGroups = 13
+
+MSFT:
+sourceIdentityUnresolvedEligibleGroups = 11
+
+COST:
+sourceIdentityUnresolvedEligibleGroups = 0
+
+blockingIssues:
+SOURCE_IDENTITY_UNRESOLVED_IN_REPAIR_SCOPE:AAPL
+SOURCE_IDENTITY_UNRESOLVED_IN_REPAIR_SCOPE:NVDA
+SOURCE_IDENTITY_UNRESOLVED_IN_REPAIR_SCOPE:MSFT
+
+TASK
+
+Investigate this discrepancy READ-ONLY.
+
+1. DOCUMENT THE TWO DEFINITIONS
+
+Show exactly how:
+
+- classify-institutional-holding-duplicates.ts defines
+  source_identity_unresolved_identical_groups
+
+versus how:
+
+- repair-institutional-production-data.ts defines
+  sourceIdentityUnresolvedEligibleGroups
+
+List every field used in each grouping/equality comparison.
+
+Also show every eligibility filter used by the repair calculation.
+
+2. EXPLAIN WHY THE COUNTS DIFFER
+
+For each of:
+
+AAPL
+NVDA
+MSFT
+
+identify the exact groups counted by the repair guard.
+
+For every group, produce a sanitized comparison showing:
+
+- accession number suffix
+- filer/manager identity
+- CUSIP
+- issuer name
+- class title
+- put/call
+- shares/PRN type
+- reported shares
+- reported value
+- investment discretion
+- other manager
+- voting sole/shared/none
+- filing period
+- filing date
+- effective/amendment status
+- number of physical rows
+
+Do not expose secrets or unrelated sensitive data.
+
+3. CLASSIFY EACH OF THE 30 GROUPS
+
+For every group determine whether the rows are:
+
+A. materially distinct and therefore a false positive in the repair guard
+
+B. materially identical in all persisted aggregate-relevant fields but
+   source identity is unavailable because INFOTABLE_SK was discarded
+
+C. caused by PUT/CALL or PRN eligibility behavior
+
+D. caused by amendment/effective filing handling
+
+E. another clearly supported reason
+
+Do not infer parser or ingestion duplication without source identity.
+
+4. AGGREGATION IMPACT
+
+For each unresolved group calculate:
+
+- number of rows
+- shares included in common-equity aggregation
+- reported value included
+- whether summing all rows could overcount IF they were source duplicates
+- maximum conditional overcount in shares/value
+
+Then give totals for AAPL, NVDA, and MSFT.
+
+5. VERIFY THE AGGREGATION IDENTITY
+
+Confirm whether the current aggregate logic intentionally sums legitimate
+multiple rows from the same filing/security when they differ by:
+
+- investment discretion
+- other manager
+- voting authority
+- reported amounts
+
+and whether that behavior matches the existing institutional aggregation
+design.
+
+Do NOT alter aggregation behavior yet.
+
+6. DETERMINE THE CORRECT SAFETY RULE
+
+Based only on evidence, recommend one of:
+
+A. current repair-scope blocker is correct and must remain
+
+B. current repair-scope blocker is too broad and should be narrowed
+
+C. source provenance is insufficient to safely perform this repair for
+   AAPL/NVDA/MSFT
+
+Do not change code until the evidence supports one of these.
+
+7. RETURN
+
+TASK STATUS
+WHY CLASSIFIER SAID 0
+WHY REPAIR SAID 6/13/11
+FIELD-BY-FIELD DEFINITION DIFFERENCE
+AAPL GROUP ANALYSIS
+NVDA GROUP ANALYSIS
+MSFT GROUP ANALYSIS
+CONDITIONAL AGGREGATION OVERCOUNT
+ROOT CAUSE
+RECOMMENDED SAFETY RULE
+CODE CHANGE REQUIRED: YES/NO
+PRODUCTION APPLY: NO-GO
+
+STOP after investigation.

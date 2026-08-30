@@ -60,6 +60,14 @@ import { computeEvidenceAlignment } from "./evidence-alignment";
 import { resolveInstitutionalSecurity } from "./security-resolver";
 import { rebuildInstitutionalSignalForSymbol } from "./signal-engine";
 import { runIntelligencePrecomputation } from "../intelligence-orchestrator";
+import { OpenFigiClient } from "./openfigi-client";
+import {
+  DrizzleInstitutionalSecurityReferenceRepository,
+  orchestrateSecurityReferenceLookups,
+  type InstitutionalSecurityReferenceStore,
+  type SecurityReferenceProvider,
+} from "./security-reference-repository";
+import { resolveProviderSecurityReference } from "./security-reference-enrichment";
 
 // ---------------------------------------------------------------------------
 // Structured logging (safe: no credentials, no full payloads, no user data)
@@ -69,6 +77,95 @@ function log(event: string, fields: Record<string, unknown> = {}): void {
   const safe = { event, ts: new Date().toISOString(), ...fields };
   // Never log: env secrets, raw filing content, full HTTP headers, DB URL
   console.log(JSON.stringify(safe));
+}
+
+// ---------------------------------------------------------------------------
+// Optional future security-reference enrichment
+// ---------------------------------------------------------------------------
+
+export interface InstitutionalReferenceEnrichmentDependencies {
+  getConfig: typeof getInstitutionalConfig;
+  createRepository: () => InstitutionalSecurityReferenceStore;
+  createProvider: () => SecurityReferenceProvider;
+  orchestrate: typeof orchestrateSecurityReferenceLookups;
+}
+
+export interface InstitutionalReferenceEnrichmentResult {
+  enabled: boolean;
+  requested: number;
+  processed: number;
+  promoted: number;
+}
+
+/**
+ * Enrich only identities relevant to the current materialization window.
+ *
+ * This deliberately runs after all holdings have persisted and before
+ * reconciliation. Exact provider promotions can therefore participate in the
+ * normal Task #189 resolver/reconciliation path immediately. The provider is
+ * isolated from ingestion: transport failures become unresolved provider
+ * outcomes and never fabricate a mapping or fail SEC ingestion.
+ */
+export async function enrichInstitutionalSecurityReferencesForIngestion(
+  periodsOfReport: readonly string[],
+  overrides: Partial<InstitutionalReferenceEnrichmentDependencies> = {},
+): Promise<InstitutionalReferenceEnrichmentResult> {
+  const dependencies: InstitutionalReferenceEnrichmentDependencies = {
+    getConfig: getInstitutionalConfig,
+    createRepository: () => new DrizzleInstitutionalSecurityReferenceRepository(),
+    // OpenFigiClient is the sole production reader of OPENFIGI_API_KEY.
+    createProvider: () => new OpenFigiClient(),
+    orchestrate: orchestrateSecurityReferenceLookups,
+    ...overrides,
+  };
+  const config = dependencies.getConfig();
+  if (!config.institutionalSecurityReferenceEnabled) {
+    return { enabled: false, requested: 0, processed: 0, promoted: 0 };
+  }
+
+  const repository = dependencies.createRepository();
+  const provider = dependencies.createProvider();
+  // Passing the eligible list explicitly ensures this ingestion is scoped to
+  // its current and comparable prior period; it never scans a ticker universe.
+  const eligible = await repository.loadEligibleCusips(periodsOfReport);
+  const safeProvider: SecurityReferenceProvider = {
+    async resolveCusips(cusips) {
+      try {
+        return await provider.resolveCusips(cusips);
+      } catch (error: unknown) {
+        // Do not include provider response data, request data, or credentials.
+        const errorCode = error instanceof Error && error.name
+          ? error.name.replace(/[^A-Za-z0-9_:-]/g, "").slice(0, 64)
+          : "REQUEST_FAILED";
+        log("institutional_security_reference_provider_failure", {
+          errorCode,
+          requestedCount: cusips.length,
+        });
+        return cusips.map((cusip) =>
+          resolveProviderSecurityReference(cusip, "PROVIDER_FAILED", [], { errorCode }),
+        );
+      }
+    },
+  };
+  const outcome = await dependencies.orchestrate(
+    repository,
+    safeProvider,
+    eligible,
+    config.institutionalSecurityReferenceMaxCusips,
+  );
+  const unresolved = outcome.results.filter((result) => !result.promoted).length;
+  log("institutional_security_reference_enrichment_completed", {
+    requestedCount: outcome.requested,
+    processedCount: outcome.processed,
+    promotedCount: outcome.promoted,
+    unresolvedCount: unresolved,
+  });
+  return {
+    enabled: true,
+    requested: outcome.requested,
+    processed: outcome.processed,
+    promoted: outcome.promoted,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1361,6 +1458,9 @@ async function ingestQuarter(
   // discovering materialization targets (including security-master-only ones).
   log("institutional_13f_aggregation_started", { quarter });
   const previousPeriod = previousCalendarQuarterEnd(periodEnd);
+  await enrichInstitutionalSecurityReferencesForIngestion(
+    previousPeriod ? [periodEnd, previousPeriod] : [periodEnd],
+  );
   const reconciliation = await reconcileEffectiveInstitutionalSecurities(
     previousPeriod ? [periodEnd, previousPeriod] : [periodEnd],
   );
@@ -1807,6 +1907,11 @@ async function ingestFromDescriptor(
   log("institutional_13f_aggregation_started", { quarter, fileName: descriptor.fileName });
   const previousPeriod = previousCalendarQuarterEnd(
     descriptor.expectedPeriodOfReport,
+  );
+  await enrichInstitutionalSecurityReferencesForIngestion(
+    previousPeriod
+      ? [descriptor.expectedPeriodOfReport, previousPeriod]
+      : [descriptor.expectedPeriodOfReport],
   );
   const reconciliation = await reconcileEffectiveInstitutionalSecurities(
     previousPeriod

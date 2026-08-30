@@ -16,6 +16,11 @@
 //   Must be set to a descriptive value per SEC fair-access guidelines.
 //   Ingestion is hard-blocked when absent.
 //
+// INSTITUTIONAL_SECURITY_REFERENCE_ENABLED (default: false)
+//   Opts an ingestion run into bounded OpenFIGI CUSIP reference enrichment
+//   after holdings persistence and before normal reconciliation. OPENFIGI_API_KEY
+//   remains optional and is read only by the OpenFigi client.
+//
 // ── Safe ingestion gate (isIngestionConfigured) ──────────────────────────────
 //   INSTITUTIONAL_13F_INGESTION_ENABLED=true
 //   AND SEC_USER_AGENT is configured
@@ -30,6 +35,10 @@ export interface InstitutionalConfig {
   ingestionEnabled: boolean;
   secUserAgent: string | null;
   backfillQuarters: number;
+  /** Opt-in only: enrich eligible 13F CUSIPs through the reference provider. */
+  institutionalSecurityReferenceEnabled: boolean;
+  /** Per-ingestion safety budget for reference-provider CUSIP requests. */
+  institutionalSecurityReferenceMaxCusips: number;
 }
 
 function parseBool(raw: string | undefined, def: boolean): boolean {
@@ -43,12 +52,39 @@ function parseBackfillQuarters(raw: string | undefined): number {
   return n;
 }
 
+/**
+ * A deliberately small per-ingestion budget. This is an enrichment assist, not
+ * a backfill mechanism: retrying unresolved identities over future ingestions
+ * gives the provider an opportunity to catch up without creating a burst of
+ * external traffic.
+ *
+ * INSTITUTIONAL_SECURITY_REFERENCE_MAX_CUSIPS: 1–500 (default 100).
+ */
+export function getInstitutionalSecurityReferenceMaxCusips(): number {
+  const raw = process.env.INSTITUTIONAL_SECURITY_REFERENCE_MAX_CUSIPS;
+  if (!raw) return 100;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 1 && value <= 500 ? value : 100;
+}
+
 export function getInstitutionalConfig(): InstitutionalConfig {
   const enabled = parseBool(process.env.INSTITUTIONAL_INTELLIGENCE_ENABLED, false);
   const ingestionEnabled = parseBool(process.env.INSTITUTIONAL_13F_INGESTION_ENABLED, true);
   const secUserAgent = (process.env.SEC_USER_AGENT ?? "").trim() || null;
   const backfillQuarters = parseBackfillQuarters(process.env.INSTITUTIONAL_13F_BACKFILL_QUARTERS);
-  return { enabled, ingestionEnabled, secUserAgent, backfillQuarters };
+  const institutionalSecurityReferenceEnabled = parseBool(
+    process.env.INSTITUTIONAL_SECURITY_REFERENCE_ENABLED,
+    false,
+  );
+  const institutionalSecurityReferenceMaxCusips = getInstitutionalSecurityReferenceMaxCusips();
+  return {
+    enabled,
+    ingestionEnabled,
+    secUserAgent,
+    backfillQuarters,
+    institutionalSecurityReferenceEnabled,
+    institutionalSecurityReferenceMaxCusips,
+  };
 }
 
 /** True when the user-facing institutional API should serve real 13F data. */

@@ -129,6 +129,66 @@ themselves authorization to write.
 Source: `scripts/analyze-institutional-coverage.ts`;
 `server/services/institutional/institutional-coverage-analyzer.ts`.
 
+## Population security-reference enrichment (OpenFIGI)
+
+The population planner is separate from ingestion and schema migration. It starts
+only with the complete eligible **effective** 13F CUSIP population (not a ticker
+universe), aggregates holding rows and known reported USD values, and creates a
+stable SHA-256, bounded action artifact. It reports aggregate before/projected
+coverage and explicit outcomes without ticker-by-ticker diagnostics. Null
+reported values remain unavailable and are excluded from value totals.
+
+OpenFIGI v3 is approved only for exact `ID_CUSIP` mapping requests. The CUSIP
+comes from SEC source rows; it is not represented as OpenFIGI-owned data. We
+persist only modeled/published FIGI symbology metadata needed by this product,
+not proprietary third-party response payloads, and do not redistribute provider
+payloads. There is no fuzzy, issuer-name, or ticker inference. Task #189's
+shared resolver remains authoritative: reviewed evidence precedes exact evidence,
+and local/provider disagreement is retained as conflicting rather than promoted.
+
+`OPENFIGI_API_KEY` is optional. Without it OpenFIGI's lower batch limit applies.
+The client honors/reports rate limiting and bounded retry behavior as
+`rate_limited`, `provider_failed`, or `partial`; these states never become an
+identity. The future-ingestion integration is implemented but disabled by
+default with `INSTITUTIONAL_SECURITY_REFERENCE_ENABLED=false`; when enabled it
+runs after persistence and before reconciliation, bounded by
+`INSTITUTIONAL_SECURITY_REFERENCE_MAX_CUSIPS`. This planner does not alter that
+gate or ingestion behavior.
+
+Default and `--dry-run` behavior are read/provider reads only:
+
+```bash
+npx tsx scripts/enrich-institutional-security-references.ts --dry-run
+```
+
+The exact Railway production read-only dry-run command is:
+
+```bash
+test "$RAILWAY_ENVIRONMENT_NAME" = "production" && npx tsx scripts/enrich-institutional-security-references.ts --dry-run
+```
+
+The JSON output intentionally contains aggregate counts and the plan hash only;
+it contains neither credentials nor raw provider payloads. Apply is never
+automatic. It needs all of the following: a newly generated matching
+`--plan-hash`, an explicit `--max-cusips` bound, environment value
+`INSTITUTIONAL_SECURITY_REFERENCE_APPLY_ENABLED=true`, and, when
+`NODE_ENV=production`, Railway identity `RAILWAY_ENVIRONMENT_NAME=production`.
+For example, after review, use:
+
+```bash
+INSTITUTIONAL_SECURITY_REFERENCE_APPLY_ENABLED=true \
+npx tsx scripts/enrich-institutional-security-references.ts --apply \
+  --max-cusips 100 --plan-hash <FRESH_PLAN_HASH>
+```
+
+The `--max-cusips` bound applies before OpenFIGI requests and also bounds the
+exact hash-bound persistence action set. Only that bounded action set is persisted, including bounded negative,
+ambiguous, and provider-failure observations/candidate history. Persistence is
+upsert-based, so a safe rerun recovers a partial execution; a partial failure
+reports only completed aggregate action counts and exits nonzero. Apply remains
+unexecuted and out of scope for this runbook; do not execute it from Replit or
+against production without separate operational approval.
+
 ### Guarded executor boundary
 
 A guarded generic executor is implemented, but it was **not run** during this

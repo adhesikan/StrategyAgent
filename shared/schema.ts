@@ -3246,6 +3246,68 @@ export type SecurityMaster = typeof securityMaster.$inferSelect;
 export type InsertSecurityMaster = typeof securityMaster.$inferInsert;
 
 /**
+ * Current provider lookup state for a CUSIP.  This deliberately stores a
+ * fingerprint, rather than an OpenFIGI response body, so provider payloads do
+ * not become an accidental persistence contract.
+ */
+export const institutionalSecurityLookupStates = pgTable("institutional_security_lookup_states", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull(),
+  cusip: text("cusip").notNull(),
+  /** Raw provider observation; outcome below is the resolver-governed result. */
+  providerOutcome: text("provider_outcome").notNull(),
+  outcome: text("outcome").notNull(),
+  resolvedSymbol: text("resolved_symbol"),
+  candidateCount: integer("candidate_count").notNull().default(0),
+  fingerprint: text("fingerprint").notNull(),
+  errorCode: text("error_code"),
+  retryAfterAt: timestamp("retry_after_at"),
+  firstObservedAt: timestamp("first_observed_at").defaultNow().notNull(),
+  lastObservedAt: timestamp("last_observed_at").defaultNow().notNull(),
+  provenance: text("provenance").notNull(),
+}, (t) => ({
+  idxInstitutionalLookupStateProviderCusip: uniqueIndex("idx_iss_lookup_provider_cusip").on(t.provider, t.cusip),
+  idxInstitutionalLookupStateOutcome: index("idx_iss_lookup_outcome").on(t.outcome, t.lastObservedAt),
+  idxInstitutionalLookupStateRetry: index("idx_iss_lookup_retry").on(t.retryAfterAt),
+}));
+
+export type InstitutionalSecurityLookupState = typeof institutionalSecurityLookupStates.$inferSelect;
+export type InsertInstitutionalSecurityLookupState = typeof institutionalSecurityLookupStates.$inferInsert;
+
+/** Individual normalized candidates observed in provider responses. */
+export const institutionalSecurityCandidateObservations = pgTable("institutional_security_candidate_observations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull(),
+  cusip: text("cusip").notNull(),
+  figi: text("figi"),
+  compositeFigi: text("composite_figi"),
+  shareClassFigi: text("share_class_figi"),
+  ticker: text("ticker"),
+  name: text("name"),
+  exchangeCode: text("exchange_code"),
+  marketSector: text("market_sector"),
+  securityType: text("security_type"),
+  securityType2: text("security_type2"),
+  supported: boolean("supported").notNull().default(false),
+  candidateFingerprint: text("candidate_fingerprint").notNull(),
+  firstObservedAt: timestamp("first_observed_at").defaultNow().notNull(),
+  lastObservedAt: timestamp("last_observed_at").defaultNow().notNull(),
+  isCurrent: boolean("is_current").notNull().default(true),
+  validFrom: timestamp("valid_from"),
+  validTo: timestamp("valid_to"),
+  relationship: text("relationship"),
+}, (t) => ({
+  idxInstitutionalCandidateUnique: uniqueIndex("idx_iss_candidate_provider_cusip_fp").on(
+    t.provider, t.cusip, t.candidateFingerprint,
+  ),
+  idxInstitutionalCandidateCurrent: index("idx_iss_candidate_current").on(t.provider, t.cusip, t.isCurrent),
+  idxInstitutionalCandidateTicker: index("idx_iss_candidate_ticker").on(t.ticker),
+}));
+
+export type InstitutionalSecurityCandidateObservation = typeof institutionalSecurityCandidateObservations.$inferSelect;
+export type InsertInstitutionalSecurityCandidateObservation = typeof institutionalSecurityCandidateObservations.$inferInsert;
+
+/**
  * Extensible curated theme definitions for security enrichment.
  * Theme membership is normalized in security_master_themes; analytics must
  * never hardcode theme names or symbol lists.

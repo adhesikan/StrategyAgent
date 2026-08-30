@@ -175,6 +175,11 @@ export interface AcceptanceSymbolReport {
       previousValueDollars: number | null;
       shareChange: number | null;
       shareChangePercent: number | null;
+      newPositionCount: number;
+      increasedPositionCount: number;
+      reducedPositionCount: number;
+      exitedPositionCount: number;
+      unchangedCount: number;
       eligibleRows: number;
       excludedRows: number;
       coverageStatus: string | null;
@@ -245,6 +250,32 @@ function text(value: unknown): string | null {
 
 function sameNumber(left: number | null, right: number | null): boolean {
   return left === right || (left !== null && right !== null && Math.abs(left - right) < 0.000001);
+}
+
+function independentlyCalculateSignalScore(components: any): number | null {
+  const weighted: Array<[unknown, number]> = [
+    [components?.breadth, 0.30],
+    [components?.accumulation, 0.30],
+    [components?.entrantsVsExits, 0.25],
+    [components?.concentration, 0.15],
+  ];
+  if (weighted.some(([value]) => !finiteNumber(value))) return null;
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(weighted.reduce((sum, [value, weight]) => sum + Number(value) * weight, 0)),
+    ),
+  );
+}
+
+function independentlyLabelSignal(score: number | null): string {
+  if (score === null) return "Insufficient Data";
+  if (score >= 75) return "Strong Accumulation";
+  if (score >= 60) return "Accumulation";
+  if (score >= 40) return "Stable";
+  if (score >= 25) return "Distribution";
+  return "Strong Distribution";
 }
 
 function finiteNumber(value: unknown): value is number {
@@ -822,6 +853,19 @@ export function validateAcceptanceReport(
       ) {
         issues.push(`SIGNAL_UNAVAILABLE:${expectedSymbol}`);
       }
+      const independentlyCalculatedScore = independentlyCalculateSignalScore(
+        signal.scoreComponents,
+      );
+      if (
+        independentlyCalculatedScore === null ||
+        signal.score !== independentlyCalculatedScore ||
+        signal.label !== independentlyLabelSignal(independentlyCalculatedScore)
+      ) {
+        issues.push(`SIGNAL_CALCULATION_MISMATCH:${expectedSymbol}`);
+      }
+      if (signal.label !== "Distribution") {
+        issues.push(`SIGNAL_EXPECTED_DISTRIBUTION:${expectedSymbol}`);
+      }
       if (signal.metrics?.totalSharesLatest !== current?.aggregateReportedShares) {
         issues.push(`SIGNAL_SHARE_INPUT_MISMATCH:${expectedSymbol}`);
       }
@@ -829,8 +873,22 @@ export function validateAcceptanceReport(
         issues.push(`SIGNAL_USD_INPUT_MISMATCH:${expectedSymbol}`);
       }
       if (
+        signal.metrics?.managerCountLatest !== current?.reportingManagerCount ||
+        signal.metrics?.managerCountPrevious !== previous?.reportingManagerCount ||
+        signal.metrics?.totalSharesPrevious !== previous?.aggregateReportedShares ||
+        signal.metrics?.totalValuePrevious !== previous?.aggregateReportedValue ||
+        signal.metrics?.newManagerCount !== current?.newPositionCount ||
+        signal.metrics?.exitedManagerCount !== current?.exitedPositionCount ||
+        signal.metrics?.increasedManagerCount !== current?.increasedPositionCount ||
+        signal.metrics?.reducedManagerCount !== current?.reducedPositionCount ||
+        signal.metrics?.unchangedManagerCount !== current?.unchangedCount
+      ) {
+        issues.push(`SIGNAL_INPUTS_MISMATCH:${expectedSymbol}`);
+      }
+      if (
         !signal.scoreComponents ||
         !finiteNumber(signal.scoreComponents.breadth) ||
+        !finiteNumber(signal.scoreComponents.accumulation) ||
         !finiteNumber(signal.scoreComponents.entrantsVsExits) ||
         !finiteNumber(signal.scoreComponents.concentration) ||
         !finiteNumber(signal.scoreComponents.dataQuality)
@@ -964,6 +1022,11 @@ export async function runAcceptance(
           previousValueDollars: quarter.previousQuarterValue,
           shareChange: quarter.reportedSharesChange,
           shareChangePercent: quarter.reportedSharesChangePercent,
+            newPositionCount: quarter.newPositionCount,
+            increasedPositionCount: quarter.increasedPositionCount,
+            reducedPositionCount: quarter.reducedPositionCount,
+            exitedPositionCount: quarter.exitedPositionCount,
+            unchangedCount: quarter.unchangedCount,
           eligibleRows: quarter.eligibleHoldingCount,
           excludedRows: quarter.excludedHoldingCount,
           coverageStatus: quarter.coverageStatus,
@@ -1062,7 +1125,14 @@ async function main(): Promise<void> {
       return {
         symbol: item.symbol,
         status: item.status,
+        q1Managers: q1?.aggregate.managers ?? null,
+        q1Shares: q1?.aggregate.shares ?? null,
         q1AggregateValueUsd: q1?.aggregate.valueDollars ?? null,
+        q1Activity: q1
+          ? `N${q1.aggregate.newPositionCount ?? "?"}/I${q1.aggregate.increasedPositionCount ?? "?"}`
+          : null,
+        q4Managers: q4?.aggregate.managers ?? null,
+        q4Shares: q4?.aggregate.shares ?? null,
         q4AggregateValueUsd: q4?.aggregate.valueDollars ?? null,
         qoqValidation: failed(["PREVIOUS_", "NO_CUSIP_", "NO_COMPARABLE_"])
           ? "FAIL"

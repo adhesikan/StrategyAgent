@@ -79,6 +79,7 @@ function makeEvidence(overrides: Partial<RawSymbolEvidence> = {}): RawSymbolEvid
 
 function makeServices(evidence: RawSymbolEvidence): Map<string, AcceptanceServiceResults> {
   const current = evidence.quarterRows.find((row) => row.period === "2026-03-31")!;
+  const previous = evidence.quarterRows.find((row) => row.period === "2025-12-31") ?? current;
   return new Map([[evidence.symbol, {
     analytics: {
       aggregateReportedShares: current.aggregateReportedShares,
@@ -102,24 +103,34 @@ function makeServices(evidence: RawSymbolEvidence): Map<string, AcceptanceServic
         aggregateReportedShares: quarter.aggregateReportedShares,
         aggregateReportedValue: quarter.aggregateReportedValue,
       })),
-      classification: "ACCUMULATION",
+      classification: "DISTRIBUTION",
       dataQuality: { status: "complete", comparableManagerCount: 10 },
     },
     signal: {
       status: "available",
-      score: 60,
-      label: "Accumulation",
+      score: 26,
+      label: "Distribution",
       metrics: {
+        managerCountLatest: current.reportingManagerCount,
+        managerCountPrevious: previous.reportingManagerCount,
         totalSharesLatest: current.aggregateReportedShares,
+        totalSharesPrevious: previous.aggregateReportedShares,
         totalValueLatest: current.aggregateReportedValue,
+        totalValuePrevious: previous.aggregateReportedValue,
+        newManagerCount: current.newPositionCount,
+        exitedManagerCount: current.exitedPositionCount,
+        increasedManagerCount: current.increasedPositionCount,
+        reducedManagerCount: current.reducedPositionCount,
+        unchangedManagerCount: current.unchangedCount,
       },
       scoreComponents: {
-        breadth: 60,
-        accumulation: 50,
-        entrantsVsExits: 55,
-        concentration: 50,
+        breadth: 20,
+        accumulation: 20,
+        entrantsVsExits: 30,
+        concentration: 40,
         dataQuality: 100,
       },
+      dataQuality: { confidence: "high" },
     },
   }]]);
 }
@@ -311,5 +322,19 @@ describe("Railway institutional acceptance guards", () => {
     }, fixture.services);
 
     expect(issues).toContain("PRESERVED_MULTIPLE_GROUPS_MISMATCH:AAPL");
+  });
+
+  it("rejects a signal whose label is not the expected supported Distribution outcome", () => {
+    const fixture = makeCompleteFixture();
+    const aapl = fixture.services.get("AAPL")!;
+    aapl.signal = { ...aapl.signal, score: 60, label: "Accumulation" };
+
+    const issues = validateAcceptanceReport({
+      symbols: fixture.symbols,
+      snapshots: { sectorCount: 1, themeCount: 1 },
+    }, fixture.services);
+
+    expect(issues).toContain("SIGNAL_CALCULATION_MISMATCH:AAPL");
+    expect(issues).toContain("SIGNAL_EXPECTED_DISTRIBUTION:AAPL");
   });
 });

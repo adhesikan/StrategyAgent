@@ -1,0 +1,73 @@
+Task #185 — Institutional Production Acceptance Verification
+
+The controlled production repair completed successfully using reviewed plan hash:
+
+20f5e3425b955c10867fb498d02afb1094015232900c58fdd266822d6a376535
+
+Production repair results:
+- AAPL: 1070/1070 reliably mapped, 41 aggregate quarters, signal available
+- COST: 653/653 reliably mapped, 33 aggregate quarters, signal available
+- MSFT: 1110/1110 reliably mapped, 41 aggregate quarters, signal available
+- NVDA: 1095/1095 reliably mapped, 26 aggregate quarters, signal available
+- invalidComparableRows: 0
+- sector snapshots rebuilt
+- theme snapshots rebuilt
+- INSTITUTIONAL_INTELLIGENCE_ENABLED remains false
+
+All four signals currently have label "Distribution" for 2026-Q1 vs 2025-Q4.
+
+Objective:
+Perform ONE bounded production acceptance verification before enabling the institutional intelligence feature.
+
+Do not create new diagnostic infrastructure.
+Do not modify production data.
+Do not reingest or backfill.
+Do not change schema.
+Do not change feature flags.
+
+Verify for AAPL, NVDA, MSFT, and COST:
+
+1. Latest-quarter aggregate values for 2026-Q1:
+   - manager count
+   - total reported shares
+   - total reported value
+   - new positions
+   - increased positions
+   - reduced positions
+   - no-longer-reported / exited positions
+
+2. Previous-quarter aggregate values for 2025-Q4.
+
+3. Show the exact signal inputs and calculation that produced the current label for each symbol.
+
+4. Confirm that:
+   - QoQ comparison is by CUSIP
+   - effective filings only are used
+   - put/call rows are excluded from common-stock comparisons
+   - reported_value remains canonical USD
+   - legitimate SEC-confirmed multiple source rows are preserved and summed
+   - there are no invalid comparable rows
+
+5. Determine whether "Distribution" is genuinely supported for each symbol or whether there is a signal-calculation defect.
+
+6. Also validate the production API responses used by the Institutional UI for these four symbols:
+   - holdings/manager counts
+   - shares/value
+   - mapping coverage
+   - QoQ activity
+   - signal
+   - sector/theme intelligence where applicable
+
+Return a concise PASS/FAIL table for AAPL/NVDA/MSFT/COST and an overall production acceptance result.
+
+If all calculations and API responses are correct:
+PRODUCTION ACCEPTANCE: PASS
+READY TO ENABLE FEATURE FLAG: YES
+
+If any material issue exists:
+PRODUCTION ACCEPTANCE: FAIL
+READY TO ENABLE FEATURE FLAG: NO
+and identify the exact blocker.
+
+No writes.
+No code changes unless a genuine defect is discovered.

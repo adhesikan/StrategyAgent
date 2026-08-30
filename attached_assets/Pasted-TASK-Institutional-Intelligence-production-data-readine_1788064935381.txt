@@ -1,0 +1,461 @@
+TASK: Institutional Intelligence production data readiness audit.
+
+Context:
+Task #178 is complete and merged.
+
+The external API consumer demo now exists at:
+examples/external-api-consumer-demo
+
+Validation already passed:
+- Demo tests: 14/14
+- Existing v1 API tests: 47/47
+- Production build passed
+- No new TypeScript errors in the demo
+- Independent security/code review passed
+
+However, the live VCP Trader AI Institutional Intelligence UI is currently showing zero or unavailable institutional data for symbols such as AAPL.
+
+Observed examples:
+- Reported holders = 0
+- tracked managers = 0
+- mapping coverage = 0%
+- reported shares unavailable
+- accumulation score unavailable
+- trend = INSUFFICIENT_DATA
+- quarterly holder counts = 0
+- no largest holders
+- no reported increases or reductions
+
+Sector & Theme Intelligence also renders taxonomy/eligible counts but shows:
+- ranked = 0
+- score = 0
+- opportunity = 0%
+
+GOAL:
+Trace the production-connected institutional data pipeline end-to-end and identify exactly why the live UI/API is returning zero or empty analytics.
+
+IMPORTANT:
+This is a diagnostic task first.
+
+Do not make code changes.
+Do not run destructive migrations.
+Do not modify production data.
+Do not deploy.
+Do not run backfills yet.
+Do not attempt speculative fixes.
+
+Use AAPL as the primary diagnostic symbol.
+Use NVDA and MSFT as secondary controls.
+
+==================================================
+1. PRODUCTION DATABASE / ENVIRONMENT
+==================================================
+
+Determine which PostgreSQL database the deployed VCP Trader AI service is using for Institutional Intelligence.
+
+Report:
+- database/environment identity without exposing secrets
+- whether required institutional tables exist
+- whether ingestion jobs and the deployed application use the same database
+- whether dev/staging/production database mismatch is possible
+
+Do not print DATABASE_URL or credentials.
+
+==================================================
+2. FILINGS DATA
+==================================================
+
+Inspect institutional_13f_filings.
+
+Report:
+- total rows
+- total is_effective=true rows
+- distinct managers
+- distinct reporting periods
+- latest reporting period
+- latest filing date
+
+Break out counts for the most recent 8 quarters.
+
+==================================================
+3. HOLDINGS DATA
+==================================================
+
+Inspect institutional_13f_holdings.
+
+Report:
+- total rows
+- rows associated with effective filings
+- distinct managers/CIKs
+- distinct CUSIPs
+- distinct mapped symbols
+- latest reporting period
+
+For AAPL, NVDA, MSFT report:
+- raw holding rows
+- effective-filing holding rows
+- distinct reporting managers
+- quarters represented
+- reported shares availability
+- reported values availability
+
+Do not require mapped_symbol for the raw-data test.
+
+==================================================
+4. SECURITY MAPPING
+==================================================
+
+Audit mapping coverage.
+
+Report:
+- total relevant holdings
+- reliably mapped holdings
+- unmapped holdings
+- ambiguous/unreliable holdings
+- mapping coverage %
+
+For AAPL:
+- relevant CUSIPs encountered
+- mapping status
+- mapped_symbol values
+- number of holdings mapped to AAPL
+
+Repeat summary for NVDA and MSFT.
+
+Explain specifically why the UI currently reports AAPL mapping coverage = 0%.
+
+==================================================
+5. POSITION TYPE FILTERING
+==================================================
+
+Verify recent position-type logic is not excluding valid common-equity holdings.
+
+Report counts for:
+- COMMON_EQUITY
+- PUT
+- CALL
+- other/unclassified
+
+Check:
+- shares_prn_type handling
+- put_call handling
+- default COMMON_EQUITY filtering
+- normalization logic
+
+Determine whether ordinary equity rows are being filtered out accidentally.
+
+==================================================
+6. QUARTER NORMALIZATION
+==================================================
+
+For AAPL test:
+
+latest
+2026-Q1
+2026-03-31
+
+Confirm expected resolution and backward compatibility.
+
+Determine whether quarter-format mismatch is causing empty queries.
+
+==================================================
+7. EFFECTIVE-FILING JOIN
+==================================================
+
+Trace the actual stock analytics query path.
+
+Verify:
+- holdings join correctly to effective filings
+- accession identifiers match
+- CIK normalization matches
+- period/report-date fields match
+- amendment filtering is not eliminating valid holdings
+
+Return intermediate row counts after each major join/filter.
+
+==================================================
+8. DIRECT ANALYTICS SERVICE
+==================================================
+
+Call the stock institutional analytics service directly for:
+
+AAPL
+NVDA
+MSFT
+
+For each report:
+- reported holder count
+- previous-quarter holder count
+- newly reported
+- increased
+- unchanged
+- reduced
+- no longer reported
+- aggregate shares
+- aggregate reported value
+- mapping coverage
+- quarters available
+- trend classification
+- accumulation-score availability
+
+Classify each symbol as one of:
+
+DATA ABSENT
+DATA PRESENT BUT UNMAPPED
+DATA PRESENT BUT FILTERED
+DATA PRESENT BUT ANALYTICS FAILURE
+DATA HEALTHY
+
+==================================================
+9. INTERNAL API
+==================================================
+
+Call the existing authenticated internal institutional endpoint for AAPL.
+
+Compare:
+database
+→ repository
+→ analytics service
+→ route
+→ API response
+
+Identify the first layer where non-zero data becomes zero/empty.
+
+==================================================
+10. EXTERNAL /api/v1
+==================================================
+
+Call the external v1 endpoints through normal test/server infrastructure for:
+
+AAPL
+NVDA
+MSFT
+
+Verify:
+- API key/auth works
+- response is not silently defaulted
+- metadata is correct
+- quarter is correct
+- dataAsOf is correct
+- modelVersion is correct where applicable
+- limitations are present
+
+Compare v1 output against direct service output.
+
+==================================================
+11. CONSUMER DEMO
+==================================================
+
+Use examples/external-api-consumer-demo against the same environment.
+
+Determine whether:
+- upstream API returns zero data
+- proxy transforms valid data incorrectly
+- UI defaults missing/error responses to zeros
+- pagination or filter defaults eliminate results
+
+Do not fix yet.
+
+==================================================
+12. LIVE VCP UI
+==================================================
+
+Trace the exact endpoint used by the current Institutional Intelligence Stock View.
+
+Verify:
+- endpoint
+- symbol
+- quarter
+- environment
+- auth
+- filters
+- response parsing
+- error handling
+- fallback/default behavior
+
+Determine whether the UI is showing:
+A. legitimate zero data
+B. fallback zeros after API failure
+C. filtered-out data
+D. stale/precomputed empty data
+
+==================================================
+13. SECTOR / THEME ANALYTICS
+==================================================
+
+Trace why eligible counts are non-zero but ranked counts and scores are zero.
+
+Evaluate:
+- missing institutional inputs
+- missing fundamentals
+- missing mappings
+- eligibility thresholds
+- analytics jobs not run
+- precomputed tables not populated
+- insufficient history
+- environment mismatch
+- another specific cause
+
+Return the exact cause.
+
+==================================================
+14. PRECOMPUTED / AGGREGATE DATA
+==================================================
+
+Inspect relevant:
+- institutional_quarterly_aggregates
+- trend tables
+- scoring tables
+- rotation tables
+- materialized/precomputed outputs
+- any recent analytics cache tables
+
+For each report:
+- row count
+- latest quarter
+- last computed timestamp if available
+- whether a production backfill has ever run
+- whether code deployment alone leaves the table empty
+
+Do not run backfills yet.
+
+==================================================
+15. INGESTION STATUS
+==================================================
+
+Determine whether SEC 13F ingestion actually ran for the database used by the deployed app.
+
+Report:
+- last successful ingestion
+- latest quarter ingested
+- managers ingested
+- effective filings
+- holdings
+- mapping completion
+
+If ingestion has never run or is incomplete, state that explicitly.
+
+==================================================
+16. ROOT CAUSE RANKING
+==================================================
+
+Rank causes using:
+
+A. Production data not ingested
+B. Wrong database/environment
+C. Holdings not mapped
+D. Effective-filing join problem
+E. Quarter mismatch
+F. Position-type filtering bug
+G. Aggregate/backfill not run
+H. Analytics logic bug
+I. API wiring problem
+J. Consumer demo problem
+K. UI fallback/default-value problem
+L. Other
+
+Provide evidence for every cause.
+
+==================================================
+17. READINESS MATRIX
+==================================================
+
+Mark each:
+
+PASS
+FAIL
+BLOCKED
+NOT POPULATED
+
+for:
+
+SEC filing ingestion
+effective filing selection
+holdings storage
+security mapping
+quarter normalization
+position-type filtering
+stock analytics
+trend analytics
+institutional scoring
+sector analytics
+theme analytics
+internal API
+external /api/v1
+external consumer demo
+VCP Trader AI UI
+
+==================================================
+18. PRODUCTION READINESS GATE
+==================================================
+
+Explicitly evaluate whether all three symbols:
+
+AAPL
+NVDA
+MSFT
+
+return credible NON-ZERO institutional results through the production-connected external API.
+
+The gate should remain FAIL unless:
+- holder counts are non-zero
+- mapping coverage is meaningful
+- multiple quarters exist
+- QoQ activity can be computed where history exists
+- API metadata is valid
+- UI/consumer does not silently manufacture zeros
+
+==================================================
+19. OUTPUT
+==================================================
+
+Return:
+
+EXECUTIVE DIAGNOSIS
+
+PRODUCTION DATABASE STATUS
+
+13F FILINGS STATUS
+
+13F HOLDINGS STATUS
+
+AAPL TRACE
+
+NVDA TRACE
+
+MSFT TRACE
+
+MAPPING STATUS
+
+POSITION-TYPE STATUS
+
+QUARTER STATUS
+
+EFFECTIVE-FILING JOIN STATUS
+
+ANALYTICS STATUS
+
+INTERNAL API STATUS
+
+EXTERNAL API STATUS
+
+CONSUMER DEMO STATUS
+
+VCP UI STATUS
+
+SECTOR/THEME STATUS
+
+PRECOMPUTE/BACKFILL STATUS
+
+ROOT CAUSES
+
+READINESS MATRIX
+
+PRODUCTION READINESS GATE
+
+EXACT REMEDIATION SEQUENCE
+
+Do not make fixes.
+Do not deploy.
+
+STOP.

@@ -135,18 +135,34 @@ export async function loadAllStockInstitutionalHoldings(
   }
 }
 
-export async function loadStockCandidateCusips(
+interface StockCandidateIdentity {
+  candidateCusips: string[];
+  hasReliableSecurityIdentity: boolean;
+  hasTargetSpecificCandidateEvidence: boolean;
+}
+
+export async function loadStockCandidateIdentity(
   accessionNumbers: string[],
   symbol: string,
-): Promise<string[]> {
-  if (accessionNumbers.length === 0) return [];
+): Promise<StockCandidateIdentity> {
   const normalizedSymbol = symbol.trim().toUpperCase();
   const canonicalRows = await db
-    .select({ cusip: securityMaster.cusip })
+    .select({
+      cusip: securityMaster.cusip,
+      reviewStatus: securityMaster.reviewStatus,
+    })
     .from(securityMaster)
     .where(sql`UPPER(${securityMaster.ticker}) = ${normalizedSymbol}`);
-  const evidenceRows = await db
-    .select({ cusip: institutional13fHoldings.cusip })
+  const evidenceRows = accessionNumbers.length === 0 ? [] : await db
+    .select({
+      cusip: institutional13fHoldings.cusip,
+      masterTicker: securityMaster.ticker,
+      masterReviewStatus: securityMaster.reviewStatus,
+      mappingSymbol: institutionalSecurityMappings.mappedSymbol,
+      mappingStatus: institutionalSecurityMappings.mappingStatus,
+      holdingMappedSymbol: institutional13fHoldings.mappedSymbol,
+      holdingMappingStatus: institutional13fHoldings.mappingStatus,
+    })
     .from(institutional13fHoldings)
     .leftJoin(
       securityMaster,
@@ -169,13 +185,39 @@ export async function loadStockCandidateCusips(
         ),
       ),
     );
-  return Array.from(
+  const reliableStatuses = new Set(["exact", "reviewed"]);
+  const matchesTarget = (value: string | null | undefined) =>
+    value?.trim().toUpperCase() === normalizedSymbol;
+  return {
+    candidateCusips: Array.from(
     new Set(
       [...canonicalRows, ...evidenceRows]
         .map((row) => row.cusip)
         .filter((cusip): cusip is string => Boolean(cusip)),
     ),
-  ).sort();
+    ).sort(),
+    hasReliableSecurityIdentity:
+      canonicalRows.some((row) => row.reviewStatus === "reviewed") ||
+      evidenceRows.some(
+        (row) =>
+          (matchesTarget(row.masterTicker) &&
+            row.masterReviewStatus === "reviewed") ||
+          (matchesTarget(row.mappingSymbol) &&
+            reliableStatuses.has(row.mappingStatus ?? "")) ||
+          (matchesTarget(row.holdingMappedSymbol) &&
+            reliableStatuses.has(row.holdingMappingStatus ?? "")),
+      ),
+    hasTargetSpecificCandidateEvidence:
+      canonicalRows.length > 0 || evidenceRows.length > 0,
+  };
+}
+
+export async function loadStockCandidateCusips(
+  accessionNumbers: string[],
+  symbol: string,
+): Promise<string[]> {
+  return (await loadStockCandidateIdentity(accessionNumbers, symbol))
+    .candidateCusips;
 }
 
 /**
@@ -445,10 +487,11 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
     const previousAccessions = selected.previousFilings.map(
       (filing) => filing.accessionNumber,
     );
-    const candidateCusips = await loadStockCandidateCusips(
+    const candidateIdentity = await loadStockCandidateIdentity(
       [...currentAccessions, ...previousAccessions],
       query.symbol,
     );
+    const candidateCusips = candidateIdentity.candidateCusips;
     const [currentHoldings, previousHoldings, managerPortfolioValues] =
       await Promise.all([
         loadAllStockInstitutionalHoldings(
@@ -472,6 +515,11 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
 
     return {
       symbol: query.symbol,
+      candidateCusips,
+      hasReliableSecurityIdentity:
+        candidateIdentity.hasReliableSecurityIdentity,
+      hasTargetSpecificCandidateEvidence:
+        candidateIdentity.hasTargetSpecificCandidateEvidence,
       quarter: canonicalAggregate?.quarter ?? selected.currentQuarter,
       previousQuarter:
         canonicalAggregate?.previousQuarter ?? selected.previousQuarter,

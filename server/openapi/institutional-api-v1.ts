@@ -196,6 +196,7 @@ export const institutionalApiV1OpenApi = {
           "403": responseRef("Forbidden"),
           "404": responseRef("Unavailable"),
           "429": responseRef("RateLimited"),
+          "503": responseRef("UpstreamUnavailable"),
           "500": responseRef("ServerError"),
         },
       },
@@ -671,6 +672,10 @@ export const institutionalApiV1OpenApi = {
         description: "No current data is available for the requested selector.",
         content: { "application/json": { schema: ref("ErrorEnvelope") } },
       },
+      UpstreamUnavailable: {
+        description: "Institutional source data could not be retrieved. The error code is UPSTREAM_ERROR and numeric analytics must not be inferred.",
+        content: { "application/json": { schema: ref("ErrorEnvelope") } },
+      },
       RateLimited: {
         description: "The API client exceeded its configured rate limit.",
         headers: {
@@ -957,9 +962,23 @@ export const institutionalApiV1OpenApi = {
       },
       StockAnalytics: {
         type: "object",
-        required: ["symbol", "quarter", "dataAsOf", "reportingManagerCount", "reportedHolderCount", "topReportedHolders", "dataQuality", "modelVersion"],
+        required: ["symbol", "availability", "quarter", "dataAsOf", "reportingManagerCount", "reportedHolderCount", "topReportedHolders", "dataQuality", "modelVersion"],
         properties: {
           symbol: { type: "string" },
+          availability: {
+            type: "string",
+            enum: [
+              "AVAILABLE",
+              "PARTIAL",
+              "INSUFFICIENT_HISTORY",
+              "UNMAPPED",
+              "UNSUPPORTED",
+              "NO_REPORTED_POSITION",
+              "UPSTREAM_ERROR",
+            ],
+            description:
+              "Explicit symbol-level data availability. Numeric zero holder counts are definitive only for NO_REPORTED_POSITION.",
+          },
           quarter: ref("Quarter"),
           dataAsOf: { type: ["string", "null"], format: "date" },
           reportingManagerCount: { type: "integer" },

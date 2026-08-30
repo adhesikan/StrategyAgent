@@ -51,6 +51,20 @@ export interface AnalyticsDataQuality {
   warnings: string[];
 }
 
+/**
+ * Explicit consumer-facing availability for symbol-level institutional data.
+ * A numeric zero is only meaningful for NO_REPORTED_POSITION; every other
+ * non-available state must be rendered as unavailable rather than as zero.
+ */
+export type InstitutionalDataAvailability =
+  | "AVAILABLE"
+  | "PARTIAL"
+  | "INSUFFICIENT_HISTORY"
+  | "UNMAPPED"
+  | "UNSUPPORTED"
+  | "NO_REPORTED_POSITION"
+  | "UPSTREAM_ERROR";
+
 export interface PortfolioPositionSummary {
   securityPositionType: SecurityPositionType;
   positionCount: number;
@@ -108,6 +122,7 @@ export interface ThemeAllocation {
 
 export interface StockInstitutionalAnalytics {
   symbol: string;
+  availability: InstitutionalDataAvailability;
   quarter: InstitutionalQuarter;
   /** Quarter-end date represented by the reported holdings. */
   dataAsOf: string | null;

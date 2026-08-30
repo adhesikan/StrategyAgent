@@ -144,6 +144,7 @@ describe("stock institutional analytics", () => {
 
     expect(result).toMatchObject({
       symbol: "XYZ",
+      availability: "AVAILABLE",
       quarter: QUARTER,
       dataAsOf: "2026-06-30",
       reportedHolderCount: 4,
@@ -274,6 +275,101 @@ describe("stock institutional analytics", () => {
       coveragePercent: 80,
     });
     expect(result.reportedHolderCount).toBe(4);
+  });
+
+  it("marks ambiguous-only candidates as unmapped instead of a zero position", () => {
+    const input = baseInput();
+    input.currentHoldings = [
+      holding("0000000007", "Ambiguous Manager", "222222222", 100, 100, {
+        mappingResolution: "ambiguous",
+        metadataResolution: "unavailable",
+        classificationStatus: "unclassified",
+        unclassifiedReason: "ambiguous",
+        metadata: null,
+      }),
+    ];
+    input.previousHoldings = [];
+    input.hasReliableSecurityIdentity = true;
+
+    const result = computeStockInstitutionalAnalytics(input);
+
+    expect(result.availability).toBe("UNMAPPED");
+    expect(result.reportedHolderCount).toBe(0);
+  });
+
+  it("distinguishes a known security with no position from an unsupported symbol", () => {
+    const known = baseInput();
+    known.currentHoldings = [];
+    known.previousHoldings = [];
+    known.candidateCusips = ["46625H100"];
+    known.hasReliableSecurityIdentity = true;
+    known.hasTargetSpecificCandidateEvidence = true;
+    const unsupported = {
+      ...known,
+      candidateCusips: [],
+      hasReliableSecurityIdentity: false,
+      hasTargetSpecificCandidateEvidence: false,
+    };
+
+    expect(computeStockInstitutionalAnalytics(known).availability).toBe(
+      "NO_REPORTED_POSITION",
+    );
+    expect(computeStockInstitutionalAnalytics(unsupported).availability).toBe(
+      "UNSUPPORTED",
+    );
+  });
+
+  it("never turns incomplete canonical coverage into a zero-position claim", () => {
+    const input = baseInput();
+    input.currentHoldings = [];
+    input.previousHoldings = [];
+    input.hasReliableSecurityIdentity = true;
+    input.canonicalAggregate = {
+      quarter: QUARTER,
+      previousQuarter: PREVIOUS_QUARTER,
+      previousReportingManagerCount: 0,
+      reportingManagerCount: 0,
+      aggregateReportedShares: null,
+      aggregateReportedValue: null,
+      previousQuarterShares: null,
+      previousQuarterValue: null,
+      reportedSharesChange: null,
+      reportedSharesChangePercent: null,
+      newPositionCount: 0,
+      increasedPositionCount: 0,
+      reducedPositionCount: 0,
+      exitedPositionCount: 0,
+      unchangedCount: 0,
+      eligibleHoldingCount: 1,
+      excludedHoldingCount: 1,
+      coverageStatus: "insufficient",
+    };
+
+    expect(computeStockInstitutionalAnalytics(input).availability).toBe(
+      "PARTIAL",
+    );
+  });
+
+  it("aggregates multiple legitimate CUSIPs per manager without losing identity", () => {
+    const input = baseInput();
+    input.currentHoldings = [
+      holding("0000000001", "Alpha Manager", "111111111", 100, 1_000),
+      holding("0000000001", "Alpha Manager", "222222222", 50, 500),
+    ];
+    input.previousHoldings = [];
+    input.previousQuarter = null;
+    input.comparableManagerIds = [];
+
+    const result = computeStockInstitutionalAnalytics(input);
+
+    expect(result.reportedHolderCount).toBe(1);
+    expect(result.aggregateReportedShares).toBe(150);
+    expect(result.topReportedHolders[0]).toMatchObject({
+      cusip: null,
+      cusips: ["111111111", "222222222"],
+      reportedShares: 150,
+    });
+    expect(result.availability).toBe("INSUFFICIENT_HISTORY");
   });
 
   it.each([

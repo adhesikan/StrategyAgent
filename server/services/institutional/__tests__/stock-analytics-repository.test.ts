@@ -13,6 +13,7 @@ vi.mock("../../../db", () => ({
 import {
   loadAllStockInstitutionalHoldings,
   loadManagerPortfolioValues,
+  loadStockCandidateIdentity,
   loadStockCandidateCusips,
   selectAlignedStockFilings,
 } from "../analytics/stock-analytics-repository";
@@ -117,6 +118,36 @@ describe("stock analytics portfolio denominators", () => {
     await expect(
       loadStockCandidateCusips(["accession-1"], "xyz"),
     ).resolves.toEqual(["111111111"]);
+  });
+
+  it("does not let a trusted status for another symbol validate target evidence", async () => {
+    selectMock
+      .mockReturnValueOnce(
+        canonicalCusipsQuery([
+          { cusip: "111111111", reviewStatus: "needs_review" },
+        ]),
+      )
+      .mockReturnValueOnce(
+        candidateCusipsQuery([
+          {
+            cusip: "111111111",
+            masterTicker: "JPM",
+            masterReviewStatus: "needs_review",
+            mappingSymbol: "OTHER",
+            mappingStatus: "exact",
+            holdingMappedSymbol: null,
+            holdingMappingStatus: null,
+          },
+        ]),
+      );
+
+    await expect(
+      loadStockCandidateIdentity(["accession-1"], "JPM"),
+    ).resolves.toEqual({
+      candidateCusips: ["111111111"],
+      hasReliableSecurityIdentity: false,
+      hasTargetSpecificCandidateEvidence: true,
+    });
   });
 
   it("keeps latest holder details pinned to a lagging canonical aggregate quarter", () => {

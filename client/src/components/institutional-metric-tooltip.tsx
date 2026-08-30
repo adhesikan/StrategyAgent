@@ -14,6 +14,8 @@ export const institutionalMetricDescriptions = {
     "Number of tracked reporting managers that reported holding the security in the selected quarter.",
   reportedShares:
     "Total shares reported by tracked managers in the selected quarter.",
+  reportedValue:
+    "Value reported on Form 13F at filing time. Price changes can change this value, so it does not by itself establish buying or selling.",
   mappingCoverage:
     "Percentage of eligible common-equity holdings that can be reliably linked to the researched security.",
   trendClassification:

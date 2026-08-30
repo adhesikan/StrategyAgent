@@ -148,6 +148,12 @@ export interface FundPortfolioXRayRepository {
 
 export interface StockInstitutionalAnalyticsSource {
   symbol: string;
+  /** Candidate CUSIPs discovered from target-specific identity evidence, including unresolved evidence. */
+  candidateCusips?: string[];
+  /** True only when reviewed/exact evidence reliably identifies the requested symbol. */
+  hasReliableSecurityIdentity?: boolean;
+  /** True when any source associates a candidate CUSIP with the target, even if it remains unresolved. */
+  hasTargetSpecificCandidateEvidence?: boolean;
   quarter: InstitutionalQuarter;
   previousQuarter: InstitutionalQuarter | null;
   dataAsOf: string | null;

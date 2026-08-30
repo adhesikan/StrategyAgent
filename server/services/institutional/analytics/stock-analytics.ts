@@ -21,6 +21,7 @@ import type {
   InstitutionalBreadth,
   InstitutionalChangeType,
   InstitutionalTrend,
+  InstitutionalDataAvailability,
   ModelVersion,
   StockAnalyticsQuery,
   StockInstitutionalAnalytics,
@@ -47,6 +48,9 @@ export function createStockInstitutionalAnalytics(
 
 export interface StockInstitutionalAnalyticsCalculationInput {
   symbol: string;
+  candidateCusips?: string[];
+  hasReliableSecurityIdentity?: boolean;
+  hasTargetSpecificCandidateEvidence?: boolean;
   quarter: StockInstitutionalAnalyticsSource["quarter"];
   previousQuarter: StockInstitutionalAnalyticsSource["previousQuarter"];
   dataAsOf: string | null;
@@ -523,6 +527,49 @@ function buildDataQuality(
   };
 }
 
+function buildAvailability(
+  input: StockInstitutionalAnalyticsCalculationInput,
+  mappingCoverage: StockInstitutionalMappingCoverage,
+  comparisonComplete: boolean,
+  reportedHolderCount: number,
+): InstitutionalDataAvailability {
+  const hasReliableIdentity =
+    input.hasReliableSecurityIdentity ??
+    Boolean(input.canonicalAggregate);
+  if (
+    !hasReliableIdentity &&
+    (input.hasTargetSpecificCandidateEvidence ||
+      (input.candidateCusips?.length ?? 0) > 0)
+  ) {
+    return "UNMAPPED";
+  }
+  if (
+    !hasReliableIdentity &&
+    mappingCoverage.candidateHoldingCount === 0
+  ) {
+    return "UNSUPPORTED";
+  }
+  if (
+    mappingCoverage.candidateHoldingCount > 0 &&
+    mappingCoverage.reliablyMappedHoldingCount === 0
+  ) {
+    return "UNMAPPED";
+  }
+  if (
+    (mappingCoverage.candidateHoldingCount > 0 &&
+      mappingCoverage.coveragePercent < 100) ||
+    (input.canonicalAggregate &&
+      input.canonicalAggregate.coverageStatus !== "complete")
+  ) {
+    return "PARTIAL";
+  }
+  if (reportedHolderCount === 0) return "NO_REPORTED_POSITION";
+  if (!input.previousQuarter || !comparisonComplete) {
+    return "INSUFFICIENT_HISTORY";
+  }
+  return "AVAILABLE";
+}
+
 /**
  * Pure stock-level calculation. Current totals include all reliably mapped
  * current holders. Change metrics are emitted only for managers with equivalent
@@ -633,6 +680,12 @@ export function computeStockInstitutionalAnalytics(
   ).length;
   const reportingManagerCount =
     canonical?.reportingManagerCount ?? currentByManager.size;
+  const availability = buildAvailability(
+    input,
+    mappingCoverage,
+    comparisonComplete,
+    reportingManagerCount,
+  );
   const previousReportedHolderCount = canonical
     ? canonical.previousReportingManagerCount
     : input.previousQuarter
@@ -675,6 +728,7 @@ export function computeStockInstitutionalAnalytics(
 
   return {
     symbol,
+    availability,
     quarter: input.quarter,
     dataAsOf: input.dataAsOf,
     reportingManagerCount,

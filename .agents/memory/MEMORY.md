@@ -103,3 +103,4 @@
 - [One-time credential logging](one-time-credential-logging.md) — secret-creation responses must be redacted at the global response logger, not only omitted from persistence.
 - [External consumer proxy boundary](external-consumer-proxy-boundary.md) — use per-route query allowlists, reject duplicates/blanks, rebuild normalized queries, and time out body reads too.
 - [Institutional holding source identity](institutional-holding-source-identity.md) — identical stored 13F rows are not proven duplicates because SEC INFOTABLE_SK is not persisted.
+- [Institutional symbol availability](institutional-symbol-availability.md) — diagnostic CUSIP evidence must stay separate from identity trusted for totals or genuine zero-position claims.

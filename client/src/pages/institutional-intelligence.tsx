@@ -58,6 +58,7 @@ interface ApiEnvelope<T> {
 
 interface StockAnalytics {
   symbol: string;
+  availability?: "AVAILABLE" | "PARTIAL" | "INSUFFICIENT_HISTORY" | "UNMAPPED" | "UNSUPPORTED" | "NO_REPORTED_POSITION" | "UPSTREAM_ERROR";
   quarter?: { label: string; periodEndDate: string };
   dataAsOf?: string | null;
   reportingManagerCount: number;
@@ -343,6 +344,10 @@ function isDataUnavailable(error: unknown): boolean {
   return apiErrorCode(error) === "DATA_UNAVAILABLE";
 }
 
+function isUpstreamError(error: unknown): boolean {
+  return apiErrorCode(error) === "UPSTREAM_ERROR";
+}
+
 function symbolFromSearch(search: string): string | null {
   const raw = new URLSearchParams(
     search.startsWith("?") ? search.slice(1) : search,
@@ -429,12 +434,12 @@ function EmptyState({ title, detail, onRetry }: { title: string; detail: string;
   );
 }
 
-function ErrorState({ onRetry }: { onRetry: () => void }) {
+function ErrorState({ onRetry, message = "That research view could not be loaded. The data pipeline may be unavailable or have no completed snapshot." }: { onRetry: () => void; message?: string }) {
   return (
     <Alert variant="destructive">
       <AlertCircle className="h-4 w-4" />
       <AlertDescription className="flex items-center justify-between gap-3 text-sm">
-        <span>That research view could not be loaded. The data pipeline may be unavailable or have no completed snapshot.</span>
+        <span>{message}</span>
         <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button>
       </AlertDescription>
     </Alert>
@@ -574,6 +579,21 @@ function StockView({
   }
   const analyticsUnavailable = isDataUnavailable(analyticsQuery.error);
   const trendUnavailable = isDataUnavailable(trendQuery.error);
+  const analyticsUpstreamError =
+    isUpstreamError(analyticsQuery.error) ||
+    analyticsQuery.data?.availability === "UPSTREAM_ERROR";
+  if (analyticsUpstreamError) {
+    return (
+      <ErrorState
+        message="Institutional source data is temporarily unavailable. No holder counts are shown because the upstream result could not be verified."
+        onRetry={() => {
+          void analyticsQuery.refetch();
+          void trendQuery.refetch();
+          void legacyQuery.refetch();
+        }}
+      />
+    );
+  }
   const primaryHardError =
     (analyticsQuery.isError && !analyticsUnavailable) ||
     (trendQuery.isError && !trendUnavailable);
@@ -592,6 +612,15 @@ function StockView({
   const legacy = legacyQuery.data?.summary ? legacyQuery.data : undefined;
   if (!data && !legacy) {
     return <EmptyState title={`No reported 13F data for ${symbol}`} detail="A completed institutional snapshot is required before this stock can be analyzed." />;
+  }
+  if (data?.availability === "UNSUPPORTED") {
+    return <EmptyState title={`${symbol} is not in the institutional security master`} detail="No canonical CUSIP identity is available for this symbol. The system will not guess a mapping." />;
+  }
+  if (data?.availability === "UNMAPPED") {
+    return <EmptyState title={`Institutional holdings for ${symbol} are not reliably mapped`} detail="Candidate filing rows exist, but none can be linked to this symbol without ambiguity. Holder counts are unavailable, not zero." />;
+  }
+  if (data?.availability === "NO_REPORTED_POSITION") {
+    return <EmptyState title={`No reported position for ${symbol}`} detail={`The security identity is known, but no eligible positive-share common-equity position was reported for ${data.quarter?.label ?? "the selected quarter"}.`} />;
   }
 
   const score = signalQuery.data?.score ?? null;
@@ -614,6 +643,11 @@ function StockView({
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-semibold tracking-tight">{symbol}</h2>
             <Badge variant="outline">Reported 13F evidence</Badge>
+            {data?.availability && (
+              <Badge variant="secondary">
+                {data.availability.replaceAll("_", " ")}
+              </Badge>
+            )}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Holder breadth, quarter-over-quarter changes, and multi-quarter participation context.
@@ -629,7 +663,13 @@ function StockView({
         <Metric
           label="Reported holders"
           help="reportedHolders"
-          value={data?.reportedHolderCount ?? "—"}
+          value={
+            data?.availability &&
+            (!["AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY"].includes(data.availability) ||
+              (data.availability === "PARTIAL" && data.reportedHolderCount === 0))
+              ? "Unavailable"
+              : data?.reportedHolderCount ?? "—"
+          }
           detail={
             data?.holderCountChange == null
               ? `Tracked 13F managers: ${data?.reportingManagerCount ?? "—"}`
@@ -703,7 +743,7 @@ function StockView({
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] text-sm">
-                <thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="pb-2">Manager</th><th className="pb-2 text-right">Reported shares</th><th className="pb-2 text-right">Reported value</th><th className="pb-2 text-right">QoQ shares</th><th className="pb-2 text-right">Status</th></tr></thead>
+                <thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="pb-2">Manager</th><th className="pb-2 text-right">Reported shares</th><th className="pb-2 text-right"><InstitutionalMetricLabel label="Reported value" metric="reportedValue" /></th><th className="pb-2 text-right">QoQ shares</th><th className="pb-2 text-right">Status</th></tr></thead>
                 <tbody>
                   {(data?.topReportedHolders ?? []).map((holder) => (
                     <tr key={`${holder.managerId}-${holder.managerName}`} className="border-b last:border-0">

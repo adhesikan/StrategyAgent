@@ -424,14 +424,21 @@ export function registerInstitutionalApiV1Routes(
         ...commonOptions(query),
         topN: query.topN,
       };
-      return requireResult(
-        await deps.getStockInstitutionalAnalytics(
+      let result: StockInstitutionalAnalytics | null;
+      try {
+        result = await deps.getStockInstitutionalAnalytics(
           symbol,
           query.quarter as FundPortfolioXRayQuarterSelector,
           options,
-        ),
-        "stock",
-      );
+        );
+      } catch {
+        throw new InstitutionalApiV1Error(
+          503,
+          "UPSTREAM_ERROR",
+          "Institutional source data could not be retrieved.",
+        );
+      }
+      return requireResult(result, "stock");
     },
   ));
 

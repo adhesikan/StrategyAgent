@@ -47,6 +47,7 @@ describe("Institutional Intelligence hub", () => {
     expect(pageSource).toContain("symbolFromSearch(search)");
     expect(pageSource).toContain("setActiveTab(\"stock\")");
     expect(pageSource).toContain('apiErrorCode(error) === "DATA_UNAVAILABLE"');
+    expect(pageSource).toContain('apiErrorCode(error) === "UPSTREAM_ERROR"');
     expect(
       apiErrorCode(
         new Error(
@@ -54,6 +55,17 @@ describe("Institutional Intelligence hub", () => {
         ),
       ),
     ).toBe("DATA_UNAVAILABLE");
+    expect(
+      apiErrorCode(
+        new Error(
+          '503: {"error":{"code":"UPSTREAM_ERROR","message":"Source unavailable"}}',
+        ),
+      ),
+    ).toBe("UPSTREAM_ERROR");
+    expect(pageSource).toContain(
+      "No holder counts are shown because the upstream result could not be verified.",
+    );
+    expect(pageSource).toContain('data.availability.replaceAll("_", " ")');
     expect(pageSource).toContain("legacyQuery.data?.summary");
     expect(pageSource).toContain("<TabsContent");
     expect(symbolQueryOpensStock("AAPL")).toBe(true);

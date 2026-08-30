@@ -116,6 +116,29 @@ describe("institutional v1 OpenAPI contract", () => {
     expect(institutionalApiV1OpenApi.components.responses.RateLimited).toBeTruthy();
   });
 
+  it("requires the full stock availability contract in public schemas", () => {
+    const stock =
+      institutionalApiV1OpenApi.components.schemas.StockAnalytics;
+    expect(stock.required).toContain("availability");
+    expect(stock.properties.availability).toMatchObject({
+      type: "string",
+      enum: [
+        "AVAILABLE",
+        "PARTIAL",
+        "INSUFFICIENT_HISTORY",
+        "UNMAPPED",
+        "UNSUPPORTED",
+        "NO_REPORTED_POSITION",
+        "UPSTREAM_ERROR",
+      ],
+    });
+    expect(
+      institutionalApiV1OpenApi.paths[
+        "/api/v1/institutional/stocks/{symbol}"
+      ].get.responses["503"],
+    ).toEqual({ $ref: "#/components/responses/UpstreamUnavailable" });
+  });
+
   it("documents the Multibagger response shape and cautious language", () => {
     const serialized = JSON.stringify({
       paths: Object.fromEntries(

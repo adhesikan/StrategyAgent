@@ -205,6 +205,50 @@ describe("External Institutional Intelligence API v1", () => {
     );
   });
 
+  it("exposes explicit unmapped availability instead of implying zero holders", async () => {
+    services.getStockInstitutionalAnalytics.mockResolvedValueOnce(
+      result({
+        symbol: "JPM",
+        availability: "UNMAPPED",
+        dataAsOf: "2026-03-31",
+        reportingManagerCount: 0,
+        reportedHolderCount: 0,
+        topReportedHolders: [],
+      }) as any,
+    );
+
+    const { response, body } = await apiGet(
+      "/api/v1/institutional/stocks/JPM",
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.data).toMatchObject({
+      symbol: "JPM",
+      availability: "UNMAPPED",
+      reportedHolderCount: 0,
+    });
+  });
+
+  it("returns a structured upstream error when stock data retrieval fails", async () => {
+    services.getStockInstitutionalAnalytics.mockRejectedValueOnce(
+      new Error("database connection details must remain private"),
+    );
+
+    const { response, body } = await apiGet(
+      "/api/v1/institutional/stocks/JPM",
+    );
+
+    expect(response.status).toBe(503);
+    expect(body).toEqual({
+      error: {
+        code: "UPSTREAM_ERROR",
+        message: "Institutional source data could not be retrieved.",
+        requestId: expect.any(String),
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("database connection");
+  });
+
   it("passes safe ranking filters, pagination, and sorting", async () => {
     await apiGet(
       "/api/v1/institutional/trends/accumulation" +

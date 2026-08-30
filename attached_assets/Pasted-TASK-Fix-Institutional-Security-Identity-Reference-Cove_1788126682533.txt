@@ -1,0 +1,337 @@
+TASK — Fix Institutional Security Identity Reference Coverage Systemically
+
+ROOT CAUSE IS NOW PROVEN IN PRODUCTION.
+
+The production-wide Task #189 analyzer successfully ran.
+
+DO NOT perform another ticker-by-ticker diagnostic.
+
+DO NOT APPLY the current remediation plan.
+
+The current production remediation plan does not materially expand institutional coverage.
+
+Production evidence shows a large unresolved population classified as:
+
+INSUFFICIENT_NO_REFERENCE
+→ INSUFFICIENT_EVIDENCE
+→ projectedSymbol: null
+→ REVIEW_CANONICAL_MAPPING
+
+The current remediation plan has:
+
+affected.mappings = []
+affected.holdings = 0
+
+while downstream materialization is essentially limited to the already trusted AAPL/COST/MSFT/NVDA universe.
+
+Therefore the systemic bottleneck is now:
+
+13F CUSIP
+→ authoritative security identity/reference
+→ canonical security master
+→ trusted symbol mapping
+
+NOT aggregation, signal calculation, trend calculation, QoQ logic, or UI behavior.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Build the missing GENERAL security-reference enrichment layer so that eligible 13F CUSIPs can be resolved to authoritative security identities whenever reliable reference evidence exists.
+
+The solution must support the entire institutional universe and future ingestion.
+
+Do NOT manually map securities.
+
+Do NOT build a ticker-specific repair process.
+
+Do NOT weaken the Task #189 resolver.
+
+Do NOT use fuzzy issuer-name matching as trusted identity.
+
+Do NOT guess symbols.
+
+==================================================
+1. INSPECT EXISTING REFERENCE DATA CAPABILITIES
+==================================================
+
+Inspect the repository and existing configured/licensed data providers.
+
+Determine what authoritative/reference sources are already available to StrategyAgent that can provide relationships among:
+
+CUSIP
+security/company identity
+ticker/symbol
+exchange
+security type
+issuer
+share class
+historical identifiers
+
+Inspect actual existing integrations before proposing a new provider.
+
+Examples may include existing:
+
+- market-data providers
+- security-master providers
+- SEC-derived reference datasets
+- brokerage/reference APIs
+- licensed datasets
+
+Do NOT assume a provider supports CUSIP lookup.
+
+Verify from actual implementation/API capability.
+
+Never print API keys or credentials.
+
+==================================================
+2. DEFINE AUTHORITATIVE IDENTITY EVIDENCE
+==================================================
+
+Create an explicit evidence hierarchy.
+
+Examples:
+
+TIER 1 — authoritative deterministic identity
+CUSIP → security → ticker from approved reference source
+
+TIER 2 — existing reviewed mapping
+
+TIER 3 — exact deterministic historical identifier relationship
+
+TIER 4 — corroborated deterministic reference evidence
+
+UNTRUSTED
+issuer-name similarity
+fuzzy matching
+probable ticker
+single ambiguous filing symbol
+LLM inference
+
+Only evidence meeting the explicit trusted rules may automatically become RESOLVED_TRUSTED.
+
+==================================================
+3. DETERMINE REFERENCE COVERAGE FOR THE FULL UNIVERSE
+==================================================
+
+Using the production analyzer population, determine how many currently:
+
+INSUFFICIENT_NO_REFERENCE
+
+CUSIPs could be resolved if the available authoritative reference source(s) were populated.
+
+This must be population-based.
+
+Report:
+
+distinct CUSIPs
+holding rows
+reported USD value
+
+for:
+
+AUTHORITATIVELY_RESOLVABLE
+AMBIGUOUS
+UNSUPPORTED
+NO_REFERENCE_AVAILABLE
+
+Do not report ticker-by-ticker.
+
+==================================================
+4. BUILD CANONICAL SECURITY REFERENCE INGESTION
+==================================================
+
+Implement a reusable security-reference ingestion/enrichment service.
+
+It must:
+
+- populate/update the canonical security master
+- preserve CUSIP identity
+- preserve multiple CUSIPs where legitimate
+- support share classes
+- support ETFs/funds appropriately
+- support ADR/special securities explicitly
+- support historical identifiers when authoritative evidence exists
+- record provenance/source
+- record confidence/trust classification
+- record observed/reviewed timestamps where appropriate
+- never overwrite reviewed mappings with weaker evidence
+
+It must be idempotent.
+
+==================================================
+5. CONNECT IT TO THE TASK #189 RESOLVER
+==================================================
+
+The flow must become:
+
+13F holding
+→ CUSIP
+→ canonical security reference
+→ Task #189 resolver
+→ trusted mapping when deterministic
+→ holding materialization
+→ quarterly aggregates
+→ trends
+→ signals
+→ sector/theme
+→ discovery
+
+There must NOT be a second competing resolver.
+
+Task #189 resolver remains authoritative.
+
+==================================================
+6. FUTURE INGESTION
+==================================================
+
+Fix the ongoing pipeline so future 13F ingestion automatically performs:
+
+new CUSIP detected
+→ reference lookup/enrichment
+→ resolver
+→ trusted mapping if deterministic
+→ downstream incremental materialization
+
+Unknown/ambiguous identities remain unresolved.
+
+An operator should not need to manually repair each quarter.
+
+==================================================
+7. BACKFILL MODE
+==================================================
+
+Provide a bounded backfill mode for the existing institutional universe.
+
+It must support:
+
+DRY RUN
+APPLY
+
+DO NOT APPLY against production in this task.
+
+The dry run must report projected improvement by:
+
+CUSIP coverage
+holding-row coverage
+reported-value coverage
+
+before → after.
+
+==================================================
+8. PROVIDER SAFETY / LICENSING
+==================================================
+
+Before selecting a reference source, report:
+
+- source/provider
+- existing integration status
+- whether credentials already exist
+- whether CUSIP lookup is actually supported
+- whether use for internal security-master/reference purposes is permitted by the known integration/licensing configuration
+- rate limits relevant to approximately the full institutional CUSIP universe
+- whether bulk lookup is supported
+- whether persistence of returned identity/reference fields is permitted
+
+Do NOT assume redistribution rights.
+
+StockMetrics may expose derived institutional intelligence, but raw licensed reference data must follow provider terms.
+
+If the existing providers cannot safely supply authoritative CUSIP→symbol identity, STOP and report the exact missing capability and recommended reference-data source/API requirements.
+
+Do not substitute fuzzy matching.
+
+==================================================
+9. TESTS
+==================================================
+
+Test systemic cases:
+
+- standard US common stock
+- multiple CUSIPs
+- multiple share classes
+- ETF
+- ADR
+- foreign security
+- historical CUSIP
+- corporate action
+- ambiguous identity
+- conflicting reference sources
+- no reference
+- reviewed mapping precedence
+- options/PRN exclusion
+- future new CUSIP
+- idempotent enrichment
+- failed provider request
+- provider rate limit
+- partial batch response
+
+Keep all existing Institutional Intelligence regression tests.
+
+Run full tests/build/review.
+
+==================================================
+10. PRODUCTION SAFETY
+==================================================
+
+NO production writes.
+
+NO reference backfill APPLY.
+
+NO institutional remediation APPLY.
+
+NO ingestion execution.
+
+NO schema migration against production.
+
+Code changes may be committed/pushed after tests.
+
+==================================================
+11. COMPLETION REPORT
+==================================================
+
+Return:
+
+ROOT CAUSE
+
+REFERENCE SOURCE ASSESSMENT
+
+Source | CUSIP Lookup | Authoritative | Persistence Allowed | Existing Integration | Selected?
+
+CURRENT REFERENCE COVERAGE
+
+Metric | Trusted Reference | Missing Reference | Ambiguous
+
+PROJECTED COVERAGE AFTER REFERENCE ENRICHMENT
+
+Metric | Current | Projected | Improvement
+
+SECURITY MASTER CHANGES
+
+RESOLVER INTEGRATION
+
+FUTURE INGESTION FLOW
+
+BACKFILL PLAN
+
+TEST RESULTS
+
+BUILD RESULT
+
+ARCHITECTURE REVIEW
+
+COMMIT SHA
+
+PRODUCTION WRITE REQUIRED?
+YES/NO
+
+If YES:
+
+provide ONLY the exact READ-ONLY/dry-run command needed to measure the enriched reference coverage against production.
+
+DO NOT provide or execute APPLY yet.
+
+STOP.
+
+Do not start another diagnostic task.
+Do not perform ticker-by-ticker analysis.

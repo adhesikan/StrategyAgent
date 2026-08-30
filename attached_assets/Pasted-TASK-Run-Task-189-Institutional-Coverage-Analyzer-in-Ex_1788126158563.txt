@@ -1,0 +1,193 @@
+TASK — Run Task #189 Institutional Coverage Analyzer in Existing Railway Production Context
+
+IMPORTANT CORRECTION
+
+The previous Task #190 attempt used the wrong production context.
+
+DO NOT create or deploy a Replit production database.
+
+DO NOT deploy this application through Replit merely to obtain a database.
+
+StrategyAgent / VCP Trader AI already has an existing Railway production deployment and Railway PostgreSQL database.
+
+Previous institutional production repair and production acceptance operations were successfully executed against that existing Railway production environment.
+
+The objective is to run the Task #189 production-wide analyzer READ ONLY against THAT SAME Railway production database.
+
+==================================================
+1. FIRST INSPECT EXISTING RAILWAY INTEGRATION
+==================================================
+
+Inspect this repository and existing operational tooling for how previous production commands were executed against Railway.
+
+Find and reuse the established mechanism used for:
+
+- institutional production repair
+- institutional production acceptance
+- Railway production shell/runtime
+- DATABASE_URL supplied by Railway runtime
+- production environment validation
+
+Relevant existing scripts/history may include:
+
+scripts/repair-institutional-production-data.ts
+
+scripts/accept-institutional-production-data.ts
+
+and the Task #189 coverage analyzer.
+
+Do NOT invent a second production architecture.
+
+Do NOT use Replit's database/deployment status to determine whether Railway production exists.
+
+==================================================
+2. IDENTIFY THE CORRECT EXECUTION METHOD
+==================================================
+
+Determine the exact command that must be run inside the EXISTING Railway production service/runtime to execute the Task #189 analyzer.
+
+The expected model is:
+
+Existing Railway production service
+        |
+        +-- Railway runtime environment
+        |
+        +-- DATABASE_URL
+        |
+        +-- Existing Railway PostgreSQL
+        |
+        +-- Task #189 analyzer in READ-ONLY mode
+
+The analyzer must connect using Railway's existing production runtime configuration.
+
+Never print DATABASE_URL or any credential.
+
+==================================================
+3. IF REPLIT CANNOT DIRECTLY EXECUTE RAILWAY COMMANDS
+==================================================
+
+That is NOT a blocker requiring another diagnostic task.
+
+Instead:
+
+A. verify that the analyzer itself is ready for Railway execution;
+
+B. verify that it is strictly read-only in the requested mode;
+
+C. verify production identity guards;
+
+D. provide me the EXACT command to execute from the Railway production shell.
+
+Do not tell me to deploy through Replit.
+
+Do not create another PostgreSQL database.
+
+Do not modify production configuration.
+
+==================================================
+4. REQUIRED COMMAND CHARACTERISTICS
+==================================================
+
+The command must run the Task #189 generic resolver-backed analyzer against the entire production institutional population.
+
+It must:
+
+- be READ ONLY
+- perform no APPLY
+- perform no ingestion
+- perform no mapping writes
+- perform no holding writes
+- perform no aggregate writes
+- perform no signal writes
+- perform no snapshot writes
+- perform no schema changes
+- perform no feature-flag changes
+
+It must generate:
+
+- current trusted coverage
+- ambiguous coverage
+- conflicting coverage
+- unsupported coverage
+- insufficient-evidence coverage
+
+measured by:
+
+- distinct eligible CUSIPs
+- eligible holding rows
+- reported USD value
+
+It must also generate:
+
+- projected post-remediation coverage
+- proposed production writes
+- downstream materialization impact
+- deterministic remediation plan
+- plan hash
+
+but NOT APPLY that plan.
+
+==================================================
+5. DO NOT PERFORM TICKER AUDITS
+==================================================
+
+Absolutely no:
+
+AAPL audit
+JPM audit
+NVDA audit
+MSFT audit
+COST audit
+or any other symbol-by-symbol diagnostics.
+
+This is a population-wide analyzer.
+
+==================================================
+6. CHECK TASK #189 IMPLEMENTATION
+==================================================
+
+Before giving the command, inspect the actual Task #189 implementation and determine:
+
+- analyzer filename
+- CLI arguments
+- dry-run semantics
+- production guards
+- database requirements
+- plan-hash generation
+- whether running it twice against unchanged data should produce the same hash
+
+Do not guess the command.
+
+Derive it from the actual code.
+
+==================================================
+7. OUTPUT
+==================================================
+
+If this environment CAN execute against the existing Railway production runtime:
+
+Run the READ-ONLY analyzer and return the complete production-wide Task #190 report.
+
+If this environment CANNOT execute commands inside Railway:
+
+Return:
+
+RAILWAY EXECUTION REQUIRED
+
+followed by:
+
+1. exact Railway service/environment that should be used
+2. exact analyzer filename
+3. exact READ-ONLY command I should execute in Railway
+4. expected output
+5. confirmation that the command performs zero production writes
+
+Do NOT create another task.
+
+Do NOT create a database.
+
+Do NOT deploy through Replit.
+
+Do NOT perform APPLY.
+
+STOP after either obtaining the production-wide results or giving me the exact Railway command.

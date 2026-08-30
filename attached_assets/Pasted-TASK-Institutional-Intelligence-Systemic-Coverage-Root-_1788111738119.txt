@@ -1,0 +1,645 @@
+TASK — Institutional Intelligence Systemic Coverage Root-Cause Analysis and General Fix
+
+Repository:
+StrategyAgent / VCP Trader AI
+
+GOAL
+
+Stop solving Institutional Intelligence coverage ticker-by-ticker.
+
+Find the SYSTEMIC reasons why a large portion of the persisted 13F universe does not become usable Stock View / analytics / trend / discovery data, fix those causes generically, and prepare a safe production-wide remediation plan.
+
+This task must reason about populations, rules, and pipeline stages — NOT individual ticker repair.
+
+IMPORTANT CURRENT STATE
+
+The Institutional Intelligence core calculations have already been production-validated for AAPL, NVDA, MSFT, and COST.
+
+Production acceptance for those symbols passed.
+
+The system has also already been hardened to distinguish:
+
+AVAILABLE
+PARTIAL
+INSUFFICIENT_HISTORY
+UNMAPPED
+UNSUPPORTED
+NO_REPORTED_POSITION
+UPSTREAM_ERROR
+
+Existing validated semantics MUST remain intact:
+
+- effective filings/amendments
+- canonical reported_value in USD
+- CUSIP-based QoQ comparisons
+- common-equity eligibility
+- option exclusion
+- PRN exclusion
+- positive reported-share rule
+- legitimate multiple SEC source rows
+- reviewed/exact trusted mapping rules
+- multiple legitimate CUSIPs per security
+- canonical quarterly aggregates
+- signal/trend semantics
+
+DO NOT:
+
+- diagnose or repair tickers one-by-one
+- create another four-symbol/JPM-style repair script
+- hard-code ticker mappings
+- guess security identities
+- manually seed arbitrary CUSIP→ticker mappings
+- weaken trust rules simply to increase mapping percentage
+- deduplicate legitimate SEC source rows
+- modify validated signal mathematics
+- modify QoQ semantics
+- perform production writes automatically
+- rerun the old four-symbol repair
+- start StockMetrics centralization
+- modify institutional.stockmetrics.pro
+- redesign the UI
+
+==================================================
+PART 1 — MODEL THE COMPLETE PIPELINE
+==================================================
+
+Inspect the actual implementation and document the authoritative production path:
+
+SEC filing
+→ effective filing selection
+→ persisted holding
+→ security/CUSIP evidence
+→ security master
+→ trusted mapping
+→ symbol/security identity
+→ eligible common-equity population
+→ quarterly aggregate
+→ trend
+→ signal
+→ holders/activity
+→ sector/theme intelligence
+→ discovery/ranking
+→ API response
+
+Do not infer this from old documentation.
+
+Trace the current code.
+
+Identify the exact service/function/table responsible for each transition.
+
+The objective is to determine WHERE the institutional universe is being lost.
+
+==================================================
+PART 2 — PRODUCTION-WIDE FUNNEL ANALYSIS
+==================================================
+
+Build ONE bounded, READ-ONLY production coverage analysis.
+
+This is not a ticker audit.
+
+Measure the entire institutional population at each pipeline stage.
+
+At minimum report:
+
+FILINGS
+- total filings
+- effective filings
+- unique managers
+- filing quarters
+
+HOLDINGS
+- total holdings
+- effective holdings
+- distinct CUSIPs
+- distinct issuer/class combinations
+
+ELIGIBLE COMMON EQUITY
+- eligible holding rows
+- excluded option rows
+- excluded PRN rows
+- null/nonpositive-share exclusions
+- distinct eligible CUSIPs
+
+IDENTITY / MAPPING
+For every eligible distinct CUSIP classify it into exactly one systemic category such as:
+
+1. TRUSTED_REVIEWED_MAPPING
+2. TRUSTED_EXACT_MAPPING
+3. MULTIPLE_CUSIPS_SAME_SECURITY
+4. CANONICAL_SECURITY_EXISTS_BUT_MAPPING_NOT_PROMOTED
+5. SYMBOL_EVIDENCE_EXISTS_BUT_NOT_TRUSTED
+6. AMBIGUOUS_SYMBOL_EVIDENCE
+7. CONFLICTING_SYMBOL_EVIDENCE
+8. SECURITY_MASTER_MISSING
+9. ISSUER_NAME_VARIANT
+10. CLASS_TITLE_VARIANT
+11. ETF_OR_FUND
+12. ADR_OR_SPECIAL_SECURITY
+13. SECURITY_CHANGED_CUSIP
+14. CORPORATE_ACTION / HISTORICAL_IDENTITY
+15. UNSUPPORTED_SECURITY_TYPE
+16. NO_USABLE_IDENTITY_EVIDENCE
+17. OTHER — but only with a concrete reason
+
+Use categories that match the actual code/data.
+
+Do not force these exact names if the implementation demonstrates better categories.
+
+For each category report:
+
+- distinct CUSIPs
+- holding rows
+- reported value represented
+- latest-quarter holding rows
+- percentage of eligible universe
+- whether category is automatically resolvable
+- whether category requires review
+- whether category must remain unresolved
+
+This is the core of the task.
+
+==================================================
+PART 3 — DETERMINE ROOT CAUSES
+==================================================
+
+For each major population loss, determine the real root cause.
+
+Investigate systemic causes including:
+
+A. SECURITY MASTER COVERAGE
+
+Does the canonical security master contain enough securities/CUSIPs?
+
+If not:
+- why not?
+- what source populates it?
+- is population incomplete?
+- does ingestion only create identities opportunistically?
+
+B. CUSIP → SYMBOL MAPPING
+
+Determine whether mapping currently depends on:
+- manually reviewed rows
+- ingestion-time ticker evidence
+- exact mappings
+- external/reference data
+- issuer-name inference
+- stale ticker evidence
+
+Determine why mapped coverage historically remained near zero despite hundreds of thousands of persisted holdings.
+
+C. TRUST PROMOTION
+
+Determine whether reliable evidence exists in the database but mappings are simply never promoted to reviewed/exact status.
+
+This is critical.
+
+Quantify:
+
+evidence exists + deterministic identity
+versus
+truly ambiguous identity.
+
+D. ISSUER NAME NORMALIZATION
+
+Determine whether variations such as:
+
+JPMORGAN CHASE & CO
+JPMORGAN CHASE CO
+JPMORGAN CHASE
+etc.
+
+prevent deterministic identity resolution.
+
+Do NOT solve with fuzzy guessing.
+
+If normalization is appropriate, implement deterministic canonical normalization.
+
+E. CLASS TITLE NORMALIZATION
+
+Determine whether common class-title variations prevent otherwise reliable mappings.
+
+F. MULTIPLE CUSIPS
+
+Determine how securities with:
+- historical CUSIPs
+- multiple share classes
+- changed identifiers
+- multiple legitimate filing CUSIPs
+
+are represented.
+
+A ticker/security may legitimately correspond to multiple CUSIPs.
+
+Do not collapse them incorrectly.
+
+G. HISTORICAL VS CURRENT IDENTITY
+
+Determine whether historical holdings fail because the current security master only recognizes current CUSIPs.
+
+H. INGESTION PIPELINE
+
+Determine whether the normal ingestion process should have generated/promoted mappings but does not.
+
+If so, fix the ingestion/mapping pipeline rather than requiring future repair scripts.
+
+I. DOWNSTREAM MATERIALIZATION
+
+Determine whether:
+- mapping exists
+but
+- holdings are not mapped
+or
+- aggregates are not generated
+or
+- signals are not generated
+or
+- sector/theme snapshots are not rebuilt.
+
+Quantify each stage independently.
+
+==================================================
+PART 4 — BUILD A GENERAL RESOLUTION ENGINE
+==================================================
+
+Based on proven causes, implement a GENERAL security-resolution pipeline.
+
+Do not create symbol-specific fixes.
+
+The resolver should operate using deterministic evidence and produce:
+
+RESOLVED_TRUSTED
+
+AMBIGUOUS
+
+CONFLICTING
+
+UNSUPPORTED
+
+INSUFFICIENT_EVIDENCE
+
+as appropriate.
+
+A mapping may be automatically promoted ONLY when identity is deterministic under explicit rules.
+
+Examples of acceptable deterministic evidence may include:
+
+- reviewed security master CUSIP identity
+- exact canonical CUSIP relationship
+- authoritative existing security reference
+- exact ticker/CUSIP evidence from an approved source
+- deterministic historical identity relationship
+
+Do NOT promote merely because:
+- issuer names look similar
+- one probable ticker appears
+- fuzzy matching gives a high score
+- the ticker is popular
+- the symbol exists somewhere in a filing
+
+Create reusable resolver logic used by BOTH:
+
+1. ongoing ingestion
+2. remediation/backfill
+
+There must not be one mapping algorithm for repair and another for future ingestion.
+
+==================================================
+PART 5 — FIX THE PIPELINE, NOT JUST EXISTING DATA
+==================================================
+
+After root cause is proven, ensure future institutional ingestion performs:
+
+new filing
+→ persist holdings
+→ resolve identity
+→ promote deterministic trusted mappings
+→ map eligible holdings
+→ update quarterly aggregates
+→ update signals/trends
+→ refresh affected sector/theme intelligence
+
+Only affected identities/quarters should be recomputed where possible.
+
+Do not require an operator to run a repair script after every 13F ingestion.
+
+Ambiguous identities must remain queued/unresolved rather than guessed.
+
+==================================================
+PART 6 — GENERAL REMEDIATION PLANNER
+==================================================
+
+Create or extend ONE production remediation mechanism that uses the SAME resolver.
+
+It must support:
+
+DRY RUN
+and
+APPLY
+
+but DO NOT execute APPLY in this task.
+
+The dry run must calculate the production-wide change plan.
+
+Report:
+
+MAPPINGS
+- trusted existing mappings
+- deterministic new mappings
+- mappings promoted
+- ambiguous mappings
+- conflicting mappings
+- unsupported mappings
+- unresolved mappings
+
+HOLDINGS
+- eligible holdings
+- already mapped
+- newly mappable
+- remaining unmapped
+- conflicts
+- percentage coverage before
+- percentage coverage after projected remediation
+
+VALUE COVERAGE
+Also report coverage weighted by:
+- holding rows
+- reported USD value
+
+This matters because thousands of tiny obscure securities should not obscure coverage of the economically significant universe.
+
+AGGREGATES
+- symbols/securities affected
+- quarters affected
+- aggregate rows inserted
+- aggregate rows updated
+
+SIGNALS
+- securities rebuilt
+- signals inserted/updated
+
+SECTOR/THEME
+- snapshots affected/rebuilt
+
+Do not apply anything.
+
+==================================================
+PART 7 — COVERAGE QUALITY TARGET
+==================================================
+
+DO NOT define success as 100% mapping.
+
+That would encourage unsafe mappings.
+
+Instead produce:
+
+Trusted Coverage %
+
+Ambiguous %
+
+Unsupported %
+
+Insufficient Evidence %
+
+by:
+- distinct CUSIP
+- eligible holding rows
+- reported value
+
+The target is:
+
+maximize TRUSTED deterministic coverage
+while preserving zero guessed mappings.
+
+If, for example, 95%+ of reported value can be deterministically resolved while obscure/ambiguous securities remain unmapped, that can be healthy.
+
+Let actual evidence determine the numbers.
+
+==================================================
+PART 8 — DOWNSTREAM COMPLETENESS
+==================================================
+
+Once the projected trusted universe is known, determine whether all downstream services are generic.
+
+Verify at population level:
+
+Stock View
+Trends
+Rotation
+Institutional Discovery
+Multibagger Discovery
+
+For each determine:
+
+BACKEND_COMPLETE
+BACKEND_PARTIAL
+NO_BACKEND_IMPLEMENTATION
+FRONTEND_WIRING_MISSING
+DATA_NOT_MATERIALIZED
+OTHER_PROVEN_CAUSE
+
+Do not test these ticker by ticker.
+
+Determine whether each feature works from generic dataset population and API/service logic.
+
+Especially verify that:
+
+ROTATION
+uses existing sector/theme snapshots.
+
+INSTITUTIONAL DISCOVERY
+queries populated generic institutional intelligence rather than a small static symbol set.
+
+MULTIBAGGER DISCOVERY
+must use existing deterministic implementation if one exists.
+
+If Multibagger Discovery does NOT have an actual defined backend methodology, STOP and report it as product functionality not yet implemented.
+
+Do not invent a prediction model in this task.
+
+==================================================
+PART 9 — FIX MISLEADING ZERO STATES EVERYWHERE
+==================================================
+
+Audit Institutional Intelligence services/UI generically for this rule:
+
+ZERO means a validated numeric zero.
+
+UNKNOWN / UNMAPPED / PARTIAL / UNSUPPORTED must NEVER silently become zero.
+
+Apply this to:
+
+- reported holders
+- reported shares
+- value
+- mapping coverage
+- activity counts
+- trends
+- signals
+- discovery metrics
+
+Preserve the availability-state contract already implemented.
+
+==================================================
+PART 10 — TESTING STRATEGY
+==================================================
+
+Do NOT build tests around only named tickers.
+
+Use synthetic fixtures representing systemic categories:
+
+- trusted exact
+- trusted reviewed
+- multiple CUSIPs
+- historical CUSIP
+- ambiguous mapping
+- conflicting mapping
+- missing security master
+- unsupported security
+- options only
+- PRN only
+- zero/nonpositive shares
+- current + prior quarter
+- amendment supersession
+- legitimate multiple SEC rows
+- partial identity coverage
+- genuine zero/no-position case
+
+Keep regression tests for AAPL/NVDA/MSFT/COST to ensure previously accepted behavior remains unchanged.
+
+Run:
+
+- resolver tests
+- mapping tests
+- aggregation tests
+- API tests
+- discovery/trend/rotation tests
+- full Institutional Intelligence suite
+- npm run build
+- git diff --check
+- independent architecture review
+
+==================================================
+PART 11 — PRODUCTION SAFETY
+==================================================
+
+Production analysis is READ ONLY.
+
+NO production writes.
+
+NO APPLY.
+
+NO feature-flag changes.
+
+NO ingestion/backfill execution.
+
+If implementation changes code, commit/push code only after tests/review.
+
+Before any future production APPLY, require:
+
+- fresh production dry-run
+- deterministic plan
+- exact counts
+- before/after coverage
+- ambiguity counts
+- conflict counts
+- expected aggregate/signal/snapshot writes
+- idempotency validation
+- rollback/checkpoint strategy
+- production identity guards
+- feature flag safety
+- explicit operator approval
+
+==================================================
+COMPLETION REPORT
+==================================================
+
+Do not give me a ticker-by-ticker report.
+
+Give me a SYSTEM REPORT containing:
+
+1. PIPELINE ROOT CAUSES
+
+Rank the root causes by percentage of currently unusable eligible holdings/value they explain.
+
+2. COVERAGE FUNNEL
+
+Table:
+
+Stage
+Distinct securities/CUSIPs
+Holding rows
+Reported value
+% retained from previous stage
+
+3. MAPPING CLASSIFICATION
+
+Table:
+
+Classification
+CUSIPs
+Rows
+Reported value
+% of eligible value
+Automatically resolvable?
+Requires review?
+
+4. ROOT-CAUSE FIXES IMPLEMENTED
+
+For each:
+- cause
+- code change
+- why it is safe
+- future-ingestion behavior
+
+5. CURRENT VS PROJECTED COVERAGE
+
+Before:
+- trusted CUSIP coverage
+- trusted row coverage
+- trusted reported-value coverage
+
+After proposed remediation:
+- trusted CUSIP coverage
+- trusted row coverage
+- trusted reported-value coverage
+- remaining ambiguous
+- remaining unsupported
+- remaining insufficient evidence
+
+6. DOWNSTREAM STATUS
+
+Stock View:
+Trends:
+Rotation:
+Institutional Discovery:
+Multibagger Discovery:
+
+For each:
+- root cause
+- fix/status
+- whether production materialization is required
+
+7. PRODUCTION REMEDIATION PLAN
+
+Exact proposed production changes, but DO NOT execute them.
+
+8. TEST RESULTS
+
+9. BUILD RESULT
+
+10. INDEPENDENT REVIEW RESULT
+
+11. COMMIT SHA
+
+12. EXACT NEXT PRODUCTION COMMAND
+
+Only provide an APPLY command if a prior production-wide dry-run has produced and validated a fresh deterministic plan/hash.
+
+Otherwise provide only the exact DRY-RUN command.
+
+STOP.
+
+Do not start another diagnostic task.
+Do not start a ticker-by-ticker audit.
+Do not begin StockMetrics centralization.

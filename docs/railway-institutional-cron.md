@@ -251,6 +251,22 @@ Stop if any blocking issue is reported. In particular, do not proceed when an
 expected CUSIP points at a different symbol, an existing holding has a conflicting
 symbol, duplicate holding groups exist, or one of AAPL/NVDA/MSFT/COST is absent.
 
+If `DUPLICATE_HOLDING_GROUPS_PRESENT` is the only blocker, do not delete or
+deduplicate holdings. Run the dedicated SELECT-only classifier from the Railway
+application shell:
+
+```bash
+npx tsx scripts/classify-institutional-holding-duplicates.ts
+```
+
+The current repair detector groups by accession, CUSIP, class title, and
+put/call. The classifier separates materially distinct SEC lines from groups
+whose stored material is identical but whose source identity is unresolved. It
+also reports equity/PUT/CALL groups that the current key correctly keeps separate
+and explains the conditional AAPL/NVDA/MSFT/COST aggregate impact. The SEC bulk
+`INFOTABLE_SK` source-row identifier is not currently persisted, so stored rows
+alone cannot prove duplicate source rows or an actual overcount.
+
 ### 3. Explicitly apply the reviewed plan
 
 Copy the hash from the immediately preceding dry-run:

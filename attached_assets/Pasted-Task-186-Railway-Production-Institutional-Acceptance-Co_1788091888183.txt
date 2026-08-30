@@ -1,0 +1,131 @@
+Task #186 — Railway Production Institutional Acceptance Command
+
+Task #185 was blocked only because the verification environment did not have authenticated access to protected production institutional endpoints or direct Railway production database access.
+
+The production repair itself completed successfully.
+
+Do NOT reopen or modify the repair.
+Do NOT create additional diagnostic infrastructure.
+Do NOT change production data.
+Do NOT change schema.
+Do NOT ingest or backfill.
+Do NOT change feature flags.
+Do NOT require an authenticated browser/session/API key.
+
+Objective:
+Create ONE bounded, read-only production acceptance command that is designed to run from the Railway production shell using the existing DATABASE_URL.
+
+The command must independently verify the repaired institutional intelligence for:
+
+AAPL — CUSIP 037833100
+NVDA — CUSIP 67066G104
+MSFT — CUSIP 594918104
+COST — CUSIP 22160K105
+
+Use the same production services/calculation logic used by the application wherever possible. Do not create duplicate signal formulas.
+
+For each symbol verify:
+
+1. Mapping
+- total effective holding rows
+- reliably mapped effective holding rows
+- mapping coverage
+
+2. Latest aggregate — 2026-Q1
+Show:
+- manager count
+- total reported shares
+- total reported value USD
+- new positions
+- increased positions
+- reduced positions
+- no-longer-reported/exited positions
+
+3. Previous aggregate — 2025-Q4
+Show the same fields.
+
+4. Signal calculation
+Show:
+- latest quarter
+- previous quarter
+- exact normalized inputs consumed by the existing signal engine
+- relevant calculated deltas/components
+- resulting signal label
+
+Do not reimplement the signal formula.
+Call/reuse the existing production signal calculation/service.
+
+5. Integrity checks
+Explicitly verify:
+- QoQ identity uses CUSIP
+- only is_effective=true filings/holdings participate
+- put/call rows are excluded from common-stock aggregates
+- reported_value is canonical USD
+- SEC-source-confirmed multiple rows remain preserved and are included correctly
+- invalid comparable rows = 0
+- no conflicting reliable mappings exist in this four-symbol scope
+
+6. Application-service verification
+
+Because protected HTTP endpoints require authentication, do not use unauthenticated external HTTP calls as the acceptance mechanism.
+
+Instead, invoke the same underlying service/query functions used by those endpoints from inside the production process and verify the values that the API would return for:
+- holders/managers
+- shares
+- reported value
+- mapping coverage
+- QoQ activity
+- institutional signal
+- sector/theme intelligence where applicable
+
+7. Output a compact table:
+
+Symbol
+Mapping
+2026-Q1 aggregate
+2025-Q4 aggregate
+QoQ validation
+Signal validation
+Service/API-data validation
+Result
+
+Then output:
+
+PRODUCTION ACCEPTANCE: PASS or FAIL
+READY TO ENABLE FEATURE FLAG: YES or NO
+
+PASS only if all four symbols independently validate.
+
+Safety requirements:
+- read-only
+- production Railway environment guard
+- DATABASE_URL required
+- reject EXTERNAL_DATABASE_URL if present
+- no INSERT/UPDATE/DELETE/TRUNCATE/DDL
+- no feature flag changes
+- no SEC downloads
+- no ingestion/backfill
+- no persistent diagnostic tables/files
+- no application behavior changes
+
+Add focused tests proving the acceptance command is read-only and fails closed on inconsistent data.
+
+Run:
+- focused tests
+- full institutional suite
+- production build
+- review
+
+Commit and push to origin/main.
+
+At completion provide ONLY:
+1. implementation summary
+2. test/build/review results
+3. commit SHA
+4. exact Railway shell command to run
+
+Do not run production acceptance from Replit.
+Do not enable INSTITUTIONAL_INTELLIGENCE_ENABLED.
+
+PRODUCTION APPLY: NO.
+FEATURE FLAG CHANGE: NO.

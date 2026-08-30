@@ -1,0 +1,119 @@
+We have enough production diagnosis. Move from diagnosis to a controlled repair.
+
+Confirmed production state:
+
+- 1,394 filings
+- 1,391 effective filings
+- 970 effective managers
+- 41 historical quarters
+- 562,552 holdings
+- 562,176 effective holdings
+- 17,256 distinct effective CUSIPs
+- 0 mapped effective holdings
+- 1 security mapping row
+- 0 quarterly aggregate rows
+- institutional_symbol_signals = 0
+- sector/theme snapshot tables exist
+
+PRIMARY FAILURE:
+Raw 13F data is persisted, but security mappings were never established/applied at scale, so aggregates and institutional analytics were never generated.
+
+TASK:
+Implement a guarded production repair flow using the EXISTING data wherever possible.
+
+DO NOT re-download all 13F data unless the existing data is proven unusable.
+
+Repair sequence:
+
+1. SECURITY MAPPING PREPARATION
+- Build the reliable mapping universe needed for Institutional Intelligence.
+- Prefer existing repository mapping infrastructure/services.
+- Support CUSIP → symbol/security identity.
+- Respect existing reliability rules.
+- Do not guess ambiguous mappings.
+- Reliable mappings may be exact/reviewed/manual-approved according to existing domain rules.
+
+Before applying anything, perform a preflight check for:
+  AAPL / 037833100
+  NVDA / 67066G104
+  MSFT / 594918104
+  COST / 22160K105
+
+If stored data or source identity is inconsistent enough to make mapping unsafe, STOP instead of modifying production.
+
+2. APPLY MAPPINGS TO EXISTING HOLDINGS
+- Update existing effective holdings using reliable mappings.
+- Do not duplicate holdings.
+- Do not alter reported_value semantics.
+- Preserve put/call separation.
+- Preserve CUSIP identity.
+- Make operation idempotent.
+- Report mapped, skipped, ambiguous, and unmapped counts.
+
+3. GENERATE QUARTERLY AGGREGATES
+- Rebuild institutional_quarterly_aggregates from effective mapped holdings.
+- Use is_effective=true filings only.
+- Compare QoQ by CUSIP/security identity according to existing architecture.
+- Do not mix put/call rows into common-stock totals.
+
+4. GENERATE INSTITUTIONAL SYMBOL SIGNALS
+- Recompute stock-level institutional analytics/signals from repaired aggregates.
+
+5. REBUILD SECTOR/THEME INTELLIGENCE
+- Rebuild sector_intelligence_snapshots and theme_intelligence_snapshots from repaired data.
+
+6. VALIDATION
+Validate at minimum:
+- AAPL
+- NVDA
+- MSFT
+- COST
+
+For each return:
+- reported holder count
+- mapped holding count
+- mapping coverage
+- latest reporting quarter
+- prior comparable quarter
+- QoQ increased positions
+- QoQ reduced positions
+- newly reported positions
+- no-longer-reported positions
+- aggregate rows
+- signal availability
+
+PRODUCTION READINESS GATE:
+Do not enable INSTITUTIONAL_INTELLIGENCE_ENABLED.
+
+A repair is considered successful only if:
+- mapped holdings become meaningfully non-zero
+- multiple recent quarters have aggregate data
+- AAPL/NVDA/MSFT/COST return credible non-zero institutional data
+- comparable-quarter analytics work
+- stock signals are populated
+- sector/theme intelligence is populated from repaired data
+- no duplicate or corrupted holdings are introduced
+
+IMPLEMENTATION REQUIREMENTS:
+- Use existing repository services/scripts wherever possible.
+- Prefer one orchestrated repair script with clear stages and checkpoints.
+- Make every stage idempotent.
+- Add dry-run mode first.
+- Add explicit production confirmation for write mode.
+- Log counts, not raw sensitive data.
+- Add tests around mapping application and aggregation behavior.
+
+Return:
+
+REPAIR PLAN
+FILES CHANGED
+DRY-RUN COMMAND
+PRODUCTION COMMAND
+PRE-FLIGHT SAFETY CHECKS
+EXPECTED OUTPUT
+ROLLBACK/RECOVERY APPROACH
+VALIDATION COMMAND
+READINESS CRITERIA
+
+Do not execute production repair automatically.
+STOP.

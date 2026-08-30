@@ -1,0 +1,164 @@
+Task #188 — Resolve Final Analytics Mapping Acceptance Comparison
+
+Latest Railway production acceptance still fails ONLY:
+
+ANALYTICS_MAPPING_MISMATCH:AAPL
+ANALYTICS_MAPPING_MISMATCH:NVDA
+ANALYTICS_MAPPING_MISMATCH:MSFT
+
+COST passes completely.
+
+DO NOT:
+- modify production data
+- rerun institutional repair
+- change aggregation logic
+- change trend logic
+- change signal logic
+- change SEC ingestion/backfills
+- change schema
+- enable the feature flag
+- weaken or remove acceptance validation
+
+IMPORTANT NEW EVIDENCE
+
+The latest acceptance output now shows:
+
+AAPL 2026-Q1:
+mappingCandidateRows = 308
+reliablyMappedCandidateRows = 308
+analytics.mappingCoveragePercent = 100
+
+AAPL 2025-Q4:
+mappingCandidateRows = 487
+reliablyMappedCandidateRows = 487
+
+NVDA 2026-Q1:
+mappingCandidateRows = 335
+reliablyMappedCandidateRows = 335
+analytics.mappingCoveragePercent = 100
+
+NVDA 2025-Q4:
+mappingCandidateRows = 495
+reliablyMappedCandidateRows = 495
+
+MSFT 2026-Q1:
+mappingCandidateRows = 336
+reliablyMappedCandidateRows = 336
+analytics.mappingCoveragePercent = 100
+
+MSFT 2025-Q4:
+mappingCandidateRows = 517
+reliablyMappedCandidateRows = 517
+
+COST:
+mapping coverage is also 100 and acceptance PASSES.
+
+All other acceptance validations now pass:
+- raw vs aggregate totals
+- QoQ
+- activity
+- analytics shares/value
+- trends
+- signals
+- preserved legitimate multiple groups
+- sector/theme snapshots
+
+OBJECTIVE
+
+Find the exact boolean/comparison expression that emits
+ANALYTICS_MAPPING_MISMATCH.
+
+Do not broadly diagnose institutional data again.
+
+Trace that expression value-by-value for:
+AAPL
+NVDA
+MSFT
+COST
+
+Determine exactly which operand differs.
+
+The acceptance output currently prints mappingCoveragePercent but may not print every field participating in ANALYTICS_MAPPING_MISMATCH.
+
+If another analytics mapping field participates in the comparison:
+- identify it
+- identify its semantics
+- determine why AAPL/NVDA/MSFT differ while COST passes
+
+Check specifically whether the comparison mixes:
+
+1. all-history mapping coverage:
+   effectiveHoldingRows / reliablyMappedHoldingRows
+
+with
+
+2. latest canonical-quarter eligible common-equity mapping coverage:
+   mappingCandidateRows / reliablyMappedCandidateRows
+
+or another scope.
+
+Also check:
+- percentage 100 vs ratio 1
+- rounding
+- holder-level mapping coverage
+- latest-quarter vs all-history scope
+- mapping status/trust semantics
+- option/PRN inclusion
+- positive-share eligibility
+- analytics response field naming/unit semantics
+
+The user-facing mapping metric and acceptance expectation must have one explicitly defined population and unit.
+
+Do NOT hard-code these four symbols.
+
+IMPLEMENTATION
+
+Make the smallest correct change.
+
+If the production analytics service is already semantically correct and the defect is solely in acceptance comparison, fix ONLY the acceptance comparison.
+
+If analytics is wrong, fix only the proven mapping field.
+
+Do not alter unrelated working analytics.
+
+Add focused tests that reproduce:
+- AAPL failure shape
+- NVDA failure shape
+- MSFT failure shape
+- COST passing shape
+- 100 percent versus 1 ratio/unit handling if relevant
+- latest-quarter versus historical population if relevant
+- genuinely incomplete eligible mapping must still fail
+
+Improve acceptance evidence so that if this check ever fails again it prints BOTH:
+- expected mapping value
+- actual analytics mapping value
+- exact scope/unit used
+
+Then run:
+- focused tests
+- full institutional suite
+- production build
+- git diff --check
+- independent completion review
+
+Commit and push to origin/main.
+
+Do NOT run Railway production acceptance from Replit.
+
+At completion report:
+1. exact failing operand
+2. exact root cause
+3. whether analytics or acceptance comparison was wrong
+4. semantic definition of mapping coverage
+5. files changed
+6. test/build/review results
+7. commit SHA
+8. exact Railway rerun command
+
+Railway rerun command remains:
+
+npx tsx scripts/accept-institutional-production-data.ts
+
+FEATURE FLAG CHANGE: NO
+PRODUCTION DATA WRITE: NO

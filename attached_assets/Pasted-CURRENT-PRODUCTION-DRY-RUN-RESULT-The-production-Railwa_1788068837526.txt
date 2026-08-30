@@ -1,0 +1,255 @@
+CURRENT PRODUCTION DRY-RUN RESULT
+
+The production Railway dry-run executed successfully and correctly returned:
+
+NO-GO
+
+Sole blocking issue:
+
+DUPLICATE_HOLDING_GROUPS_PRESENT
+
+Observed production state:
+
+totalFilings: 1394
+effectiveFilings: 1391
+totalHoldings: 562552
+effectiveHoldings: 562176
+effectiveManagers: 970
+effectiveQuarters: 41
+latestEffectiveQuarter: 2026-03-31
+
+mappedEffectiveHoldings: 0
+mappingCoverage: 0
+aggregateRows: 0
+
+duplicateHoldingGroups: 60413
+orphanHoldingRows: 0
+
+The four validation securities passed the current identity preflight:
+
+AAPL / 037833100
+effective rows: 1070
+mapping action: insert_reviewed
+
+NVDA / 67066G104
+effective rows: 1095
+mapping action: insert_reviewed
+
+MSFT / 594918104
+effective rows: 1110
+mapping action: already_reliable
+
+COST / 22160K105
+effective rows: 653
+mapping action: insert_reviewed
+
+Proposed mapping repair:
+3 mapping inserts
+3928 holding updates
+141 aggregate inserts
+4 signal inserts
+
+NO PRODUCTION WRITES OCCURRED.
+
+TASK
+
+Investigate and correctly classify the 60,413 duplicate holding groups.
+
+This is a focused duplicate-identity investigation.
+
+DO NOT perform repair writes.
+DO NOT delete holdings.
+DO NOT deduplicate data automatically.
+DO NOT rerun SEC ingestion.
+DO NOT enable Institutional Intelligence.
+DO NOT change production data.
+
+OBJECTIVE
+
+Determine whether:
+
+A. the database actually contains erroneous duplicate holdings,
+
+or
+
+B. the duplicate detector is using an identity definition that is too coarse
+and is incorrectly classifying legitimate separate 13F rows as duplicates.
+
+STEP 1 — DOCUMENT CURRENT DUPLICATE KEY
+
+Identify exactly which columns are currently used by:
+
+duplicateHoldingGroups
+
+in the production repair preflight.
+
+Return the precise logical key.
+
+For example, determine whether it currently groups by some subset such as:
+
+filing_id
+CUSIP
+manager
+quarter
+
+and identify everything omitted from that identity.
+
+Do not assume the existing key is correct.
+
+STEP 2 — UNDERSTAND HOLDING ROW SEMANTICS
+
+Inspect the institutional holdings schema and parser.
+
+Identify all attributes that can legitimately distinguish multiple holding
+rows involving the same filing and CUSIP.
+
+Explicitly investigate:
+
+- put_call
+- security/title/class
+- investment discretion
+- voting authority fields
+- other manager / shared manager fields if present
+- filing accession
+- amendment/effective status
+- any SEC information-table row identifier
+- any parser-generated holding identity
+- any other field preserved from the 13F information table
+
+Explain which fields are semantically part of a unique reported position.
+
+PUT and CALL rows must never be collapsed into common-stock holdings.
+
+STEP 3 — READ-ONLY PRODUCTION CLASSIFICATION
+
+Using SELECT-only queries through the existing Railway-compatible diagnostic
+tooling, classify the 60,413 groups.
+
+Return counts for categories such as:
+
+1. Exact duplicates
+All material raw fields identical.
+
+2. Same filing + same CUSIP but different put/call.
+
+3. Same filing + same CUSIP but different security/title/class.
+
+4. Same filing + same CUSIP but different investment discretion.
+
+5. Same filing + same CUSIP but different voting authority.
+
+6. Same CUSIP occurring in different filings/managers/quarters.
+These must NOT be treated as duplicates.
+
+7. Amendment-related rows.
+
+8. Any other meaningful category discovered from the schema.
+
+Do not write anything.
+
+STEP 4 — SAMPLE REAL GROUPS
+
+Show sanitized/read-only examples from at least:
+
+- 10 apparent exact duplicate groups
+- 10 groups differing by put/call
+- 10 groups differing by another material field
+
+Include enough columns to understand why rows are or are not duplicates.
+
+Do not expose secrets.
+
+STEP 5 — FOUR SYMBOL CHECK
+
+Specifically inspect duplicate behavior for:
+
+AAPL 037833100
+NVDA 67066G104
+MSFT 594918104
+COST 22160K105
+
+Report:
+
+- total effective holding rows
+- number involved in current duplicate groups
+- reason for duplicate classification
+- whether applying the proposed ticker mapping would create ambiguity or
+  double counting
+- whether aggregate logic correctly handles those rows
+
+STEP 6 — DEFINE CORRECT HOLDING IDENTITY
+
+Based on SEC semantics and this application's stored schema, propose the
+correct canonical identity for an institutional holding row.
+
+The identity must preserve legitimate distinctions.
+
+Do not solve duplicates by simply adding every column to the key.
+
+Explain why each identity field belongs.
+
+STEP 7 — DETERMINE ROOT CAUSE
+
+Return exactly one or more of:
+
+DUPLICATE_CHECK_FALSE_POSITIVE
+PARSER_DUPLICATION
+INGESTION_DUPLICATION
+AMENDMENT_HANDLING_PROBLEM
+DATABASE_DUPLICATION
+OTHER
+
+Provide evidence for every classification.
+
+STEP 8 — RECOMMENDED FIX
+
+If the duplicate detector is wrong:
+
+Update the validation logic and tests only.
+
+Do not mutate production holdings.
+
+If actual duplicate database rows exist:
+
+Design an idempotent repair strategy but DO NOT execute it.
+
+The strategy must preserve raw source provenance and must not blindly delete
+records.
+
+Prefer marking/superseding/rebuilding derived state over destructive raw-data
+deletion where possible.
+
+STEP 9 — TESTS
+
+Add focused tests covering:
+
+- same CUSIP common stock vs PUT
+- same CUSIP common stock vs CALL
+- legitimate distinct holding rows
+- true exact duplicate rows
+- amendment/effective-filing behavior
+- aggregate double-count protection
+
+Run the institutional repair-focused test suite.
+
+RETURN
+
+TASK STATUS
+CURRENT DUPLICATE KEY
+HOLDING ROW SEMANTICS
+PRODUCTION DUPLICATE CLASSIFICATION
+EXACT DUPLICATE COUNT
+FALSE-POSITIVE DUPLICATE COUNT
+AAPL DUPLICATE ANALYSIS
+NVDA DUPLICATE ANALYSIS
+MSFT DUPLICATE ANALYSIS
+COST DUPLICATE ANALYSIS
+ROOT CAUSE
+CORRECT CANONICAL HOLDING IDENTITY
+CODE CHANGES
+TEST RESULTS
+PRODUCTION DATA CHANGES
+GO / NO-GO
+NEXT COMMAND
+
+STOP.

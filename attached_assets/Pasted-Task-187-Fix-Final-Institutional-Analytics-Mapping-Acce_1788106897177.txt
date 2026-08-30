@@ -1,0 +1,131 @@
+Task #187 — Fix Final Institutional Analytics Mapping Acceptance Mismatch
+
+The latest Railway production acceptance run is now almost fully PASS.
+
+DO NOT modify production data.
+DO NOT rerun production repair.
+DO NOT modify aggregation logic.
+DO NOT modify QoQ calculations.
+DO NOT modify trend logic.
+DO NOT modify signal calculations.
+DO NOT modify SEC ingestion/backfill.
+DO NOT change schema.
+DO NOT enable the feature flag.
+DO NOT weaken acceptance criteria.
+
+Latest production acceptance:
+
+COST: PASS
+
+AAPL:
+- canonical/raw aggregate validation: PASS
+- QoQ validation: PASS
+- signal validation: PASS
+- analytics shares/value: PASS
+- trend: PASS
+- mapping DB validation: 1070/1070, coverage 1.0
+- ONLY failure: ANALYTICS_MAPPING_MISMATCH:AAPL
+
+NVDA:
+- canonical/raw aggregate validation: PASS
+- QoQ validation: PASS
+- signal validation: PASS
+- analytics shares/value: PASS
+- trend: PASS
+- mapping DB validation: 1095/1095, coverage 1.0
+- ONLY failure: ANALYTICS_MAPPING_MISMATCH:NVDA
+
+MSFT:
+- canonical/raw aggregate validation: PASS
+- QoQ validation: PASS
+- signal validation: PASS
+- analytics shares/value: PASS
+- trend: PASS
+- mapping DB validation: 1110/1110, coverage 1.0
+- ONLY failure: ANALYTICS_MAPPING_MISMATCH:MSFT
+
+COST:
+- COMPLETE PASS
+- mapping 653/653
+- analytics mapping validation passes
+
+The previous MSFT 2025-Q4 USD mismatch is also resolved:
+aggregate USD = 151374915912
+raw common USD = 151374915912
+
+Objective:
+
+Identify the exact semantic/calculation difference causing the acceptance command to report:
+
+ANALYTICS_MAPPING_MISMATCH:AAPL
+ANALYTICS_MAPPING_MISMATCH:NVDA
+ANALYTICS_MAPPING_MISMATCH:MSFT
+
+while COST passes.
+
+This is the ONLY blocker.
+
+Trace:
+
+1. What exact analytics mapping field/value the acceptance command compares.
+
+2. How the analytics service calculates mappingCoveragePercent.
+
+3. How the acceptance command calculates expected mapping coverage.
+
+4. Why AAPL/NVDA/MSFT differ while COST passes.
+
+5. Whether the difference is caused by:
+   - option rows
+   - PRN rows
+   - positive-share eligibility
+   - common-equity filtering
+   - quarter pinning
+   - denominator definition
+   - reliable mapping definition
+   - historical vs latest-quarter scope
+   - rounding/percentage representation
+   - another proven semantic difference
+
+Do not guess.
+
+The correct definition must reflect the user-facing meaning of mapping coverage and must use the same eligibility population on both sides.
+
+Do NOT hard-code symbols or expected percentages.
+
+Prefer sharing/reusing one canonical mapping-coverage calculation rather than maintaining competing definitions.
+
+Make the smallest correct fix.
+
+Add focused regression tests specifically proving:
+- AAPL-style case passes
+- NVDA-style case passes
+- MSFT-style case passes
+- COST-style case continues to pass
+- options/PRN rows do not incorrectly alter common-equity mapping coverage
+- genuinely unmapped eligible common-equity rows still reduce coverage and fail appropriately
+
+Then run:
+- focused tests
+- full institutional suite
+- production build
+- independent completion review
+
+Commit and push to origin/main.
+
+Do NOT run production acceptance from Replit.
+
+At completion provide:
+1. exact root cause
+2. exact semantic definition chosen for mapping coverage
+3. files changed
+4. focused/full test/build/review results
+5. commit SHA
+6. exact Railway command to rerun
+
+Expected Railway command remains:
+
+npx tsx scripts/accept-institutional-production-data.ts
+
+FEATURE FLAG CHANGE: NO
+PRODUCTION DATA WRITE: NO

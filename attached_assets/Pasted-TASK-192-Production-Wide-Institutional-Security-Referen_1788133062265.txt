@@ -1,0 +1,279 @@
+TASK #192 — Production-Wide Institutional Security Reference Enrichment DRY RUN
+
+Task #191 is complete and validated.
+
+We now need the ONE required production verification before authorizing any production enrichment APPLY.
+
+This task is strictly a population-wide DRY RUN against the existing Railway production institutional dataset.
+
+DO NOT perform ticker-by-ticker diagnostics.
+
+DO NOT perform APPLY.
+
+DO NOT enable INSTITUTIONAL_SECURITY_REFERENCE_ENABLED.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Use the Task #191 security-reference enrichment implementation with OpenFIGI v3 to measure how much of the currently unresolved eligible institutional population can be deterministically resolved.
+
+The production flow being evaluated is:
+
+existing eligible 13F CUSIPs
+→ OpenFIGI exact ID_CUSIP lookup
+→ modeled reference candidates
+→ existing Task #189 resolver
+→ projected trusted mappings
+→ projected holdings materialization
+→ projected aggregates/signals/snapshots
+
+Task #189 remains the sole trust authority.
+
+OpenFIGI is evidence only.
+
+==================================================
+1. EXECUTION CONTEXT
+==================================================
+
+This must operate against the EXISTING Railway production database.
+
+Do not use a Replit production database.
+
+Do not create another database.
+
+Do not create another service.
+
+Do not modify DATABASE_URL.
+
+Do not set EXTERNAL_DATABASE_URL.
+
+Never print credentials, API keys, DATABASE_URL, provider response bodies, or raw OpenFIGI payloads.
+
+If this workspace cannot execute inside Railway, inspect the actual Task #191 implementation and return the exact Railway production-shell command.
+
+Do not guess the command.
+
+==================================================
+2. PRODUCTION SAFETY
+==================================================
+
+STRICTLY DRY RUN.
+
+No production:
+
+- schema migration
+- security-master writes
+- candidate-history writes
+- lookup-state writes
+- mapping writes
+- holding writes
+- aggregate writes
+- signal writes
+- snapshot writes
+- ingestion
+- feature-flag changes
+
+The dry run may make bounded OpenFIGI network requests but must not persist their results.
+
+Confirm from the implementation that dry-run mode performs zero DB writes before execution.
+
+==================================================
+3. POPULATION
+==================================================
+
+Evaluate the unresolved eligible institutional population systemically.
+
+Do not test individual symbols.
+
+Respect all existing eligibility rules:
+
+- effective filings only
+- common equity only
+- exclude PUT/CALL
+- exclude PRN
+- positive shares only
+- canonical USD reported value
+- existing reviewed/rejected identity protections
+
+Already trusted/reviewed identities must not be unnecessarily sent to OpenFIGI.
+
+==================================================
+4. OPENFIGI REQUEST SAFETY
+==================================================
+
+Use exact ID_CUSIP requests only.
+
+No fuzzy issuer matching.
+
+No inferred ticker.
+
+No LLM identity inference.
+
+Respect Task #191 batching, rate limiting, retry bounds, and max-CUSIP guards.
+
+If the full population cannot safely be processed in one invocation because of provider limits, use deterministic bounded batches while maintaining one aggregate population-wide result.
+
+Do not convert a bounded batch into a ticker sample.
+
+==================================================
+5. REQUIRED BEFORE → PROJECTED MEASUREMENT
+==================================================
+
+Return CURRENT and PROJECTED coverage by:
+
+A. distinct eligible CUSIPs
+B. eligible holding rows
+C. reported USD value
+
+For each classify:
+
+- TRUSTED / already resolved
+- AUTHORITATIVELY_RESOLVABLE
+- AMBIGUOUS
+- CONFLICTING
+- UNSUPPORTED
+- NO_REFERENCE_AVAILABLE
+- PROVIDER_FAILURE / PARTIAL / RATE_LIMITED where applicable
+
+Report counts, values and percentages.
+
+Most importantly report:
+
+CURRENT TRUSTED COVERAGE
+
+versus
+
+PROJECTED TRUSTED COVERAGE AFTER TASK #191 ENRICHMENT
+
+for CUSIPs, rows and reported value.
+
+==================================================
+6. PROPOSED PRODUCTION CHANGES
+==================================================
+
+Generate but DO NOT execute the exact projected changes:
+
+- security-master inserts
+- security-master updates
+- candidate/reference records
+- institutional mapping inserts
+- institutional mapping updates
+- holding rows becoming materializable
+- aggregate inserts/updates
+- signal inserts/updates
+- sector/theme refresh scope
+
+No deletes should occur.
+
+Explicitly report any proposed overwrite of a reviewed/rejected identity.
+
+Expected result for that category: ZERO.
+
+==================================================
+7. DOWNSTREAM READINESS
+==================================================
+
+Based on the projected trusted universe, calculate projected population-level readiness for:
+
+- Stock View
+- Trends
+- Rotation
+- Institutional Discovery
+- Multibagger Discovery
+
+Do not claim Multibagger readiness if the underlying backend capability does not actually exist.
+
+Distinguish:
+
+AVAILABLE
+PARTIAL
+INSUFFICIENT_HISTORY
+UNMAPPED
+UNSUPPORTED
+
+using existing institutional availability semantics.
+
+==================================================
+8. PLAN HASH
+==================================================
+
+Generate the Task #191 deterministic enrichment/remediation plan hash.
+
+The plan must contain enough information to bind a future APPLY to exactly the reviewed population and projected changes.
+
+Do not APPLY it.
+
+If practical without repeating provider calls unnecessarily, verify deterministic plan generation from the same captured provider result set.
+
+==================================================
+9. DECISION RULE
+==================================================
+
+Return:
+
+READY_FOR_ENRICHMENT_APPLY
+
+only if:
+
+- production identity is confirmed
+- dry run performs zero writes
+- authoritative reference enrichment materially improves coverage
+- no ambiguous/conflicting identity is promoted
+- no reviewed/rejected mapping is overwritten
+- no fuzzy/inferred identities are used
+- proposed writes are deterministic
+- plan hash is generated
+- provider failures do not contaminate trusted results
+- downstream materialization remains fail-closed
+
+Otherwise return:
+
+NOT_READY_FOR_ENRICHMENT_APPLY
+
+and identify ONLY the concrete blocker.
+
+Do not propose another broad diagnostic task.
+
+==================================================
+10. COMPLETION REPORT
+==================================================
+
+Return exactly these sections:
+
+PRODUCTION IDENTITY
+
+DRY-RUN SAFETY
+
+OPENFIGI EXECUTION SUMMARY
+
+CURRENT COVERAGE
+
+PROJECTED COVERAGE
+
+COVERAGE IMPROVEMENT
+
+UNRESOLVED POPULATION
+
+PROPOSED WRITES
+
+REVIEWED/REJECTED PROTECTION
+
+DOWNSTREAM READINESS
+
+PLAN HASH
+
+TEST/DETERMINISM RESULT
+
+FINAL DECISION
+
+If this environment cannot execute the production dry run, return:
+
+RAILWAY EXECUTION REQUIRED
+
+and provide the exact command derived from the Task #191 implementation.
+
+Do not create another task.
+Do not APPLY anything.
+Do not enable the feature flag.
+STOP.

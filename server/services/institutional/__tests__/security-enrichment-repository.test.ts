@@ -222,4 +222,54 @@ describe("institutional enrichment PostgreSQL repository", () => {
     expect(rendered.sql.toUpperCase()).toContain(" IN ");
     expect(rendered.params).toEqual(["2026-06-30", "2026-03-31"]);
   });
+
+  it("loads an entirely unmapped eligible row when its target CUSIP is supplied", async () => {
+    let whereCondition: unknown;
+    selectMock
+      .mockReturnValueOnce(
+        holdingQuery(
+          [
+            {
+              holding: {
+                id: "holding-unmapped",
+                accessionNumber: "accession-1",
+                filerCik: "0001",
+                filerName: "Example Fund",
+                issuerName: "Example Issuer",
+                classTitle: "COM",
+                cusip: "111111111",
+                reportedValue: 1_000,
+                reportedShares: 100,
+                sharesPrnType: "SH",
+                putCall: null,
+                periodOfReport: "2026-03-31",
+                mappedSymbol: null,
+                mappingStatus: null,
+              },
+              master: null,
+              mapping: null,
+            },
+          ],
+          (condition) => {
+            whereCondition = condition;
+          },
+        ),
+      )
+      .mockReturnValueOnce(themeQuery([]));
+
+    const rows = await getEnrichedInstitutionalHoldings({
+      accessionNumbers: ["accession-1"],
+      cusips: ["111111111"],
+    });
+
+    expect(rows[0]).toMatchObject({
+      mappingResolution: "unmapped",
+      reportedShares: 100,
+      putCall: null,
+      sharesPrnType: "SH",
+    });
+    const rendered = new PgDialect().sqlToQuery(whereCondition as never);
+    expect(rendered.sql).toContain("cusip");
+    expect(rendered.params).toContain("111111111");
+  });
 });

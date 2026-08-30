@@ -7,12 +7,14 @@
  * or network I/O.
  */
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "../../../db";
 import {
   institutional13fFilings,
   institutional13fHoldings,
+  institutionalSecurityMappings,
   institutionalQuarterlyAggregates,
+  securityMaster,
   type InstitutionalQuarterlyAggregate,
 } from "@shared/schema";
 import { parseQuarterIdentifier } from "../quarter-utils";
@@ -113,6 +115,7 @@ export async function loadAllStockInstitutionalHoldings(
   symbol?: string,
   loadPage: EnrichedHoldingsPageLoader = getEnrichedInstitutionalHoldings,
   pageSize = 5_000,
+  candidateCusips?: string[],
 ): Promise<EnrichedInstitutionalHolding[]> {
   if (accessionNumbers.length === 0) return [];
   const holdings: EnrichedInstitutionalHolding[] = [];
@@ -120,7 +123,9 @@ export async function loadAllStockInstitutionalHoldings(
   while (true) {
     const page = await loadPage({
       accessionNumbers,
-      symbol,
+      ...(candidateCusips && candidateCusips.length > 0
+        ? { cusips: candidateCusips }
+        : { symbol }),
       limit: pageSize,
       offset,
     });
@@ -128,6 +133,49 @@ export async function loadAllStockInstitutionalHoldings(
     if (page.length < pageSize) return holdings;
     offset += page.length;
   }
+}
+
+export async function loadStockCandidateCusips(
+  accessionNumbers: string[],
+  symbol: string,
+): Promise<string[]> {
+  if (accessionNumbers.length === 0) return [];
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const canonicalRows = await db
+    .select({ cusip: securityMaster.cusip })
+    .from(securityMaster)
+    .where(sql`UPPER(${securityMaster.ticker}) = ${normalizedSymbol}`);
+  const evidenceRows = await db
+    .select({ cusip: institutional13fHoldings.cusip })
+    .from(institutional13fHoldings)
+    .leftJoin(
+      securityMaster,
+      eq(securityMaster.cusip, institutional13fHoldings.cusip),
+    )
+    .leftJoin(
+      institutionalSecurityMappings,
+      eq(
+        institutionalSecurityMappings.cusip,
+        institutional13fHoldings.cusip,
+      ),
+    )
+    .where(
+      and(
+        inArray(institutional13fHoldings.accessionNumber, accessionNumbers),
+        or(
+          sql`UPPER(${securityMaster.ticker}) = ${normalizedSymbol}`,
+          sql`UPPER(${institutionalSecurityMappings.mappedSymbol}) = ${normalizedSymbol}`,
+          sql`UPPER(${institutional13fHoldings.mappedSymbol}) = ${normalizedSymbol}`,
+        ),
+      ),
+    );
+  return Array.from(
+    new Set(
+      [...canonicalRows, ...evidenceRows]
+        .map((row) => row.cusip)
+        .filter((cusip): cusip is string => Boolean(cusip)),
+    ),
+  ).sort();
 }
 
 /**
@@ -397,16 +445,26 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
     const previousAccessions = selected.previousFilings.map(
       (filing) => filing.accessionNumber,
     );
+    const candidateCusips = await loadStockCandidateCusips(
+      [...currentAccessions, ...previousAccessions],
+      query.symbol,
+    );
     const [currentHoldings, previousHoldings, managerPortfolioValues] =
       await Promise.all([
         loadAllStockInstitutionalHoldings(
           currentAccessions,
           query.symbol,
+          getEnrichedInstitutionalHoldings,
+          5_000,
+          candidateCusips,
         ),
         previousAccessions.length > 0
           ? loadAllStockInstitutionalHoldings(
               previousAccessions,
               query.symbol,
+              getEnrichedInstitutionalHoldings,
+              5_000,
+              candidateCusips,
             )
           : Promise.resolve([]),
         loadManagerPortfolioValues(selected.currentFilings),

@@ -49,6 +49,9 @@ function buildConditions(query: EnrichedInstitutionalHoldingsQuery) {
       inArray(institutional13fHoldings.accessionNumber, query.accessionNumbers),
     );
   }
+  if (query.cusips && query.cusips.length > 0) {
+    conditions.push(inArray(institutional13fHoldings.cusip, query.cusips));
+  }
   if (query.periodOfReport) {
     conditions.push(eq(institutional13fHoldings.periodOfReport, query.periodOfReport));
   }

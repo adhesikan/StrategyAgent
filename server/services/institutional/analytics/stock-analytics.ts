@@ -108,6 +108,22 @@ function matchesPositionType(
   );
 }
 
+/**
+ * Mapping coverage describes the same selected-quarter population used by the
+ * stock analytics calculation. Rows excluded from the position totals are not
+ * mapping candidates.
+ */
+function isEligiblePositionHolding(
+  holding: EnrichedInstitutionalHolding,
+  positionType: InstitutionalSecurityPositionType,
+): boolean {
+  return (
+    matchesPositionType(holding, positionType) &&
+    holding.reportedShares !== null &&
+    holding.reportedShares > 0
+  );
+}
+
 function isRequestedSymbol(
   holding: EnrichedInstitutionalHolding,
   symbol: string,
@@ -125,9 +141,8 @@ function aggregateByManager(
 ): Map<string, ManagerPosition> {
   const positions = new Map<string, ManagerPosition>();
   for (const holding of holdings) {
-    if (!matchesPositionType(holding, positionType)) continue;
+    if (!isEligiblePositionHolding(holding, positionType)) continue;
     if (!isRequestedSymbol(holding, symbol)) continue;
-    if (holding.reportedShares === null || holding.reportedShares <= 0) continue;
     const current = positions.get(holding.filerCik);
     if (!current) {
       positions.set(holding.filerCik, {
@@ -305,7 +320,7 @@ function buildMappingCoverage(
   positionType: InstitutionalSecurityPositionType,
 ): StockInstitutionalMappingCoverage {
   const candidates = holdings.filter((holding) =>
-    matchesPositionType(holding, positionType),
+    isEligiblePositionHolding(holding, positionType),
   );
   const reliablyMappedHoldingCount = candidates.filter((holding) =>
     isRequestedSymbol(holding, symbol),

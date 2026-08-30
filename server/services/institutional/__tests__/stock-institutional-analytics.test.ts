@@ -276,6 +276,71 @@ describe("stock institutional analytics", () => {
     expect(result.reportedHolderCount).toBe(4);
   });
 
+  it.each([
+    ["AAPL-style zero-share row", 0],
+    ["NVDA-style negative-share row", -25],
+    ["MSFT-style null-share row", null],
+  ])("excludes %s from common-equity mapping coverage", (_case, shares) => {
+    const input = baseInput();
+    input.currentHoldings.push(
+      holding("0000000007", "Excluded Manager", "222222222", 100, 100, {
+        reportedShares: shares,
+      }),
+    );
+
+    const result = computeStockInstitutionalAnalytics(input);
+
+    expect(result.mappingCoverage).toMatchObject({
+      candidateHoldingCount: 4,
+      reliablyMappedHoldingCount: 4,
+      unmappedHoldingCount: 0,
+      ambiguousHoldingCount: 0,
+      coveragePercent: 100,
+    });
+    expect(result.reportedHolderCount).toBe(4);
+  });
+
+  it("keeps COST-style clean common-equity coverage at 100 percent", () => {
+    const result = computeStockInstitutionalAnalytics(baseInput());
+
+    expect(result.mappingCoverage).toMatchObject({
+      candidateHoldingCount: 4,
+      reliablyMappedHoldingCount: 4,
+      coveragePercent: 100,
+    });
+  });
+
+  it("does not let option or PRN rows alter common-equity mapping coverage", () => {
+    const result = computeStockInstitutionalAnalytics(baseInput());
+
+    expect(result.mappingCoverage.candidateHoldingCount).toBe(4);
+    expect(result.mappingCoverage.reliablyMappedHoldingCount).toBe(4);
+    expect(result.mappingCoverage.coveragePercent).toBe(100);
+  });
+
+  it("reduces coverage for an eligible unmapped common-equity row", () => {
+    const input = baseInput();
+    input.currentHoldings.push(
+      holding("0000000007", "Unmapped Manager", "222222222", 100, 100, {
+        mappingResolution: "unmapped",
+        metadataResolution: "unavailable",
+        classificationStatus: "unclassified",
+        unclassifiedReason: "unmapped",
+        metadata: null,
+      }),
+    );
+
+    const result = computeStockInstitutionalAnalytics(input);
+
+    expect(result.mappingCoverage).toMatchObject({
+      candidateHoldingCount: 5,
+      reliablyMappedHoldingCount: 4,
+      unmappedHoldingCount: 1,
+      ambiguousHoldingCount: 0,
+      coveragePercent: 80,
+    });
+  });
+
   it("uses the persisted common-equity aggregate for summary totals and activity", () => {
     const input = baseInput();
     input.canonicalAggregate = {

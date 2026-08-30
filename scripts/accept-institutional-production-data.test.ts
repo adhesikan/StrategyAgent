@@ -65,6 +65,8 @@ function makeEvidence(overrides: Partial<RawSymbolEvidence> = {}): RawSymbolEvid
       topHolderPercent: 0.1,
       top5HolderPercent: 0.3,
       largestHolders: [],
+      mappingCandidateRows: 10,
+      reliablyMappedCandidateRows: 10,
       rawCommonRows: 10,
       rawOptionRows: 0,
       rawPrnRows: 0,
@@ -93,8 +95,16 @@ function makeServices(evidence: RawSymbolEvidence): Map<string, AcceptanceServic
         unchanged: current.unchangedCount,
       },
       mappingCoverage: {
-        reliablyMappedHoldingCount: evidence.reliablyMappedHoldingRows,
-        coveragePercent: 100,
+        candidateHoldingCount: current.mappingCandidateRows,
+        reliablyMappedHoldingCount: current.reliablyMappedCandidateRows,
+        coveragePercent:
+          current.mappingCandidateRows === 0
+            ? 0
+            : Math.round(
+                (current.reliablyMappedCandidateRows /
+                  current.mappingCandidateRows) *
+                  10_000,
+              ) / 100,
       },
     },
     trend: {
@@ -182,7 +192,7 @@ describe("Railway institutional acceptance guards", () => {
     expect(source).not.toMatch(/ingestion|backfill/i);
   });
 
-  it("uses canonical positive-share eligibility for every raw common-equity total", () => {
+  it("uses positive-share eligibility for every common-equity acceptance population", () => {
     const source = readFileSync(
       new URL("./accept-institutional-production-data.ts", import.meta.url),
       "utf8",
@@ -195,6 +205,36 @@ describe("Railway institutional acceptance guards", () => {
     expect(
       rawQuarterBlock.match(/AND m\.reported_shares > 0/g),
     ).toHaveLength(5);
+    expect(
+      rawQuarterBlock.match(/AND candidate\.reported_shares > 0/g),
+    ).toHaveLength(2);
+    expect(
+      rawQuarterBlock.match(
+        /NULLIF\(BTRIM\(candidate\.put_call\), ''\) IS NULL/g,
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("uses the analytics trust sources for its independent reliable numerator", () => {
+    const source = readFileSync(
+      new URL("./accept-institutional-production-data.ts", import.meta.url),
+      "utf8",
+    );
+    const resolverBlock = source.slice(
+      source.indexOf("target_resolved AS"),
+      source.indexOf("mapped_by_symbol AS"),
+    );
+
+    expect(resolverBlock).toContain(
+      "security_master_status = 'reviewed'",
+    );
+    expect(resolverBlock).toContain(
+      "institutional_mapping_status IN ('exact', 'reviewed')",
+    );
+    expect(resolverBlock).toContain(
+      "mapping_status IN ('exact', 'reviewed')",
+    );
+    expect(resolverBlock).toContain("THEN 'ambiguous'");
   });
 
   it("fails closed when either fixed quarter is absent", () => {
@@ -219,6 +259,64 @@ describe("Railway institutional acceptance guards", () => {
       },
       fixture.services,
     )).toEqual([]);
+  });
+
+  it.each(["AAPL", "NVDA", "MSFT", "COST"])(
+    "accepts %s analytics mapping coverage based on eligible current common-equity rows",
+    (symbol) => {
+      const evidence = makeEvidence({
+        symbol,
+        cusip:
+          ACCEPTANCE_SYMBOLS[symbol as keyof typeof ACCEPTANCE_SYMBOLS],
+        effectiveHoldingRows: 12,
+        reliablyMappedHoldingRows: 12,
+        commonEquityRows: 11,
+        optionRows: 1,
+        prnRows: 1,
+        quarterRows: makeEvidence({
+          symbol,
+          cusip:
+            ACCEPTANCE_SYMBOLS[symbol as keyof typeof ACCEPTANCE_SYMBOLS],
+        }).quarterRows.map((row) => ({
+          ...row,
+          mappingCandidateRows: 10,
+          reliablyMappedCandidateRows: 10,
+          rawCommonRows: 10,
+          rawOptionRows: 1,
+          rawPrnRows: 1,
+        })),
+      });
+
+      const issues = validateAcceptanceReport(
+        {
+          symbols: [evidence],
+          snapshots: { sectorCount: 1, themeCount: 1 },
+        },
+        makeServices(evidence),
+      );
+
+      expect(issues).not.toContain(`ANALYTICS_MAPPING_MISMATCH:${symbol}`);
+    },
+  );
+
+  it("fails analytics mapping acceptance for a genuinely unmapped eligible row", () => {
+    const evidence = makeEvidence();
+    evidence.quarterRows[0] = {
+      ...evidence.quarterRows[0],
+      mappingCandidateRows: 10,
+      reliablyMappedCandidateRows: 9,
+    };
+    const services = makeServices(evidence);
+
+    const issues = validateAcceptanceReport(
+      {
+        symbols: [evidence],
+        snapshots: { sectorCount: 1, themeCount: 1 },
+      },
+      services,
+    );
+
+    expect(issues).toContain("ANALYTICS_MAPPING_MISMATCH:AAPL");
   });
 
   it("fails closed on conflicting mappings, duplicate rows, and a raw aggregate mismatch", () => {
@@ -290,6 +388,9 @@ describe("Railway institutional acceptance guards", () => {
         top5_holder_percent: quarter.top5HolderPercent,
         largest_holders_text: JSON.stringify(quarter.largestHolders),
         raw_common_rows: quarter.rawCommonRows,
+        mapping_candidate_rows: quarter.mappingCandidateRows,
+        reliably_mapped_candidate_rows:
+          quarter.reliablyMappedCandidateRows,
         raw_option_rows: quarter.rawOptionRows,
         raw_prn_rows: quarter.rawPrnRows,
         raw_common_rows_with_null_value: quarter.rawCommonRowsWithNullValue,

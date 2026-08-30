@@ -113,6 +113,8 @@ export interface RawQuarterEvidence {
   topHolderPercent: number | null;
   top5HolderPercent: number | null;
   largestHolders: unknown[];
+  mappingCandidateRows: number;
+  reliablyMappedCandidateRows: number;
   rawCommonRows: number;
   rawOptionRows: number;
   rawPrnRows: number;
@@ -186,6 +188,8 @@ export interface AcceptanceSymbolReport {
       amendmentStatus: string | null;
     };
     rawChecks: {
+      mappingCandidateRows: number;
+      reliablyMappedCandidateRows: number;
       commonEquityRows: number;
       optionRows: number;
       prnRows: number;
@@ -312,9 +316,70 @@ export async function loadAcceptanceEvidence(
        AND f.is_effective = TRUE
     ),
     target AS (
-      SELECT r.symbol AS requested_symbol, r.cusip AS requested_cusip, e.*
+      SELECT
+        r.symbol AS requested_symbol,
+        r.cusip AS requested_cusip,
+        e.*,
+        sm.ticker AS security_master_symbol,
+        sm.review_status AS security_master_status,
+        ism.mapped_symbol AS institutional_mapping_symbol,
+        ism.mapping_status AS institutional_mapping_status
       FROM requested r
       LEFT JOIN effective e ON e.cusip = r.cusip
+      LEFT JOIN security_master sm ON sm.cusip = e.cusip
+      LEFT JOIN institutional_security_mappings ism ON ism.cusip = e.cusip
+    ),
+    target_resolved AS (
+      SELECT
+        target.*,
+        CASE
+          WHEN security_master_status = 'reviewed'
+            AND NULLIF(UPPER(TRIM(security_master_symbol)), '') IS NOT NULL
+            THEN 'reliably_mapped'
+          WHEN institutional_mapping_status IN ('exact', 'reviewed')
+            AND NULLIF(UPPER(TRIM(institutional_mapping_symbol)), '') IS NOT NULL
+            AND mapping_status IN ('exact', 'reviewed')
+            AND NULLIF(UPPER(TRIM(mapped_symbol)), '') IS NOT NULL
+            AND UPPER(TRIM(institutional_mapping_symbol)) <> UPPER(TRIM(mapped_symbol))
+            THEN 'ambiguous'
+          WHEN COALESCE(
+            CASE
+              WHEN institutional_mapping_status IN ('exact', 'reviewed')
+                THEN NULLIF(UPPER(TRIM(institutional_mapping_symbol)), '')
+            END,
+            CASE
+              WHEN mapping_status IN ('exact', 'reviewed')
+                THEN NULLIF(UPPER(TRIM(mapped_symbol)), '')
+            END
+          ) IS NOT NULL
+            THEN 'reliably_mapped'
+          WHEN institutional_mapping_status = 'ambiguous'
+            OR mapping_status = 'ambiguous'
+            THEN 'ambiguous'
+          ELSE 'unmapped'
+        END AS resolved_mapping_status,
+        CASE
+          WHEN security_master_status = 'reviewed'
+            AND NULLIF(UPPER(TRIM(security_master_symbol)), '') IS NOT NULL
+            THEN NULLIF(UPPER(TRIM(security_master_symbol)), '')
+          WHEN institutional_mapping_status IN ('exact', 'reviewed')
+            AND NULLIF(UPPER(TRIM(institutional_mapping_symbol)), '') IS NOT NULL
+            AND mapping_status IN ('exact', 'reviewed')
+            AND NULLIF(UPPER(TRIM(mapped_symbol)), '') IS NOT NULL
+            AND UPPER(TRIM(institutional_mapping_symbol)) <> UPPER(TRIM(mapped_symbol))
+            THEN NULL
+          ELSE COALESCE(
+            CASE
+              WHEN institutional_mapping_status IN ('exact', 'reviewed')
+                THEN NULLIF(UPPER(TRIM(institutional_mapping_symbol)), '')
+            END,
+            CASE
+              WHEN mapping_status IN ('exact', 'reviewed')
+                THEN NULLIF(UPPER(TRIM(mapped_symbol)), '')
+            END
+          )
+        END AS resolved_symbol
+      FROM target
     ),
     mapped_by_symbol AS (
       SELECT *
@@ -350,6 +415,26 @@ export async function loadAcceptanceEvidence(
           WHERE a.prev_period_of_report IS NOT NULL
             AND a.prev_period_of_report <> (DATE_TRUNC('quarter', a.period_of_report)::date - 1)
         )::int AS invalid_comparable_rows,
+        (
+          SELECT COUNT(*)::int
+          FROM target_resolved candidate
+          WHERE candidate.requested_symbol = r.symbol
+            AND candidate.period_of_report = q.period_of_report
+            AND NULLIF(BTRIM(candidate.put_call), '') IS NULL
+            AND UPPER(COALESCE(candidate.shares_prn_type, '')) <> 'PRN'
+            AND candidate.reported_shares > 0
+        ) AS mapping_candidate_rows,
+        (
+          SELECT COUNT(*)::int
+          FROM target_resolved candidate
+          WHERE candidate.requested_symbol = r.symbol
+            AND candidate.period_of_report = q.period_of_report
+            AND candidate.resolved_mapping_status = 'reliably_mapped'
+            AND candidate.resolved_symbol = r.symbol
+            AND NULLIF(BTRIM(candidate.put_call), '') IS NULL
+            AND UPPER(COALESCE(candidate.shares_prn_type, '')) <> 'PRN'
+            AND candidate.reported_shares > 0
+        ) AS reliably_mapped_candidate_rows,
         COUNT(m.id) FILTER (
           WHERE m.mapped_symbol = r.symbol
             AND m.mapping_status IN ('exact', 'reviewed')
@@ -547,6 +632,8 @@ export async function loadAcceptanceEvidence(
       rq.top5_holder_percent,
       rq.largest_holders_text,
       rq.invalid_comparable_rows,
+      rq.mapping_candidate_rows,
+      rq.reliably_mapped_candidate_rows,
       rq.raw_common_rows,
       rq.raw_option_rows,
       rq.raw_prn_rows,
@@ -619,6 +706,10 @@ export async function loadAcceptanceEvidence(
           return [];
         }
       })(),
+      mappingCandidateRows: count(row.mapping_candidate_rows),
+      reliablyMappedCandidateRows: count(
+        row.reliably_mapped_candidate_rows,
+      ),
       rawCommonRows: count(row.raw_common_rows),
       rawOptionRows: count(row.raw_option_rows),
       rawPrnRows: count(row.raw_prn_rows),
@@ -816,8 +907,20 @@ export function validateAcceptanceReport(
       }
       if (
         !analytics.mappingCoverage ||
-        analytics.mappingCoverage.reliablyMappedHoldingCount !== current?.rawCommonRows ||
-        analytics.mappingCoverage.coveragePercent !== 100
+        !current ||
+        analytics.mappingCoverage.candidateHoldingCount !==
+          current.mappingCandidateRows ||
+        analytics.mappingCoverage.reliablyMappedHoldingCount !==
+          current.reliablyMappedCandidateRows ||
+        analytics.mappingCoverage.coveragePercent !==
+          (current.mappingCandidateRows === 0
+            ? 0
+            : Math.round(
+                (current.reliablyMappedCandidateRows /
+                  current.mappingCandidateRows) *
+                  10_000,
+              ) / 100) ||
+        current.reliablyMappedCandidateRows !== current.mappingCandidateRows
       ) {
         issues.push(`ANALYTICS_MAPPING_MISMATCH:${expectedSymbol}`);
       }
@@ -1038,6 +1141,9 @@ export async function runAcceptance(
           amendmentStatus: quarter.amendmentStatus,
         },
         rawChecks: {
+          mappingCandidateRows: quarter.mappingCandidateRows,
+          reliablyMappedCandidateRows:
+            quarter.reliablyMappedCandidateRows,
           commonEquityRows: rawEvidence.commonEquityRows,
           optionRows: quarter.rawOptionRows,
           prnRows: quarter.rawPrnRows,

@@ -470,6 +470,7 @@ export interface FundPortfolioXRayQuery {
 export interface EnrichedInstitutionalHoldingsQuery {
   accessionNumber?: string;
   accessionNumbers?: string[];
+  cusips?: string[];
   periodOfReport?: string;
   periodOfReports?: string[];
   /** Restrict the SQL candidate set to evidence that may resolve to this symbol. */

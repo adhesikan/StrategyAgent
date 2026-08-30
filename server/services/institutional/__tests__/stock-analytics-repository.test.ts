@@ -11,7 +11,9 @@ vi.mock("../../../db", () => ({
 }));
 
 import {
+  loadAllStockInstitutionalHoldings,
   loadManagerPortfolioValues,
+  loadStockCandidateCusips,
   selectAlignedStockFilings,
 } from "../analytics/stock-analytics-repository";
 
@@ -21,6 +23,26 @@ function totalsQuery(rows: unknown[]) {
       where: () => ({
         groupBy: async () => rows,
       }),
+    }),
+  };
+}
+
+function candidateCusipsQuery(rows: unknown[]) {
+  return {
+    from: () => ({
+      leftJoin: () => ({
+        leftJoin: () => ({
+          where: async () => rows,
+        }),
+      }),
+    }),
+  };
+}
+
+function canonicalCusipsQuery(rows: unknown[]) {
+  return {
+    from: () => ({
+      where: async () => rows,
     }),
   };
 }
@@ -57,6 +79,44 @@ describe("stock analytics portfolio denominators", () => {
     expect(put).toEqual({ "manager-1": 150 });
     expect(call).toEqual({ "manager-1": 150 });
     expect(selectMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("loads an isolated unmapped row from the symbol's canonical security-master CUSIP", async () => {
+    selectMock
+      .mockReturnValueOnce(
+        canonicalCusipsQuery([{ cusip: "111111111" }]),
+      )
+      .mockReturnValueOnce(candidateCusipsQuery([]));
+    await expect(
+      loadStockCandidateCusips(["accession-1"], "xyz"),
+    ).resolves.toEqual(["111111111"]);
+
+    const loadPage = vi.fn().mockResolvedValue([]);
+    await loadAllStockInstitutionalHoldings(
+      ["accession-1"],
+      "XYZ",
+      loadPage,
+      5_000,
+      ["111111111"],
+    );
+    expect(loadPage).toHaveBeenCalledWith({
+      accessionNumbers: ["accession-1"],
+      cusips: ["111111111"],
+      limit: 5_000,
+      offset: 0,
+    });
+  });
+
+  it("supplements canonical identity with selected-filing symbol evidence", async () => {
+    selectMock
+      .mockReturnValueOnce(canonicalCusipsQuery([]))
+      .mockReturnValueOnce(candidateCusipsQuery([
+        { cusip: "111111111" },
+        { cusip: "111111111" },
+      ]));
+    await expect(
+      loadStockCandidateCusips(["accession-1"], "xyz"),
+    ).resolves.toEqual(["111111111"]);
   });
 
   it("keeps latest holder details pinned to a lagging canonical aggregate quarter", () => {

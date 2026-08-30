@@ -1,0 +1,175 @@
+Continue from completed Task #182.
+
+We ran the new Railway production read-only SEC provenance diagnostic successfully.
+
+Production result:
+
+uniqueSourceFilingsExamined: 2
+
+classificationCounts:
+- SOURCE_ROWS_CONFIRM_MULTIPLE: 6
+- INGESTION_OR_PERSISTENCE_DUPLICATION_CONFIRMED: 0
+- SOURCE_MATCH_AMBIGUOUS: 0
+- SOURCE_UNAVAILABLE: 24
+
+symbolStatus:
+- AAPL: BLOCKED_BY_UNRESOLVED_PROVENANCE
+- NVDA: BLOCKED_BY_UNRESOLVED_PROVENANCE
+- MSFT: BLOCKED_BY_UNRESOLVED_PROVENANCE
+- COST: SAFE_FOR_CURRENT_REPAIR
+
+The 24 unresolved groups failed with:
+
+INFOTABLE_DOCUMENT_CONTENT_REJECTED
+
+Production APPLY remained NO.
+
+Important:
+- Do NOT weaken the provenance blocker.
+- Do NOT deduplicate any holdings.
+- Do NOT modify production data.
+- Do NOT run repair APPLY.
+- Do NOT run broad SEC ingestion/backfill.
+- Do NOT change feature flags.
+- Do NOT relax XML validation globally just to make the document pass.
+- The 6 SOURCE_ROWS_CONFIRM_MULTIPLE findings are legitimate source-confirmed multiple rows and must remain preserved.
+
+Objective:
+
+Determine exactly why the SEC Information Table source document covering the remaining 24 groups is rejected, and make the source reader correctly handle the authoritative SEC document if the document is valid SEC content.
+
+Build this as another strictly read-only hardening step.
+
+1. Identify the two unique SEC filings examined by the production diagnostic.
+
+For each report:
+- full accession number
+- filer CIK
+- filer name
+- filing type
+- filing date
+- period of report
+- SEC filing index URL
+- selected Information Table document filename
+- selected document URL
+- HTTP status
+- Content-Type
+- byte length
+- parser/validator result
+
+Do not print secrets.
+
+2. For the failing Information Table document, classify the rejection precisely.
+
+Do not emit only INFOTABLE_DOCUMENT_CONTENT_REJECTED.
+
+Return a structured rejection reason such as:
+
+- RESPONSE_NOT_XML
+- SEC_HTML_WRAPPER
+- XML_DECLARATION_INVALID
+- XML_TRUNCATED
+- XML_UNCLOSED_TAG
+- XML_MISNESTED_TAG
+- INVALID_ENTITY
+- ILLEGAL_XML_CHARACTER
+- DOCTYPE_PRESENT
+- MULTIPLE_ROOT_ELEMENTS
+- INVALID_DOCUMENT_ORDER
+- UNEXPECTED_SEC_FORMAT
+- WRONG_DOCUMENT_SELECTED
+- SEC_ERROR_RESPONSE
+- CONTENT_ENCODING_ERROR
+- OTHER_VALIDATION_FAILURE
+
+Include:
+- first safe non-sensitive content signature / root element
+- total bytes
+- failing validator rule
+- location/offset or element name when available
+
+Do not dump the entire SEC document into logs.
+
+3. Verify document selection from the SEC filing index.
+
+Make sure the diagnostic is selecting the actual 13F Information Table rather than:
+- filing summary page
+- primary filing document
+- cover page
+- XML schema/XSD
+- stylesheet
+- SEC-generated HTML
+- exhibit unrelated to the Information Table.
+
+Prefer authoritative filing-index metadata and document type when available.
+
+4. Inspect the actual SEC format of the failing document.
+
+Determine whether SEC serves it as:
+- native XML
+- text containing XML
+- HTML-rendered XML
+- SGML/document wrapper
+- another valid SEC 13F representation.
+
+Do not assume .xml extension means clean standalone XML.
+
+5. If the SEC source is valid but our validator is too strict, fix the reader narrowly.
+
+Requirements:
+- Keep protection against malformed/truncated documents.
+- Keep protection against XXE/DTD/entity attacks.
+- Keep path traversal protections.
+- Keep timeout/bounded sequential fetching.
+- Do not broadly disable XML validation.
+- Normalize only known SEC wrappers/format variations before parsing.
+- Any normalization must be deterministic and tested.
+
+6. If the wrong SEC document was selected, fix selection logic instead of parser strictness.
+
+7. Add focused tests for the exact production failure mode.
+
+Tests should include:
+- currently successful SEC source document still parses
+- failing production document format now parses if authoritative and valid
+- malformed/truncated document still rejected
+- DOCTYPE remains rejected
+- external entity remains rejected
+- misnested XML remains rejected
+- wrong document selection remains rejected
+- no writes
+- no broad ingestion
+
+Use a sanitized fixture derived from structure, not a giant raw SEC filing if unnecessary.
+
+8. Add a read-only Railway diagnostic mode or improve the existing one so the next production run reports exact source-document validation outcome before reconciliation.
+
+9. Do not change:
+- repair blocker
+- holdings
+- mappings
+- aggregates
+- unique indexes
+- schema
+- ingestion behavior
+- feature flags.
+
+10. Run:
+- focused provenance tests
+- full Institutional Intelligence suite
+- production build
+- review
+
+Return:
+- root cause of INFOTABLE_DOCUMENT_CONTENT_REJECTED
+- which accession/document failed
+- whether source document itself is valid
+- whether problem was document selection, transport, format normalization, or validation
+- exact code change
+- tests/results
+- files changed
+- commit SHA
+- push status
+- exact Railway command for the next READ-ONLY provenance diagnostic
+
+Production APPLY: NO.

@@ -1,0 +1,15 @@
+{
+  "name": "stockmetrics-external-api-consumer-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone HTTP consumer demo for the StockMetrics public API v1.",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

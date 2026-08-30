@@ -101,3 +101,4 @@
 - [Historical validation bias controls](historical-validation-bias-controls.md) — select score cohorts before outcome availability; require adjusted endpoints and immutable artifact hashes.
 - [Institutional API unavailable states](institutional-api-unavailable-states.md) — v1 nests error codes; legacy returns HTTP 200 unavailable payloads, so UI emptiness needs both contracts.
 - [One-time credential logging](one-time-credential-logging.md) — secret-creation responses must be redacted at the global response logger, not only omitted from persistence.
+- [External consumer proxy boundary](external-consumer-proxy-boundary.md) — use per-route query allowlists, reject duplicates/blanks, rebuild normalized queries, and time out body reads too.

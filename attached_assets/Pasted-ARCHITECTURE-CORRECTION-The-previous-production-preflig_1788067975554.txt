@@ -1,0 +1,148 @@
+ARCHITECTURE CORRECTION
+
+The previous production preflight returned NO-GO because it looked for a
+Replit production database.
+
+That is not our production architecture.
+
+For this project:
+
+Replit = development environment
+GitHub = source repository
+Railway = production application/runtime
+Railway PostgreSQL = production database
+
+We have already successfully run production read-only diagnostics from the
+Railway shell against the real Railway PostgreSQL database.
+
+DO NOT:
+
+- create a Replit production database
+- publish/deploy through Replit
+- copy production data into Replit
+- change DATABASE_URL
+- create EXTERNAL_DATABASE_URL
+- attempt production writes from the Replit environment
+
+TASK
+
+Prepare the Institutional Intelligence repair tooling so it can be executed
+from the Railway application shell after this code is deployed to Railway.
+
+1. Identify the exact production repair script/command.
+
+It must support at minimum:
+
+DRY RUN
+- connects using the runtime DATABASE_URL
+- performs production preflight
+- performs zero writes
+- validates mapping inputs
+- calculates proposed repair counts
+- returns GO / NO-GO
+
+APPLY
+- must require an explicit apply flag
+- must refuse accidental execution without that flag
+- must be idempotent
+- must use transactions where appropriate
+- must STOP on failed identity/preflight checks
+
+2. Confirm the script does NOT assume Replit production infrastructure.
+
+It must use the database provided by the runtime environment.
+
+On Railway that will be the Railway PostgreSQL DATABASE_URL.
+
+3. Production identity guard
+
+Before allowing APPLY, the tool should make it difficult to accidentally run
+against development.
+
+Use an explicit production confirmation mechanism such as:
+
+--environment production
+--apply
+--confirm-production
+
+or an equivalent guarded design.
+
+DRY RUN may run without writes.
+
+Do not print DATABASE_URL or credentials.
+
+4. Production preflight must verify:
+
+- expected institutional schema exists
+- approximately 1,394 filings
+- approximately 562k holdings
+- effective filings exist
+- multiple historical quarters exist
+- mapping coverage is currently near zero
+- aggregate state is currently incomplete
+
+Exact counts may have changed since the previous diagnostic and should not
+be hard-coded as required equality checks.
+
+5. Security identity validation
+
+Before writes, validate:
+
+AAPL 037833100
+NVDA 67066G104
+MSFT 594918104
+COST 22160K105
+
+Previous diagnostics showed suspicious issuer-name associations for some
+CUSIPs.
+
+Do not infer that ticker mappings are safe merely from those expected CUSIPs.
+
+Verify the raw/parser/reference data sufficiently before applying mappings.
+
+If structural corruption or column misalignment is detected:
+
+NO-GO
+STOP
+NO WRITES
+
+6. Mapping rules
+
+- deterministic/reliable mappings only
+- ambiguous securities remain unmapped
+- preserve original CUSIP
+- preserve put/call separation
+- do not manufacture ticker symbols
+- do not multiply reported_value by 1000
+- QoQ comparison remains security/CUSIP based
+
+7. Provide exact Railway commands we should execute AFTER the code is deployed.
+
+Return commands separately for:
+
+A. production dry-run
+
+B. production APPLY
+
+C. post-repair validation
+
+Do NOT execute any of them from Replit.
+
+8. Confirm whether the repair code is committed and ready to push/deploy.
+
+RETURN
+
+TASK STATUS
+PRODUCTION ARCHITECTURE CONFIRMATION
+REPAIR SCRIPT
+SAFETY GUARDS
+DRY-RUN COMMAND
+APPLY COMMAND
+POST-REPAIR VALIDATION COMMAND
+FILES CHANGED
+TEST RESULTS
+COMMIT
+RAILWAY DEPLOYMENT PREREQUISITE
+WARNINGS
+
+STOP.

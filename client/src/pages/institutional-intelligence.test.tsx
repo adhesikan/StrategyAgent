@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { apiErrorCode } from "../lib/queryClient";
 import { symbolQueryOpensStock } from "./institutional-intelligence";
+import {
+  institutionalMetricDescriptions,
+} from "../components/institutional-metric-tooltip";
+import { formatInstitutionalScore } from "../lib/institutional-formatting";
 
 const pageSource = readFileSync(
   resolve(__dirname, "institutional-intelligence.tsx"),
@@ -72,6 +76,45 @@ describe("Institutional Intelligence hub", () => {
     expect(pageSource).not.toContain("largestReportedShareIncreases.sort");
     expect(pageSource).not.toContain("largestReportedShareReductions.sort");
     expect(pageSource).toContain('data?.dataAsOf ? formatDate(data.dataAsOf) : "Unavailable"');
+  });
+
+  it("formats derived scores without changing the underlying precision", () => {
+    const raw = 38.63636363636364;
+    expect(formatInstitutionalScore(raw)).toBe("38.6");
+    expect(formatInstitutionalScore(100)).toBe("100");
+    expect(formatInstitutionalScore(0)).toBe("0");
+    expect(formatInstitutionalScore(50)).toBe("50");
+    expect(formatInstitutionalScore(37)).toBe("37");
+    expect(raw).toBe(38.63636363636364);
+  });
+
+  it("covers the requested institutional metrics with plain-English help text", () => {
+    for (const metric of [
+      "accumulationScore",
+      "reportedHolders",
+      "reportedShares",
+      "mappingCoverage",
+      "trendClassification",
+      "breadthDirection",
+      "newlyReported",
+      "increased",
+      "reduced",
+      "noLongerReported",
+      "unchanged",
+      "concentration",
+      "qoqShares",
+      "breadth",
+      "dataQuality",
+      "entrantsVsExits",
+      "signalConfidence",
+      "comparableManagers",
+      "dataAsOf",
+      "signal",
+    ] as const) {
+      expect(institutionalMetricDescriptions[metric].length).toBeGreaterThan(20);
+    }
+    expect(pageSource).toContain("aria-label");
+    expect(pageSource).toContain('label="Entrants vs exits"');
   });
 
   it("does not introduce prohibited promotional or transaction language", () => {

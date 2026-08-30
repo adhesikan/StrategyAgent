@@ -30,6 +30,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  InstitutionalMetricLabel,
+  InstitutionalMetricTooltip,
+  type InstitutionalMetricName,
+} from "@/components/institutional-metric-tooltip";
+import { formatInstitutionalScore } from "@/lib/institutional-formatting";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -435,10 +441,25 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function Metric({ label, value, detail, valueClass }: { label: string; value: React.ReactNode; detail?: string; valueClass?: string }) {
+function Metric({
+  label,
+  value,
+  detail,
+  valueClass,
+  help,
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail?: string;
+  valueClass?: string;
+  help?: InstitutionalMetricName;
+}) {
   return (
     <div className="rounded-lg bg-muted/40 p-3">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        {label}
+        {help && <InstitutionalMetricTooltip metric={help} label={label} />}
+      </p>
       <p className={cn("mt-1 text-xl font-semibold tabular-nums", valueClass)}>{value}</p>
       {detail && <p className="mt-0.5 text-[10px] text-muted-foreground">{detail}</p>}
     </div>
@@ -470,9 +491,9 @@ function ReportedChangeCard({
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="pb-2">Manager</th>
-                  <th className="pb-2 text-right">Reported shares</th>
+                  <th className="pb-2 text-right"><InstitutionalMetricLabel label="Reported shares" metric="reportedShares" /></th>
                   <th className="pb-2 text-right">Previous shares</th>
-                  <th className="pb-2 text-right">Share change</th>
+                  <th className="pb-2 text-right"><InstitutionalMetricLabel label="QoQ shares" metric="qoqShares" /></th>
                   <th className="pb-2 text-right">Change %</th>
                   <th className="pb-2 text-right">Portfolio weight</th>
                 </tr>
@@ -604,9 +625,10 @@ function StockView({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Accumulation score" value={score == null ? "Unavailable" : score} detail={signalQuery.data?.label ?? "Requires sufficient history"} valueClass={scoreColor(score)} />
+        <Metric label="Accumulation score" help="accumulationScore" value={score == null ? "Unavailable" : formatInstitutionalScore(score)} detail={signalQuery.data?.label ?? "Requires sufficient history"} valueClass={scoreColor(score)} />
         <Metric
           label="Reported holders"
+          help="reportedHolders"
           value={data?.reportedHolderCount ?? "—"}
           detail={
             data?.holderCountChange == null
@@ -614,14 +636,14 @@ function StockView({
               : `${data.holderCountChange >= 0 ? "+" : ""}${data.holderCountChange} QoQ · ${data.reportingManagerCount} tracked managers`
           }
         />
-        <Metric label="Reported shares" value={formatNumber(data?.aggregateReportedShares ?? legacy?.summary?.aggregateReportedShares)} detail={formatPct(reportedShareChangePercent)} valueClass={toneForDirection(reportedShareChangePercent)} />
-        <Metric label="Mapping coverage" value={data?.mappingCoverage?.coveragePercent == null ? "—" : `${data.mappingCoverage.coveragePercent.toFixed(0)}%`} detail={`Quality: ${quality}`} />
+        <Metric label="Reported shares" help="reportedShares" value={formatNumber(data?.aggregateReportedShares ?? legacy?.summary?.aggregateReportedShares)} detail={formatPct(reportedShareChangePercent)} valueClass={toneForDirection(reportedShareChangePercent)} />
+        <Metric label="Mapping coverage" help="mappingCoverage" value={data?.mappingCoverage?.coveragePercent == null ? "—" : `${data.mappingCoverage.coveragePercent.toFixed(0)}%`} detail={`Quality: ${quality}`} />
       </div>
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        <span><strong className="text-foreground">Data as of:</strong> {data?.dataAsOf ? formatDate(data.dataAsOf) : "Unavailable"}</span>
+        <span><strong className="text-foreground"><InstitutionalMetricLabel label="Data as of" metric="dataAsOf" /></strong>: {data?.dataAsOf ? formatDate(data.dataAsOf) : "Unavailable"}</span>
         {legacy?.freshness && <><span><strong className="text-foreground">Period:</strong> {formatDate(legacy.periodOfReport)}</span><span><strong className="text-foreground">Latest filing:</strong> {formatDate(legacy.latestFilingDate)}</span><span><strong className="text-foreground">Freshness:</strong> {legacy.freshness.status.replace("_", " ")}</span></>}
-        <span><strong className="text-foreground">Signal:</strong> {signalQuery.data?.status ?? "Unavailable"}</span>
+        <span><strong className="text-foreground"><InstitutionalMetricLabel label="Signal" metric="signal" /></strong>: {signalQuery.data?.status ?? "Unavailable"}</span>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -629,8 +651,8 @@ function StockView({
           <CardHeader className="pb-3"><CardTitle className="text-sm">Share trend and breadth</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <Metric label="Trend classification" value={trend?.classification ?? legacy?.summary?.trendLabel ?? "Unavailable"} valueClass="text-base capitalize" />
-              <Metric label="Breadth direction" value={data?.breadth?.direction ?? "Unavailable"} detail={data?.breadth?.breadthRatio == null ? "No comparable denominator" : `${data.breadth.breadthRatio.toFixed(1)} ratio`} valueClass="text-base capitalize" />
+              <Metric label="Trend classification" help="trendClassification" value={trend?.classification ?? legacy?.summary?.trendLabel ?? "Unavailable"} valueClass="text-base capitalize" />
+              <Metric label="Breadth direction" help="breadthDirection" value={data?.breadth?.direction ?? "Unavailable"} detail={data?.breadth?.breadthRatio == null ? "No comparable denominator" : `${data.breadth.breadthRatio.toFixed(1)} ratio`} valueClass="text-base capitalize" />
             </div>
             {trend?.quarters && trend.quarters.length > 0 ? (
               <div className="space-y-2">
@@ -652,15 +674,15 @@ function StockView({
         </Card>
 
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm">Quarterly reported activity</CardTitle></CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Quarterly reported activity <span className="ml-1 text-xs font-normal text-muted-foreground"><InstitutionalMetricLabel label="Entrants vs exits" metric="entrantsVsExits" /></span></CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Metric label="Newly reported" value={data?.newlyReportedHolderCount ?? legacy?.managerActivity?.new ?? "—"} valueClass="text-emerald-600 dark:text-emerald-400" />
-              <Metric label="Increased" value={data?.increasedReportedHolderCount ?? legacy?.managerActivity?.increased ?? "—"} valueClass="text-sky-600 dark:text-sky-400" />
-              <Metric label="Reduced" value={data?.reducedReportedHolderCount ?? legacy?.managerActivity?.reduced ?? "—"} valueClass="text-amber-600 dark:text-amber-400" />
-              <Metric label="No longer reported" value={data?.noLongerReportedHolderCount ?? legacy?.managerActivity?.exited ?? "—"} valueClass="text-rose-600 dark:text-rose-400" />
-              <Metric label="Unchanged" value={data?.unchangedReportedHolderCount ?? legacy?.managerActivity?.unchanged ?? "—"} />
-              <Metric label="Concentration" value={legacy?.concentration?.classification ?? "Unavailable"} valueClass="text-base capitalize" />
+              <Metric label="Newly reported" help="newlyReported" value={data?.newlyReportedHolderCount ?? legacy?.managerActivity?.new ?? "—"} valueClass="text-emerald-600 dark:text-emerald-400" />
+              <Metric label="Increased" help="increased" value={data?.increasedReportedHolderCount ?? legacy?.managerActivity?.increased ?? "—"} valueClass="text-sky-600 dark:text-sky-400" />
+              <Metric label="Reduced" help="reduced" value={data?.reducedReportedHolderCount ?? legacy?.managerActivity?.reduced ?? "—"} valueClass="text-amber-600 dark:text-amber-400" />
+              <Metric label="No longer reported" help="noLongerReported" value={data?.noLongerReportedHolderCount ?? legacy?.managerActivity?.exited ?? "—"} valueClass="text-rose-600 dark:text-rose-400" />
+              <Metric label="Unchanged" help="unchanged" value={data?.unchangedReportedHolderCount ?? legacy?.managerActivity?.unchanged ?? "—"} />
+              <Metric label="Concentration" help="concentration" value={legacy?.concentration?.classification ?? "Unavailable"} valueClass="text-base capitalize" />
             </div>
             {legacy?.concentration && (
               <p className="mt-4 text-xs text-muted-foreground">
@@ -716,23 +738,30 @@ function StockView({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm">Accumulation components</CardTitle></CardHeader>
+           <CardHeader className="pb-3"><CardTitle className="text-sm"><InstitutionalMetricLabel label="Accumulation components" metric="accumulationScore" /></CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {Object.entries(signalQuery.data?.scoreComponents ?? {}).map(([key, value]) => (
               <div key={key} className="flex items-center justify-between rounded bg-muted/30 px-3 py-2 text-xs">
-                <span className="capitalize text-muted-foreground">{key.replace(/([A-Z])/g, " $1")}</span>
-                <span className={cn("font-semibold tabular-nums", scoreColor(value))}>{value == null ? "Unavailable" : value}</span>
+                 <span className="capitalize text-muted-foreground">
+                   {key === "breadth" || key === "concentration" || key === "entrantsVsExits" ? (
+                     <InstitutionalMetricLabel
+                       label={key.replace(/([A-Z])/g, " $1")}
+                       metric={key as "breadth" | "concentration" | "entrantsVsExits"}
+                     />
+                   ) : key.replace(/([A-Z])/g, " $1")}
+                 </span>
+                 <span className={cn("font-semibold tabular-nums", scoreColor(value))}>{value == null ? "Unavailable" : formatInstitutionalScore(value)}</span>
               </div>
             ))}
             {!signalQuery.data?.scoreComponents && <p className="text-xs text-muted-foreground">Component scores are unavailable until the signal has sufficient comparable data.</p>}
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm">Data quality and limitations</CardTitle></CardHeader>
+         <Card>
+           <CardHeader className="pb-3"><CardTitle className="text-sm"><InstitutionalMetricLabel label="Data quality" metric="dataQuality" /></CardTitle></CardHeader>
           <CardContent className="space-y-2 text-xs text-muted-foreground">
             <p className="flex items-start gap-2"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />This view describes reported Form 13F activity; it does not infer transaction dates or current positions.</p>
             {warnings.slice(0, 4).map((warning, index) => <p key={`${warning}-${index}`} className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />{warning}</p>)}
-            {signalQuery.data?.dataQuality && <p>Signal confidence: <strong className="text-foreground capitalize">{signalQuery.data.dataQuality.confidence}</strong>; comparable managers: {signalQuery.data.dataQuality.comparableManagerCount}.</p>}
+             {signalQuery.data?.dataQuality && <p><InstitutionalMetricLabel label="Signal confidence" metric="signalConfidence" />: <strong className="text-foreground capitalize">{signalQuery.data.dataQuality.confidence}</strong>; <InstitutionalMetricLabel label="Comparable managers" metric="comparableManagers" />: {signalQuery.data.dataQuality.comparableManagerCount}.</p>}
           </CardContent>
         </Card>
       </div>
@@ -848,12 +877,12 @@ function DiscoveryView({ symbol }: { symbol: string }) {
     <div className="space-y-5" data-testid="institutional-discovery-view">
       <div><h2 className="text-xl font-semibold">Institutional discovery · {symbol}</h2><p className="mt-1 text-sm text-muted-foreground">A deterministic stage describing participation among tracked reporting managers. It is not a prediction or a trade instruction.</p></div>
       <Card className="border-primary/20 bg-primary/5"><CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
-        <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Discovery stage</p><p className="mt-1 text-2xl font-semibold">{discovery.stage?.replaceAll("_", " ") ?? "Unavailable"}</p><p className="mt-1 text-xs text-muted-foreground">{discovery.context?.dataQuarter ?? "Quarter unavailable"} · {discovery.context?.reportingManagerCount ?? "—"} tracked managers</p></div>
-        <div className="text-right"><p className={cn("text-4xl font-bold tabular-nums", scoreColor(discovery.score))}>{discovery.score ?? "—"}</p><p className="text-xs text-muted-foreground">{discovery.availability}</p></div>
+         <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Discovery stage</p><p className="mt-1 text-2xl font-semibold">{discovery.stage?.replaceAll("_", " ") ?? "Unavailable"}</p><p className="mt-1 text-xs text-muted-foreground">{discovery.context?.dataQuarter ?? "Quarter unavailable"} · {discovery.context?.reportingManagerCount ?? "—"} tracked managers</p></div>
+         <div className="text-right"><p className="text-xs text-muted-foreground">Evidence score</p><p className={cn("text-4xl font-bold tabular-nums", scoreColor(discovery.score))}>{formatInstitutionalScore(discovery.score)}</p><p className="text-xs text-muted-foreground">{discovery.availability}</p></div>
       </CardContent></Card>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Evidence signals</CardTitle></CardHeader><CardContent className="space-y-2">
-          {discovery.evidence.map((item) => <div key={item.label} className="rounded-lg border bg-muted/20 p-3"><div className="flex items-center justify-between gap-3"><span className="text-sm font-medium">{item.label}</span><span className={cn("text-sm font-semibold", item.direction === "positive" ? "text-emerald-600 dark:text-emerald-400" : item.direction === "caution" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{item.normalizedScore ?? "Unavailable"}</span></div><p className="mt-1 text-xs text-muted-foreground">{item.explanation}</p></div>)}
+          {discovery.evidence.map((item) => <div key={item.label} className="rounded-lg border bg-muted/20 p-3"><div className="flex items-center justify-between gap-3"><span className="text-sm font-medium">{item.label}</span><span className={cn("text-sm font-semibold", item.direction === "positive" ? "text-emerald-600 dark:text-emerald-400" : item.direction === "caution" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{formatInstitutionalScore(item.normalizedScore)}</span></div><p className="mt-1 text-xs text-muted-foreground">{item.explanation}</p></div>)}
           {discovery.evidence.length === 0 && <p className="text-sm text-muted-foreground">No usable institutional evidence is available.</p>}
         </CardContent></Card>
         <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Why the stage is shown</CardTitle></CardHeader><CardContent className="space-y-2">
@@ -884,15 +913,15 @@ function MultibaggerView({ symbol }: { symbol: string }) {
     <div className="space-y-5" data-testid="multibagger-view">
       <div><h2 className="text-xl font-semibold">Multibagger Discovery · {symbol}</h2><p className="mt-1 text-sm text-muted-foreground">Versioned candidate/profile research using deterministic component evidence. This screen does not express certainty, expected outcomes, or investment advice.</p></div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Overall evidence score" value={result.overall.score ?? "Unavailable"} detail={`${result.overall.availability} · ${result.overall.confidence} confidence`} valueClass={scoreColor(result.overall.score)} />
+         <Metric label="Overall evidence score" value={formatInstitutionalScore(result.overall.score)} detail={`${result.overall.availability} · ${result.overall.confidence} confidence`} valueClass={scoreColor(result.overall.score)} />
         <Metric label="Available dimensions" value={`${result.availableDimensionCount} / ${result.availableDimensionCount + result.unavailableDimensionCount}`} detail={`Model ${result.modelVersion}`} />
-        <Metric label="Institutional stage" value={result.institutionalDiscovery.stage?.replaceAll("_", " ") ?? "Unavailable"} detail={result.institutionalDiscovery.score == null ? "Institutional input unavailable" : `Institutional score ${result.institutionalDiscovery.score}`} valueClass="text-base" />
+         <Metric label="Institutional stage" value={result.institutionalDiscovery.stage?.replaceAll("_", " ") ?? "Unavailable"} detail={result.institutionalDiscovery.score == null ? "Institutional input unavailable" : `Institutional score ${formatInstitutionalScore(result.institutionalDiscovery.score)}`} valueClass="text-base" />
       </div>
       <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Profile screens</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {profileEntries.map(([key, profile]) => <div key={key} className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{key.replace("X", "x")} profile</p><p className={cn("mt-1 text-2xl font-semibold", scoreColor(profile.score))}>{profile.score ?? "—"}</p><p className="mt-1 text-xs capitalize text-muted-foreground">{profile.classification.replaceAll("_", " ").toLowerCase()}</p><p className="mt-2 text-xs text-muted-foreground">{profile.limitingFactors.length > 0 ? profile.limitingFactors[0].explanation : "No limiting factor recorded."}</p></div>)}
+         {profileEntries.map(([key, profile]) => <div key={key} className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{key.replace("X", "x")} profile</p><p className={cn("mt-1 text-2xl font-semibold", scoreColor(profile.score))}>{formatInstitutionalScore(profile.score)}</p><p className="mt-1 text-xs capitalize text-muted-foreground">{profile.classification.replaceAll("_", " ").toLowerCase()}</p><p className="mt-2 text-xs text-muted-foreground">{profile.limitingFactors.length > 0 ? profile.limitingFactors[0].explanation : "No limiting factor recorded."}</p></div>)}
       </div></CardContent></Card>
       <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Component scores and data availability</CardTitle></CardHeader><CardContent><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {Object.entries(result.dimensions).map(([key, dimension]) => <div key={key} className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="capitalize text-sm">{key}</span><span className={cn("font-semibold tabular-nums", scoreColor(dimension.score))}>{dimension.score ?? "Unavailable"}</span><Badge variant="outline" className="ml-2 text-[10px]">{dimension.availability}</Badge></div>)}
+         {Object.entries(result.dimensions).map(([key, dimension]) => <div key={key} className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="capitalize text-sm">{key}</span><span className={cn("font-semibold tabular-nums", scoreColor(dimension.score))}>{formatInstitutionalScore(dimension.score)}</span><Badge variant="outline" className="ml-2 text-[10px]">{dimension.availability}</Badge></div>)}
       </div></CardContent></Card>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Supporting factors</CardTitle></CardHeader><CardContent className="space-y-2">{Object.entries(result.dimensions).flatMap(([key, dimension]) => dimension.evidence.filter((e) => e.available).slice(0, 2).map((e) => <div key={`${key}-${e.label}`} className="text-xs"><span className="font-medium capitalize">{key} · {e.label}</span><p className="text-muted-foreground">{e.explanation}</p></div>))}</CardContent></Card>

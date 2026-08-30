@@ -1,0 +1,90 @@
+ADDITIONAL REQUIRED DELIVERABLE — STOCKMETRICS API HANDOFF CONTRACT
+
+Claude Code has completed the stockmetrics-institutional same-origin BFF foundation.
+
+It intentionally did NOT guess the StrategyAgent institutional API contract.
+
+As part of this task, inspect the ACTUAL StrategyAgent implementation and provide the authoritative integration contract needed by stockmetrics-institutional.
+
+Do not invent new endpoints merely to satisfy this request if equivalent versioned endpoints already exist.
+
+For every Institutional Intelligence capability that is currently implemented, report:
+
+1. Actual production/versioned route
+2. HTTP method
+3. Required path/query parameters
+4. Actual server-to-server authentication mechanism
+5. Exact success response envelope/schema
+6. Availability-state representation
+7. HTTP/error behavior for:
+   - AVAILABLE
+   - PARTIAL
+   - INSUFFICIENT_HISTORY
+   - UNMAPPED
+   - UNSUPPORTED
+   - NO_REPORTED_POSITION
+   - UPSTREAM_ERROR
+8. Null semantics
+9. Data freshness/as-of fields
+10. Whether the endpoint is production-ready
+
+Cover:
+
+- Stock View
+- Trends
+- Rotation
+- Institutional Discovery
+- Multibagger Discovery
+
+For Stock View specifically, provide the exact contract for:
+
+- security identity
+- canonical CUSIP(s)
+- availability
+- accumulation score
+- reported holders
+- reported shares
+- reported value if available
+- mapping coverage
+- trend
+- breadth
+- quarterly activity
+- holder details
+- largest increases
+- largest reductions
+- accumulation components
+- confidence/data quality
+- data as of
+- disclosures/metadata
+
+IMPORTANT:
+
+Claude currently has a configurable placeholder StockMetrics BFF path.
+
+Do NOT adapt StrategyAgent to Claude's placeholder.
+
+StrategyAgent remains authoritative.
+
+Report the actual StrategyAgent contract so Claude can reconcile the thin BFF to it afterward.
+
+If an existing Institutional service does not currently have a stable /api/v1 adapter but the underlying validated service already exists, add ONLY the minimal thin /api/v1 adapter.
+
+The adapter must contain no duplicate analytics or institutional calculations.
+
+If the underlying capability itself does not exist, report:
+
+NO_BACKEND_IMPLEMENTATION
+
+rather than inventing it.
+
+Also report the StrategyAgent production API base URL format needed by the consuming service, but DO NOT print credentials, tokens, API keys, DATABASE_URL, or any other secret.
+
+Add a final section:
+
+STOCKMETRICS INTEGRATION HANDOFF
+
+with a concise machine-usable table:
+
+Capability | Method | /api/v1 Route | Auth | Response Contract | Production Ready
+
+This handoff is required before the task is considered complete.

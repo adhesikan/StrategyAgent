@@ -810,7 +810,11 @@ export async function rebuildInstitutionalSignalForSymbol(symbol: string): Promi
     .limit(1);
 
   if (rows.length === 0) {
-    // No data at all — return unavailable, nothing to upsert
+    // No trusted aggregate remains. Remove any formerly materialized signal so
+    // reconciliation conflicts cannot leave stale numeric evidence behind.
+    await db
+      .delete(institutionalSymbolSignals)
+      .where(eq(institutionalSymbolSignals.symbol, symbol));
     const unavailable: InstitutionalSignal = {
       symbol,
       status: "unavailable",

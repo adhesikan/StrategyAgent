@@ -23,6 +23,7 @@ import {
 import { eq, and, inArray, or, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import type { InsertInstitutionalSecurityMapping } from "@shared/schema";
+import { resolveInstitutionalSecurity } from "./security-resolver";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +45,63 @@ export interface MappingRow {
   mappedSymbol: string | null;
   mappingStatus: MappingStatus;
   mappingMethod: MappingMethod;
+}
+
+export function resolveTrustedMappingRecord(
+  cusip: string,
+  row: MappingRow,
+): MappingResult | null {
+  const resolution = resolveInstitutionalSecurity([{
+    source: `mapping:${row.cusip}`,
+    symbol: row.mappedSymbol,
+    status: row.mappingStatus,
+    cusip: row.cusip,
+    figi: row.figi,
+  }]);
+  if (resolution.outcome !== "RESOLVED_TRUSTED") return null;
+  return {
+    cusip,
+    mappedSymbol: resolution.symbol,
+    mappingStatus: row.mappingStatus,
+    mappingMethod: row.mappingMethod,
+  };
+}
+
+export function resolveTrustedFigiMapping(
+  cusip: string,
+  figi: string,
+  cache: Map<string, MappingRow>,
+): { result: MappingResult; derivedFrom: MappingRow | null } {
+  const candidates = Array.from(cache.values()).filter((row) => row.figi === figi);
+  const resolution = resolveInstitutionalSecurity(candidates.map((row) => ({
+    source: `mapping:${row.cusip}`,
+    symbol: row.mappedSymbol,
+    status: row.mappingStatus,
+    cusip: row.cusip,
+    figi: row.figi,
+  })));
+  if (resolution.outcome !== "RESOLVED_TRUSTED") {
+    return {
+      result: { cusip, mappedSymbol: null, mappingStatus: "unmapped", mappingMethod: null },
+      derivedFrom: null,
+    };
+  }
+  // The resolver only returns a symbol backed by trusted evidence. The source
+  // row is retained for the audit note; a trusted-symbol conflict never reaches here.
+  const derivedFrom = candidates.find(
+    (row) => row.mappedSymbol?.trim().toUpperCase() === resolution.symbol &&
+      (row.mappingStatus === "exact" || row.mappingStatus === "reviewed"),
+  ) ?? null;
+  if (!derivedFrom) {
+    return {
+      result: { cusip, mappedSymbol: null, mappingStatus: "unmapped", mappingMethod: null },
+      derivedFrom: null,
+    };
+  }
+  return {
+    result: { cusip, mappedSymbol: resolution.symbol, mappingStatus: "exact", mappingMethod: "figi_exact" },
+    derivedFrom,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -104,36 +162,21 @@ export async function resolveMapping(
   // 1. Exact CUSIP match
   const existing = cache.get(cusip);
   if (existing) {
-    return {
-      cusip,
-      mappedSymbol: existing.mappedSymbol,
-      mappingStatus: existing.mappingStatus as MappingStatus,
-      mappingMethod: existing.mappingMethod as MappingMethod,
-    };
+    return resolveTrustedMappingRecord(cusip, existing) ??
+      { cusip, mappedSymbol: null, mappingStatus: "unmapped", mappingMethod: null };
   }
 
   // 2. FIGI match — check other rows with matching FIGI
   if (figi) {
-    for (const row of Array.from(cache.values())) {
-      if (row.figi === figi && row.mappedSymbol) {
-        // Found via FIGI — create a derived exact entry
-        const derived: InsertInstitutionalSecurityMapping = {
-          cusip,
-          figi,
-          mappedSymbol: row.mappedSymbol,
-          mappingStatus: "exact",
-          mappingMethod: "figi_exact",
-          notes: `Derived from FIGI match with CUSIP ${row.cusip}`,
-        };
-        await upsertMapping(derived);
-        return {
-          cusip,
-          mappedSymbol: row.mappedSymbol,
-          mappingStatus: "exact",
-          mappingMethod: "figi_exact",
-        };
-      }
+    const { result, derivedFrom } = resolveTrustedFigiMapping(cusip, figi, cache);
+    if (derivedFrom && result.mappedSymbol) {
+      await upsertMapping({
+        cusip, figi, mappedSymbol: result.mappedSymbol, mappingStatus: "exact",
+        mappingMethod: "figi_exact",
+        notes: `Derived from trusted FIGI match with CUSIP ${derivedFrom.cusip}`,
+      });
     }
+    return result;
   }
 
   // 3. Unmapped — record as unmapped so the audit knows about it
@@ -159,25 +202,21 @@ export async function resolveMappingsBatch(
     if (results.has(cusip)) continue;
     const existing = cache.get(cusip);
     if (existing) {
-      results.set(cusip, {
-        cusip,
-        mappedSymbol: existing.mappedSymbol,
-        mappingStatus: existing.mappingStatus as MappingStatus,
-        mappingMethod: existing.mappingMethod as MappingMethod,
-      });
+      results.set(cusip, resolveTrustedMappingRecord(cusip, existing) ??
+        { cusip, mappedSymbol: null, mappingStatus: "unmapped", mappingMethod: null });
       continue;
     }
-    // FIGI fallback
     if (figi) {
-      let found = false;
-      for (const row of Array.from(cache.values())) {
-        if (row.figi === figi && row.mappedSymbol) {
-          results.set(cusip, { cusip, mappedSymbol: row.mappedSymbol, mappingStatus: "exact", mappingMethod: "figi_exact" });
-          found = true;
-          break;
-        }
+      const { result, derivedFrom } = resolveTrustedFigiMapping(cusip, figi, cache);
+      results.set(cusip, result);
+      if (derivedFrom && result.mappedSymbol) {
+        await upsertMapping({
+          cusip, figi, mappedSymbol: result.mappedSymbol, mappingStatus: "exact",
+          mappingMethod: "figi_exact",
+          notes: `Derived from trusted FIGI match with CUSIP ${derivedFrom.cusip}`,
+        });
       }
-      if (found) continue;
+      continue;
     }
     results.set(cusip, { cusip, mappedSymbol: null, mappingStatus: "unmapped", mappingMethod: null });
   }

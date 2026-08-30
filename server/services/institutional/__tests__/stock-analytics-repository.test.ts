@@ -16,6 +16,7 @@ import {
   loadStockCandidateIdentity,
   loadStockCandidateCusips,
   selectAlignedStockFilings,
+  stockInstitutionalRepository,
 } from "../analytics/stock-analytics-repository";
 
 function totalsQuery(rows: unknown[]) {
@@ -44,6 +45,28 @@ function canonicalCusipsQuery(rows: unknown[]) {
   return {
     from: () => ({
       where: async () => rows,
+    }),
+  };
+}
+
+function orderedLimitedQuery(rows: unknown[]) {
+  return {
+    from: () => ({
+      where: () => ({
+        orderBy: () => ({
+          limit: async () => rows,
+        }),
+      }),
+    }),
+  };
+}
+
+function orderedQuery(rows: unknown[]) {
+  return {
+    from: () => ({
+      where: () => ({
+        orderBy: async () => rows,
+      }),
     }),
   };
 }
@@ -146,6 +169,38 @@ describe("stock analytics portfolio denominators", () => {
     ).resolves.toEqual({
       candidateCusips: ["111111111"],
       hasReliableSecurityIdentity: false,
+      hasDisqualifyingCandidateEvidence: true,
+      hasTargetSpecificCandidateEvidence: true,
+    });
+  });
+
+  it("keeps diagnostic CUSIPs but marks mixed trusted/conflicting evidence as disqualifying", async () => {
+    selectMock
+      .mockReturnValueOnce(canonicalCusipsQuery([]))
+      .mockReturnValueOnce(candidateCusipsQuery([
+        {
+          cusip: "111111111",
+          masterTicker: null,
+          masterReviewStatus: null,
+          mappingSymbol: "NVDA",
+          mappingStatus: "reviewed",
+          holdingMappedSymbol: "NVDA",
+          holdingMappingStatus: "exact",
+        },
+        {
+          cusip: "222222222",
+          masterTicker: null,
+          masterReviewStatus: null,
+          mappingSymbol: "AMD",
+          mappingStatus: "reviewed",
+          holdingMappedSymbol: "NVDA",
+          holdingMappingStatus: "exact",
+        },
+      ]));
+    await expect(loadStockCandidateIdentity(["accession-1"], "NVDA")).resolves.toEqual({
+      candidateCusips: ["111111111", "222222222"],
+      hasReliableSecurityIdentity: true,
+      hasDisqualifyingCandidateEvidence: true,
       hasTargetSpecificCandidateEvidence: true,
     });
   });
@@ -200,5 +255,25 @@ describe("stock analytics portfolio denominators", () => {
     expect(selected?.currentFilings.map((filing) => filing.accessionNumber)).toEqual([
       "canonical-quarter-filing",
     ]);
+  });
+
+  it("does not expose a cached aggregate without aligned effective filings", async () => {
+    selectMock
+      .mockReturnValueOnce(orderedLimitedQuery([{
+        symbol: "NVDA",
+        periodOfReport: "2026-06-30",
+        prevPeriodOfReport: null,
+        reportingManagerCount: 25,
+        aggregateReportedShares: 1_000_000,
+        aggregateReportedValue: 50_000_000,
+        coverageStatus: "complete",
+      }]))
+      .mockReturnValueOnce(orderedQuery([]));
+
+    await expect(stockInstitutionalRepository.getStockInstitutionalSource({
+      symbol: "NVDA",
+      quarter: "2026-Q2",
+      options: {},
+    })).resolves.toBeNull();
   });
 });

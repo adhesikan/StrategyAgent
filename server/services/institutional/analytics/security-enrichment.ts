@@ -14,6 +14,9 @@ import type {
   InstitutionalSecurityMetadata,
   InstitutionalThemeMembership,
 } from "./types";
+import {
+  resolveInstitutionalSecurity,
+} from "../security-resolver";
 
 export interface SecurityMappingEvidence {
   source: "security_master" | "institutional_mapping" | "holding";
@@ -27,11 +30,6 @@ export interface ReliableMappingResolution {
   reason: "unmapped" | "ambiguous" | null;
 }
 
-function normalizedSymbol(symbol: string | null | undefined): string | null {
-  const value = symbol?.trim().toUpperCase();
-  return value ? value : null;
-}
-
 /**
  * Apply the existing mapping trust order without guessing:
  * reviewed security_master > exact/reviewed mapping records.
@@ -40,36 +38,11 @@ function normalizedSymbol(symbol: string | null | undefined): string | null {
 export function resolveReliableSecurityMapping(
   evidence: SecurityMappingEvidence[],
 ): ReliableMappingResolution {
-  const reviewedMaster = evidence.find(
-    (item) =>
-      item.source === "security_master" &&
-      item.status === "reviewed" &&
-      normalizedSymbol(item.symbol),
-  );
-  if (reviewedMaster) {
-    return {
-      status: "reliably_mapped",
-      symbol: normalizedSymbol(reviewedMaster.symbol),
-      reason: null,
-    };
+  const resolution = resolveInstitutionalSecurity(evidence);
+  if (resolution.outcome === "RESOLVED_TRUSTED") {
+    return { status: "reliably_mapped", symbol: resolution.symbol, reason: null };
   }
-
-  const exactEvidence = evidence.filter(
-    (item) =>
-      (item.source === "institutional_mapping" || item.source === "holding") &&
-      (item.status === "exact" || item.status === "reviewed") &&
-      normalizedSymbol(item.symbol),
-  );
-  const symbols = Array.from(
-    new Set(exactEvidence.map((item) => normalizedSymbol(item.symbol)!)),
-  );
-  if (symbols.length === 1) {
-    return { status: "reliably_mapped", symbol: symbols[0], reason: null };
-  }
-  if (symbols.length > 1) {
-    return { status: "ambiguous", symbol: null, reason: "ambiguous" };
-  }
-  if (evidence.some((item) => item.status === "ambiguous")) {
+  if (resolution.outcome === "AMBIGUOUS" || resolution.outcome === "CONFLICTING") {
     return { status: "ambiguous", symbol: null, reason: "ambiguous" };
   }
   return { status: "unmapped", symbol: null, reason: "unmapped" };

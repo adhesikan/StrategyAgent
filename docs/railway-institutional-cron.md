@@ -381,6 +381,42 @@ file.
 npx tsx scripts/audit-institutional-production-data.ts
 ```
 
+### Global coverage analysis (read-only)
+
+```bash
+npx tsx scripts/analyze-institutional-coverage.ts
+```
+
+This separate generic analyzer is not the four-symbol repair tool. A guarded
+generic executor exists, but it was not run as part of this implementation.
+Only the dry-run command is published here; the APPLY invocation is
+intentionally omitted. Any future APPLY requires a separately reviewed, fresh
+production artifact and exact production database/schema identity,
+confirmation phrase, and plan hash. It also takes an advisory lock and rechecks
+the plan inside its transaction. Its output distinguishes `allHistory` from
+`latestQuarter`: `latestCanonicalFilingQuarter` is anchored to the newest
+canonical effective filing quarter before holding eligibility filters.
+`newestFilingQuarterEligibleRows` may therefore be zero (for example, where
+that quarter contains only options or PRN rows), and
+`newestFilingQuarterHasNoEligibleRows` is an explicit diagnostic rather than a
+claim that an older quarter is current. `materialization.quarters` and
+aggregate targets cover every canonical historical period for each trusted
+identity. Missing aggregate and signal targets remain actionable even when the
+holding mapping is already current.
+
+`trustedIdentityCoverage` is potential resolver-backed identity coverage; it is
+not the same as persisted holding materialization. `materializedCoverage`
+reports current and projected fully materialized CUSIPs, rows, and known USD
+value percentages. The plan also reports expected/present/missing aggregate
+and signal targets, insert/update counts, current snapshot-family row counts,
+refresh scope, and value-weighted root-cause ranking.
+
+SQL rollback applies only before the source-repair transaction commits. Once
+mapping/holding updates commit, they remain durable. If an aggregate, signal,
+or snapshot rebuild then fails, run this dry-run command again: missing derived
+targets will produce a new deterministic hash-bound idempotent plan. Do not
+claim or attempt SQL rollback for a post-commit derived rebuild failure.
+
 The production-data audit reports mapping coverage, holder/manager counts,
 comparable quarters, activity counts, aggregate freshness, signal status, and
 sector/theme snapshot freshness for AAPL, NVDA, MSFT, and COST.

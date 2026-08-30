@@ -265,7 +265,11 @@ interface DiscoveryResult {
   stage: string | null;
   score: number | null;
   availability: string;
-  signals: Record<string, unknown>;
+  signals: {
+    context?: {
+      eligible?: boolean;
+    };
+  };
   evidence: Array<{
     label: string;
     normalizedScore: number | null;
@@ -348,6 +352,12 @@ function isUpstreamError(error: unknown): boolean {
   return apiErrorCode(error) === "UPSTREAM_ERROR";
 }
 
+function hasCompleteDataQuality(
+  dataQuality: { status: string } | null | undefined,
+): boolean {
+  return dataQuality?.status === "complete";
+}
+
 function symbolFromSearch(search: string): string | null {
   const raw = new URLSearchParams(
     search.startsWith("?") ? search.slice(1) : search,
@@ -396,6 +406,15 @@ function scoreColor(score: number | null): string {
   if (score >= 70) return "text-emerald-600 dark:text-emerald-400";
   if (score >= 50) return "text-sky-600 dark:text-sky-400";
   return "text-amber-600 dark:text-amber-400";
+}
+
+function formatAvailableScore(
+  score: number | null,
+  availability: string | null | undefined,
+): string {
+  return availability === "available"
+    ? formatInstitutionalScore(score)
+    : "—";
 }
 
 function Disclosure() {
@@ -622,6 +641,12 @@ function StockView({
   if (data?.availability === "NO_REPORTED_POSITION") {
     return <EmptyState title={`No reported position for ${symbol}`} detail={`The security identity is known, but no eligible positive-share common-equity position was reported for ${data.quarter?.label ?? "the selected quarter"}.`} />;
   }
+  if (
+    data?.availability === "PARTIAL" ||
+    (data != null && !hasCompleteDataQuality(data.dataQuality))
+  ) {
+    return <EmptyState title={`Institutional data for ${symbol} is incomplete`} detail="This snapshot has incomplete mapping or comparison coverage. Holder and activity metrics are unavailable rather than shown as zero." onRetry={() => { void analyticsQuery.refetch(); void trendQuery.refetch(); }} />;
+  }
 
   const score = signalQuery.data?.score ?? null;
   const quarters = trend?.quarters ?? legacy?.historicalQuarters ?? [];
@@ -663,13 +688,7 @@ function StockView({
         <Metric
           label="Reported holders"
           help="reportedHolders"
-          value={
-            data?.availability &&
-            (!["AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY"].includes(data.availability) ||
-              (data.availability === "PARTIAL" && data.reportedHolderCount === 0))
-              ? "Unavailable"
-              : data?.reportedHolderCount ?? "—"
-          }
+          value={data?.reportedHolderCount ?? "—"}
           detail={
             data?.holderCountChange == null
               ? `Tracked 13F managers: ${data?.reportingManagerCount ?? "—"}`
@@ -821,6 +840,7 @@ function TrendsView() {
   const total = query.data?.totalCount ?? 0;
   const pages = Math.max(1, Math.ceil(total / limit));
   const unavailable = isDataUnavailable(query.error);
+  const snapshotComplete = hasCompleteDataQuality(query.data?.dataQuality);
 
   return (
     <div className="space-y-5" data-testid="institutional-trends-view">
@@ -830,8 +850,8 @@ function TrendsView() {
       </div>
       {query.isLoading && <LoadingCards count={4} />}
       {query.isError && !unavailable && <ErrorState onRetry={() => void query.refetch()} />}
-      {!query.isLoading && (unavailable || (query.data && query.data.items.length === 0)) && <EmptyState title="No ranked symbols in this view" detail="The selected activity category has no completed results for the current delayed Form 13F snapshot." onRetry={() => void query.refetch()} />}
-      {query.data && query.data.items.length > 0 && (
+       {!query.isLoading && (unavailable || (query.data && (!snapshotComplete || query.data.items.length === 0))) && <EmptyState title="No ranked symbols in this view" detail={query.data && !snapshotComplete ? "This ranking snapshot is incomplete, so activity counts and values are unavailable rather than shown as zero." : "The selected activity category has no completed results for the current delayed Form 13F snapshot."} onRetry={() => void query.refetch()} />}
+       {query.data && snapshotComplete && query.data.items.length > 0 && (
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="text-sm">{TREND_ITEMS.find((item) => item.key === mode)?.label} · {query.data.quarter.label}</CardTitle><span className="text-xs text-muted-foreground">{total} symbols</span></CardHeader>
           <CardContent>
@@ -867,6 +887,7 @@ function RotationView() {
     staleTime: 5 * 60_000,
   });
   const unavailable = isDataUnavailable(query.error);
+  const snapshotComplete = hasCompleteDataQuality(query.data?.dataQuality);
 
   return (
     <div className="space-y-5" data-testid="institutional-rotation-view">
@@ -874,8 +895,8 @@ function RotationView() {
       <div className="flex flex-wrap gap-2">{ROTATION_ITEMS.map((item) => <Button key={item.key} variant={kind === item.key ? "default" : "outline"} size="sm" onClick={() => setKind(item.key)}>{item.label}</Button>)}</div>
       {query.isLoading && <LoadingCards count={4} />}
       {query.isError && !unavailable && <ErrorState onRetry={() => void query.refetch()} />}
-      {(unavailable || (query.data && query.data.classifications.length === 0)) && <EmptyState title={`No ${kind} rotation snapshot`} detail="Rotation appears after the institutional analytics pipeline produces a completed delayed Form 13F quarter." onRetry={() => void query.refetch()} />}
-      {query.data && query.data.classifications.length > 0 && (
+       {(unavailable || (query.data && (!snapshotComplete || query.data.classifications.length === 0))) && <EmptyState title={`No ${kind} rotation snapshot`} detail={query.data && !snapshotComplete ? "This rotation snapshot is incomplete, so classification counts and values are unavailable rather than shown as zero." : "Rotation appears after the institutional analytics pipeline produces a completed delayed Form 13F quarter."} onRetry={() => void query.refetch()} />}
+       {query.data && snapshotComplete && query.data.classifications.length > 0 && (
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="text-sm">{query.data.kind} · {query.data.quarter.label}</CardTitle><span className="text-xs text-muted-foreground">{query.data.classifications.length} classifications</span></CardHeader>
           <CardContent>
@@ -912,6 +933,9 @@ function DiscoveryView({ symbol }: { symbol: string }) {
   if (query.isLoading) return <LoadingCards count={4} />;
   if (query.isError) return <ErrorState onRetry={() => void query.refetch()} />;
   if (!query.data || !discovery) return <EmptyState title={`No institutional discovery data for ${symbol}`} detail="The discovery stage remains unavailable until the required reported-holder inputs are complete." />;
+  if (!discovery.signals.context?.eligible) {
+    return <EmptyState title={`Institutional discovery data for ${symbol} is incomplete`} detail="Required institutional inputs are incomplete or unavailable. A discovery stage and evidence score are unavailable rather than shown as zero." onRetry={() => void query.refetch()} />;
+  }
 
   return (
     <div className="space-y-5" data-testid="institutional-discovery-view">
@@ -953,15 +977,15 @@ function MultibaggerView({ symbol }: { symbol: string }) {
     <div className="space-y-5" data-testid="multibagger-view">
       <div><h2 className="text-xl font-semibold">Multibagger Discovery · {symbol}</h2><p className="mt-1 text-sm text-muted-foreground">Versioned candidate/profile research using deterministic component evidence. This screen does not express certainty, expected outcomes, or investment advice.</p></div>
       <div className="grid gap-3 sm:grid-cols-3">
-         <Metric label="Overall evidence score" value={formatInstitutionalScore(result.overall.score)} detail={`${result.overall.availability} · ${result.overall.confidence} confidence`} valueClass={scoreColor(result.overall.score)} />
-        <Metric label="Available dimensions" value={`${result.availableDimensionCount} / ${result.availableDimensionCount + result.unavailableDimensionCount}`} detail={`Model ${result.modelVersion}`} />
+         <Metric label="Overall evidence score" value={formatAvailableScore(result.overall.score, result.overall.availability)} detail={`${result.overall.availability} · ${result.overall.confidence} confidence`} valueClass={scoreColor(result.overall.score)} />
+        <Metric label="Available dimensions" value={result.availableDimensionCount === 0 ? "Unavailable" : `${result.availableDimensionCount} / ${result.availableDimensionCount + result.unavailableDimensionCount}`} detail={`Model ${result.modelVersion}`} />
          <Metric label="Institutional stage" value={result.institutionalDiscovery.stage?.replaceAll("_", " ") ?? "Unavailable"} detail={result.institutionalDiscovery.score == null ? "Institutional input unavailable" : `Institutional score ${formatInstitutionalScore(result.institutionalDiscovery.score)}`} valueClass="text-base" />
       </div>
       <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Profile screens</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
          {profileEntries.map(([key, profile]) => <div key={key} className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{key.replace("X", "x")} profile</p><p className={cn("mt-1 text-2xl font-semibold", scoreColor(profile.score))}>{formatInstitutionalScore(profile.score)}</p><p className="mt-1 text-xs capitalize text-muted-foreground">{profile.classification.replaceAll("_", " ").toLowerCase()}</p><p className="mt-2 text-xs text-muted-foreground">{profile.limitingFactors.length > 0 ? profile.limitingFactors[0].explanation : "No limiting factor recorded."}</p></div>)}
       </div></CardContent></Card>
       <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Component scores and data availability</CardTitle></CardHeader><CardContent><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-         {Object.entries(result.dimensions).map(([key, dimension]) => <div key={key} className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="capitalize text-sm">{key}</span><span className={cn("font-semibold tabular-nums", scoreColor(dimension.score))}>{formatInstitutionalScore(dimension.score)}</span><Badge variant="outline" className="ml-2 text-[10px]">{dimension.availability}</Badge></div>)}
+         {Object.entries(result.dimensions).map(([key, dimension]) => <div key={key} className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="capitalize text-sm">{key}</span><span className={cn("font-semibold tabular-nums", scoreColor(dimension.score))}>{formatAvailableScore(dimension.score, dimension.availability)}</span><Badge variant="outline" className="ml-2 text-[10px]">{dimension.availability}</Badge></div>)}
       </div></CardContent></Card>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Supporting factors</CardTitle></CardHeader><CardContent className="space-y-2">{Object.entries(result.dimensions).flatMap(([key, dimension]) => dimension.evidence.filter((e) => e.available).slice(0, 2).map((e) => <div key={`${key}-${e.label}`} className="text-xs"><span className="font-medium capitalize">{key} · {e.label}</span><p className="text-muted-foreground">{e.explanation}</p></div>))}</CardContent></Card>

@@ -68,6 +68,18 @@ describe("Institutional Intelligence hub", () => {
     expect(pageSource).toContain('data.availability.replaceAll("_", " ")');
     expect(pageSource).toContain("legacyQuery.data?.summary");
     expect(pageSource).toContain("<TabsContent");
+    expect(pageSource).toContain("hasCompleteDataQuality");
+    expect(pageSource).toContain(
+      "activity counts and values are unavailable rather than shown as zero.",
+    );
+    expect(pageSource).toContain(
+      "classification counts and values are unavailable rather than shown as zero.",
+    );
+    expect(pageSource).toContain(
+      "A discovery stage and evidence score are unavailable rather than shown as zero.",
+    );
+    expect(pageSource).toContain("formatAvailableScore");
+    expect(pageSource).toContain('result.availableDimensionCount === 0 ? "Unavailable"');
     expect(symbolQueryOpensStock("AAPL")).toBe(true);
   });
 

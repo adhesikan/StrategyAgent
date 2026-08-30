@@ -51,15 +51,15 @@ const theme: InstitutionalThemeMembership = {
 };
 
 describe("institutional security enrichment", () => {
-  it("gives a human-reviewed security master mapping priority", () => {
+  it("does not let a reviewed master override conflicting trusted evidence", () => {
     expect(resolveReliableSecurityMapping([
       { source: "security_master", symbol: "NVDA", status: "reviewed" },
       { source: "institutional_mapping", symbol: "OTHER", status: "exact" },
       { source: "holding", symbol: "OTHER", status: "exact" },
     ])).toEqual({
-      status: "reliably_mapped",
-      symbol: "NVDA",
-      reason: null,
+      status: "ambiguous",
+      symbol: null,
+      reason: "ambiguous",
     });
   });
 

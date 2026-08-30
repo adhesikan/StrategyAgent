@@ -29,6 +29,7 @@ import {
   institutionalQuarterlyAggregates,
   institutionalIngestionRuns,
   institutionalSecurityMappings,
+  securityMaster,
 } from "@shared/schema";
 import type {
   InsertInstitutional13fFiling,
@@ -52,10 +53,13 @@ import {
 } from "./sec-13f-bulk-parser";
 import type { ParsedBulkHolding } from "./sec-13f-bulk-parser";
 import type { DatasetDescriptor } from "./sec-dataset-catalog";
-import { resolveMappingsBatch, applyMappingsToHoldings, getMappedSymbols } from "./mapping-service";
+import { applyMappingsToHoldings, upsertMapping } from "./mapping-service";
 import { computeQuarterlyAggregate, derivePeriodLabel, type AggregationInput } from "./aggregation-engine";
 import { classifyTrend } from "./trend-classifier";
 import { computeEvidenceAlignment } from "./evidence-alignment";
+import { resolveInstitutionalSecurity } from "./security-resolver";
+import { rebuildInstitutionalSignalForSymbol } from "./signal-engine";
+import { runIntelligencePrecomputation } from "../intelligence-orchestrator";
 
 // ---------------------------------------------------------------------------
 // Structured logging (safe: no credentials, no full payloads, no user data)
@@ -288,6 +292,70 @@ async function updateEffectivenessForFiler(
 // Aggregate recomputation for a symbol after ingestion
 // ---------------------------------------------------------------------------
 
+type AggregateHoldingEvidence = {
+  cusip: string;
+  mappedSymbol: string | null;
+  mappingStatus: string | null;
+  mappingSymbol: string | null;
+  mappingMappingStatus: string | null;
+  masterTicker: string | null;
+  masterReviewStatus: string | null;
+};
+
+/** The aggregate cache may only contain holdings still trusted for its symbol. */
+export function trustedAggregateHoldingsForSymbol<T extends AggregateHoldingEvidence>(
+  holdings: T[],
+  symbol: string,
+): T[] {
+  const target = symbol.trim().toUpperCase();
+  return holdings.filter((holding) => {
+    const resolution = resolveInstitutionalSecurity([
+      { source: "security_master", symbol: holding.masterTicker, status: holding.masterReviewStatus, cusip: holding.cusip },
+      { source: "institutional_mapping", symbol: holding.mappingSymbol, status: holding.mappingMappingStatus, cusip: holding.cusip },
+      { source: "holding", symbol: holding.mappedSymbol, status: holding.mappingStatus, cusip: holding.cusip },
+    ]);
+    return resolution.outcome === "RESOLVED_TRUSTED" && resolution.symbol === target;
+  });
+}
+
+export function evaluateAggregateCandidatePopulation<
+  T extends AggregateHoldingEvidence & {
+    putCall: string | null;
+    sharesPrnType: string | null;
+    reportedShares: number | null;
+  },
+>(
+  holdings: T[],
+  symbol: string,
+): { trusted: T[]; hasDisqualifyingEvidence: boolean } {
+  const target = symbol.trim().toUpperCase();
+  const eligible = holdings.filter(
+    (holding) =>
+      holding.putCall == null &&
+      holding.sharesPrnType?.trim().toUpperCase() !== "PRN" &&
+      holding.reportedShares != null &&
+      holding.reportedShares > 0,
+  );
+  const trusted: T[] = [];
+  let hasDisqualifyingEvidence = false;
+  for (const holding of eligible) {
+    const resolution = resolveInstitutionalSecurity([
+      { source: "security_master", symbol: holding.masterTicker, status: holding.masterReviewStatus, cusip: holding.cusip },
+      { source: "institutional_mapping", symbol: holding.mappingSymbol, status: holding.mappingMappingStatus, cusip: holding.cusip },
+      { source: "holding", symbol: holding.mappedSymbol, status: holding.mappingStatus, cusip: holding.cusip },
+    ]);
+    if (
+      resolution.outcome === "RESOLVED_TRUSTED" &&
+      resolution.symbol === target
+    ) {
+      trusted.push(holding);
+    } else {
+      hasDisqualifyingEvidence = true;
+    }
+  }
+  return { trusted, hasDisqualifyingEvidence };
+}
+
 export async function recomputeAggregateForSymbol(
   symbol: string,
   periodOfReport: string,
@@ -306,6 +374,12 @@ export async function recomputeAggregateForSymbol(
       periodOfReport: institutional13fHoldings.periodOfReport,
       filingDate: institutional13fHoldings.filingDate,
       accessionNumber: institutional13fHoldings.accessionNumber,
+      cusip: institutional13fHoldings.cusip,
+      mappedSymbol: institutional13fHoldings.mappedSymbol,
+      mappingSymbol: institutionalSecurityMappings.mappedSymbol,
+      mappingMappingStatus: institutionalSecurityMappings.mappingStatus,
+      masterTicker: securityMaster.ticker,
+      masterReviewStatus: securityMaster.reviewStatus,
     })
     .from(institutional13fHoldings)
     // Join to only include holdings from effective filings
@@ -316,9 +390,15 @@ export async function recomputeAggregateForSymbol(
         eq(institutional13fFilings.isEffective, true),
       ),
     )
+    .leftJoin(securityMaster, eq(securityMaster.cusip, institutional13fHoldings.cusip))
+    .leftJoin(institutionalSecurityMappings, eq(institutionalSecurityMappings.cusip, institutional13fHoldings.cusip))
     .where(
       and(
-        eq(institutional13fHoldings.mappedSymbol, symbol),
+        or(
+          sql`UPPER(${securityMaster.ticker}) = ${symbol.trim().toUpperCase()}`,
+          sql`UPPER(${institutionalSecurityMappings.mappedSymbol}) = ${symbol.trim().toUpperCase()}`,
+          sql`UPPER(${institutional13fHoldings.mappedSymbol}) = ${symbol.trim().toUpperCase()}`,
+        ),
         eq(institutional13fHoldings.periodOfReport, periodOfReport),
       ),
     );
@@ -337,6 +417,12 @@ export async function recomputeAggregateForSymbol(
           periodOfReport: institutional13fHoldings.periodOfReport,
           filingDate: institutional13fHoldings.filingDate,
           accessionNumber: institutional13fHoldings.accessionNumber,
+           cusip: institutional13fHoldings.cusip,
+           mappedSymbol: institutional13fHoldings.mappedSymbol,
+           mappingSymbol: institutionalSecurityMappings.mappedSymbol,
+           mappingMappingStatus: institutionalSecurityMappings.mappingStatus,
+           masterTicker: securityMaster.ticker,
+           masterReviewStatus: securityMaster.reviewStatus,
         })
         .from(institutional13fHoldings)
         .innerJoin(
@@ -346,9 +432,15 @@ export async function recomputeAggregateForSymbol(
             eq(institutional13fFilings.isEffective, true),
           ),
         )
+         .leftJoin(securityMaster, eq(securityMaster.cusip, institutional13fHoldings.cusip))
+         .leftJoin(institutionalSecurityMappings, eq(institutionalSecurityMappings.cusip, institutional13fHoldings.cusip))
         .where(
           and(
-            eq(institutional13fHoldings.mappedSymbol, symbol),
+            or(
+              sql`UPPER(${securityMaster.ticker}) = ${symbol.trim().toUpperCase()}`,
+              sql`UPPER(${institutionalSecurityMappings.mappedSymbol}) = ${symbol.trim().toUpperCase()}`,
+              sql`UPPER(${institutional13fHoldings.mappedSymbol}) = ${symbol.trim().toUpperCase()}`,
+            ),
             eq(institutional13fHoldings.periodOfReport, prevPeriodOfReport),
           ),
         )
@@ -366,11 +458,26 @@ export async function recomputeAggregateForSymbol(
     )
     .limit(1);
 
+  const currentPopulation = evaluateAggregateCandidatePopulation(currentHoldings, symbol);
+  const previousPopulation = evaluateAggregateCandidatePopulation(previousHoldings, symbol);
+  if (
+    currentPopulation.trusted.length === 0 ||
+    currentPopulation.hasDisqualifyingEvidence ||
+    previousPopulation.hasDisqualifyingEvidence
+  ) {
+    await db.delete(institutionalQuarterlyAggregates).where(
+      and(
+        eq(institutionalQuarterlyAggregates.symbol, symbol),
+        eq(institutionalQuarterlyAggregates.periodOfReport, periodOfReport),
+      ),
+    );
+    return;
+  }
   const input: AggregationInput = {
     symbol,
     periodOfReport,
-    currentHoldings: currentHoldings as any,
-    previousHoldings: previousHoldings as any,
+    currentHoldings: currentPopulation.trusted as any,
+    previousHoldings: previousPopulation.trusted as any,
     prevPeriodOfReport,
     hasAmendments: amendmentRows.length > 0,
     hasPendingAmendments: false,
@@ -473,6 +580,228 @@ export interface InstitutionalAggregateRebuildResult {
   durationMs: number;
 }
 
+export interface InstitutionalSecurityReconciliationResult {
+  affected: Array<{ symbol: string; periodOfReport: string }>;
+  unresolvedCusips: string[];
+  promotedCusips: string[];
+}
+
+export interface InstitutionalMaterializationDependencies {
+  recomputeAggregate: typeof recomputeAggregateForSymbol;
+  rebuildSignal: typeof rebuildInstitutionalSignalForSymbol;
+  refreshSnapshots: typeof runIntelligencePrecomputation;
+}
+
+export interface InstitutionalMaterializationResult {
+  symbols: string[];
+  failedTargets: Array<{
+    symbol: string;
+    periodOfReport: string;
+    error: string;
+  }>;
+}
+
+export class InstitutionalMaterializationError extends Error {
+  constructor(
+    public readonly failedTargets: InstitutionalMaterializationResult["failedTargets"],
+  ) {
+    super(`Institutional aggregate materialization failed for ${failedTargets.length} target(s)`);
+    this.name = "InstitutionalMaterializationError";
+  }
+}
+
+export async function materializeAffectedInstitutionalTargets(
+  targets: Array<{ symbol: string; periodOfReport: string }>,
+  options: {
+    signal?: AbortSignal;
+    dependencies?: Partial<InstitutionalMaterializationDependencies>;
+    onAggregateError?: (target: { symbol: string; periodOfReport: string }, error: unknown) => void;
+  } = {},
+): Promise<InstitutionalMaterializationResult> {
+  const dependencies: InstitutionalMaterializationDependencies = {
+    recomputeAggregate: recomputeAggregateForSymbol,
+    rebuildSignal: rebuildInstitutionalSignalForSymbol,
+    refreshSnapshots: runIntelligencePrecomputation,
+    ...options.dependencies,
+  };
+  const uniqueTargets = Array.from(
+    new Map(
+      targets.map((target) => [
+        `${target.symbol}:${target.periodOfReport}`,
+        target,
+      ]),
+    ).values(),
+  );
+  const symbols = Array.from(
+    new Set(uniqueTargets.map((target) => target.symbol)),
+  );
+  const failedTargets: InstitutionalMaterializationResult["failedTargets"] = [];
+  for (const target of uniqueTargets) {
+    if (options.signal?.aborted) break;
+    try {
+      await dependencies.recomputeAggregate(
+        target.symbol,
+        target.periodOfReport,
+        previousCalendarQuarterEnd(target.periodOfReport),
+      );
+    } catch (error) {
+      options.onAggregateError?.(target, error);
+      failedTargets.push({
+        ...target,
+        error: String((error as any)?.message ?? error).slice(0, 200),
+      });
+    }
+  }
+  if (failedTargets.length > 0) {
+    // Snapshot precomputation is global. Do not rebuild any signal or snapshot
+    // from a scope containing an aggregate target that failed to materialize.
+    throw new InstitutionalMaterializationError(failedTargets);
+  }
+  if (options.signal?.aborted) return { symbols, failedTargets };
+  for (const symbol of symbols) {
+    await dependencies.rebuildSignal(symbol);
+  }
+  if (symbols.length > 0) {
+    await dependencies.refreshSnapshots({ persist: true });
+  }
+  return { symbols, failedTargets };
+}
+
+/**
+ * Resolve the complete effective common-equity candidate population. This is
+ * both discovery and promotion: a reviewed security-master-only identity can
+ * schedule materialization without first appearing in mapped holdings.
+ */
+export async function reconcileEffectiveInstitutionalSecurities(
+  periodOfReports?: string[],
+): Promise<InstitutionalSecurityReconciliationResult> {
+  const conditions = [
+    eq(institutional13fFilings.isEffective, true),
+    sql`${institutional13fHoldings.putCall} IS NULL`,
+    sql`COALESCE(UPPER(${institutional13fHoldings.sharesPrnType}), 'SH') <> 'PRN'`,
+    gt(institutional13fHoldings.reportedShares, 0),
+  ];
+  if (periodOfReports && periodOfReports.length > 0) {
+    conditions.push(inArray(institutional13fHoldings.periodOfReport, periodOfReports));
+  }
+  const rows = await db
+    .select({
+      id: institutional13fHoldings.id,
+      cusip: institutional13fHoldings.cusip,
+      periodOfReport: institutional13fHoldings.periodOfReport,
+      holdingSymbol: institutional13fHoldings.mappedSymbol,
+      holdingStatus: institutional13fHoldings.mappingStatus,
+      mappingSymbol: institutionalSecurityMappings.mappedSymbol,
+      mappingStatus: institutionalSecurityMappings.mappingStatus,
+      masterTicker: securityMaster.ticker,
+      masterStatus: securityMaster.reviewStatus,
+    })
+    .from(institutional13fHoldings)
+    .innerJoin(
+      institutional13fFilings,
+      and(
+        eq(institutional13fFilings.accessionNumber, institutional13fHoldings.accessionNumber),
+        eq(institutional13fFilings.isEffective, true),
+      ),
+    )
+    .leftJoin(securityMaster, eq(securityMaster.cusip, institutional13fHoldings.cusip))
+    .leftJoin(
+      institutionalSecurityMappings,
+      eq(institutionalSecurityMappings.cusip, institutional13fHoldings.cusip),
+    )
+    .where(and(...conditions));
+
+  const byCusip = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const group = byCusip.get(row.cusip) ?? [];
+    group.push(row);
+    byCusip.set(row.cusip, group);
+  }
+  const affected = new Map<string, { symbol: string; periodOfReport: string }>();
+  const unresolvedCusips: string[] = [];
+  const promotedCusips: string[] = [];
+  for (const [cusip, candidates] of Array.from(byCusip.entries())) {
+    const resolution = resolveInstitutionalSecurity(candidates.flatMap((row) => [
+      { source: `security_master:${cusip}`, symbol: row.masterTicker, status: row.masterStatus, cusip },
+      { source: `institutional_mapping:${cusip}`, symbol: row.mappingSymbol, status: row.mappingStatus, cusip },
+      { source: `holding:${row.id}`, symbol: row.holdingSymbol, status: row.holdingStatus, cusip },
+    ]));
+    if (resolution.outcome !== "RESOLVED_TRUSTED" || !resolution.symbol) {
+      unresolvedCusips.push(cusip);
+      const unresolvedStatus =
+        resolution.outcome === "AMBIGUOUS" || resolution.outcome === "CONFLICTING"
+          ? "ambiguous"
+          : "unmapped";
+      const unresolvedIds = Array.from(new Set(candidates.map((row) => row.id)));
+      for (let index = 0; index < unresolvedIds.length; index += 500) {
+        await db
+          .update(institutional13fHoldings)
+          .set({ mappedSymbol: null, mappingStatus: unresolvedStatus })
+          .where(
+            inArray(
+              institutional13fHoldings.id,
+              unresolvedIds.slice(index, index + 500),
+            ),
+          );
+      }
+      // Schedule fail-closed cleanup of any previously materialized symbol
+      // named by this unresolved candidate population.
+      for (const row of candidates) {
+        for (const candidateSymbol of [
+          row.masterTicker,
+          row.mappingSymbol,
+          row.holdingSymbol,
+        ]) {
+          const normalized = candidateSymbol?.trim().toUpperCase();
+          if (normalized) {
+            affected.set(`${normalized}:${row.periodOfReport}`, {
+              symbol: normalized,
+              periodOfReport: String(row.periodOfReport),
+            });
+          }
+        }
+      }
+      continue;
+    }
+    const symbol = resolution.symbol;
+    const sourceStatus: "reviewed" | "exact" = resolution.evidence.some(
+      (evidence) => evidence.status?.trim().toLowerCase() === "reviewed",
+    ) ? "reviewed" : "exact";
+    const sourceMethod: "reviewed" | "cusip_exact" = resolution.evidence.some(
+      (evidence) => evidence.source.startsWith("security_master:"),
+    ) ? "reviewed" : "cusip_exact";
+    await upsertMapping({
+      cusip,
+      mappedSymbol: symbol,
+      mappingStatus: sourceStatus,
+      mappingMethod: sourceMethod,
+      notes: "Deterministically reconciled from trusted institutional identity evidence",
+    });
+    const ids = Array.from(new Set(candidates.map((row) => row.id)));
+    for (let index = 0; index < ids.length; index += 500) {
+      await db
+        .update(institutional13fHoldings)
+        .set({ mappedSymbol: symbol, mappingStatus: sourceStatus })
+        .where(inArray(institutional13fHoldings.id, ids.slice(index, index + 500)));
+    }
+    promotedCusips.push(cusip);
+    for (const row of candidates) {
+      affected.set(`${symbol}:${row.periodOfReport}`, {
+        symbol,
+        periodOfReport: String(row.periodOfReport),
+      });
+    }
+  }
+  return {
+    affected: Array.from(affected.values()).sort(
+      (a, b) => a.symbol.localeCompare(b.symbol) ||
+        a.periodOfReport.localeCompare(b.periodOfReport),
+    ),
+    unresolvedCusips: unresolvedCusips.sort(),
+    promotedCusips: promotedCusips.sort(),
+  };
+}
+
 export function previousCalendarQuarterEnd(periodOfReport: string): string | null {
   const match = /^(\d{4})-(03-31|06-30|09-30|12-31)$/.exec(periodOfReport);
   if (!match) return null;
@@ -495,6 +824,7 @@ export async function rebuildInstitutionalAggregates(opts: {
   symbols?: string[];
 } = {}): Promise<InstitutionalAggregateRebuildResult> {
   const startedAt = Date.now();
+  await reconcileEffectiveInstitutionalSecurities();
   let symbols = Array.from(
     new Set((opts.symbols ?? []).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)),
   ).sort();
@@ -566,6 +896,31 @@ export async function rebuildInstitutionalAggregates(opts: {
           });
         }
       }
+    }
+  }
+  for (const symbol of symbols) {
+    try {
+      await rebuildInstitutionalSignalForSymbol(symbol);
+    } catch (error: any) {
+      failed++;
+      if (failures.length < 100) {
+        failures.push({
+          symbol,
+          periodOfReport: "signal",
+          error: String(error?.message ?? error).slice(0, 200),
+        });
+      }
+    }
+  }
+  if (symbols.length > 0) {
+    try {
+      await runIntelligencePrecomputation({ persist: true });
+    } catch (error: any) {
+      failures.push({
+        symbol: "sector/theme",
+        periodOfReport: "snapshot",
+        error: String(error?.message ?? error).slice(0, 200),
+      });
     }
   }
 
@@ -1002,21 +1357,41 @@ async function ingestQuarter(
     };
   }
 
-  // Persistence complete — recompute aggregates for all mapped symbols
+  // Persistence complete — reconcile every effective eligible CUSIP before
+  // discovering materialization targets (including security-master-only ones).
   log("institutional_13f_aggregation_started", { quarter });
-  const mappedSymbols = await getMappedSymbols();
-  for (const symbol of mappedSymbols) {
-    if (signal.aborted) break;
-    try {
-      await recomputeAggregateForSymbol(symbol, periodEnd, null);
-    } catch (err: any) {
-      log("institutional_aggregate_error", { symbol, errorCode: err.name ?? "ERROR" });
-    }
+  const previousPeriod = previousCalendarQuarterEnd(periodEnd);
+  const reconciliation = await reconcileEffectiveInstitutionalSecurities(
+    previousPeriod ? [periodEnd, previousPeriod] : [periodEnd],
+  );
+  let affectedSymbols: string[] = [];
+  try {
+    const materialization = await materializeAffectedInstitutionalTargets(
+      reconciliation.affected,
+      {
+        signal,
+        onAggregateError: (target, err: any) => {
+          log("institutional_aggregate_error", {
+            symbol: target.symbol,
+            errorCode: err?.name ?? "ERROR",
+          });
+        },
+      },
+    );
+    affectedSymbols = materialization.symbols;
+  } catch (error: any) {
+    log("institutional_materialization_error", {
+      errorCode: error?.name ?? "ERROR",
+      failedTargetCount: error instanceof InstitutionalMaterializationError
+        ? error.failedTargets.length
+        : undefined,
+    });
+    throw error;
   }
 
   log("institutional_13f_aggregation_completed", {
     quarter,
-    symbolCount: mappedSymbols.length,
+    symbolCount: affectedSymbols.length,
   });
 
   const finalStatus = parseResult.status === "partial_success" ? "partial" : "completed";
@@ -1430,19 +1805,42 @@ async function ingestFromDescriptor(
 
   // Persistence complete — recompute aggregates for all mapped symbols
   log("institutional_13f_aggregation_started", { quarter, fileName: descriptor.fileName });
-  const mappedSymbols = await getMappedSymbols();
-  for (const symbol of mappedSymbols) {
-    if (signal.aborted) break;
-    try {
-      await recomputeAggregateForSymbol(symbol, descriptor.expectedPeriodOfReport, null);
-    } catch (err: any) {
-      log("institutional_aggregate_error", { symbol, errorCode: err.name ?? "ERROR" });
-    }
+  const previousPeriod = previousCalendarQuarterEnd(
+    descriptor.expectedPeriodOfReport,
+  );
+  const reconciliation = await reconcileEffectiveInstitutionalSecurities(
+    previousPeriod
+      ? [descriptor.expectedPeriodOfReport, previousPeriod]
+      : [descriptor.expectedPeriodOfReport],
+  );
+  let affectedSymbols: string[] = [];
+  try {
+    const materialization = await materializeAffectedInstitutionalTargets(
+      reconciliation.affected,
+      {
+        signal,
+        onAggregateError: (target, err: any) => {
+          log("institutional_aggregate_error", {
+            symbol: target.symbol,
+            errorCode: err?.name ?? "ERROR",
+          });
+        },
+      },
+    );
+    affectedSymbols = materialization.symbols;
+  } catch (error: any) {
+    log("institutional_materialization_error", {
+      errorCode: error?.name ?? "ERROR",
+      failedTargetCount: error instanceof InstitutionalMaterializationError
+        ? error.failedTargets.length
+        : undefined,
+    });
+    throw error;
   }
 
   log("institutional_13f_aggregation_completed", {
     quarter,
-    symbolCount: mappedSymbols.length,
+    symbolCount: affectedSymbols.length,
   });
 
   const finalStatus = parseResult.status === "partial_success" ? "partial" : "completed";

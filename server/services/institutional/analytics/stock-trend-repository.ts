@@ -143,6 +143,83 @@ function holdingsForAccessions(
   return holdings.filter((holding) => accessions.has(holding.accessionNumber));
 }
 
+async function loadAllCanonicalCandidateHoldings(
+  symbol: string,
+  periodOfReports: string[],
+): Promise<EnrichedInstitutionalHolding[]> {
+  const effectiveRows = await db
+    .select({ accessionNumber: institutional13fFilings.accessionNumber })
+    .from(institutional13fFilings)
+    .where(
+      and(
+        eq(institutional13fFilings.isEffective, true),
+        inArray(institutional13fFilings.periodOfReport, periodOfReports),
+      ),
+    );
+  const effectiveAccessions = new Set(
+    effectiveRows.map((row) => row.accessionNumber),
+  );
+  if (effectiveAccessions.size === 0) return [];
+  const holdings: EnrichedInstitutionalHolding[] = [];
+  const pageSize = 5_000;
+  let offset = 0;
+  while (true) {
+    const page = await getEnrichedInstitutionalHoldings({
+      symbol,
+      accessionNumbers: Array.from(effectiveAccessions),
+      limit: pageSize,
+      offset,
+    });
+    holdings.push(
+      ...filterCanonicalCandidatePopulation(page, effectiveAccessions),
+    );
+    if (page.length < pageSize) return holdings;
+    offset += page.length;
+  }
+}
+
+export function filterCanonicalCandidatePopulation(
+  holdings: EnrichedInstitutionalHolding[],
+  effectiveAccessions: ReadonlySet<string>,
+): EnrichedInstitutionalHolding[] {
+  return holdings.filter(
+    (holding) =>
+      effectiveAccessions.has(holding.accessionNumber) &&
+      holding.putCall == null &&
+      holding.sharesPrnType?.trim().toUpperCase() !== "PRN" &&
+      holding.reportedShares != null &&
+      holding.reportedShares > 0,
+  );
+}
+
+export function classifyCanonicalCandidatePeriods(
+  candidateHoldings: EnrichedInstitutionalHolding[],
+  symbol: string,
+): { trustedPeriods: Set<string>; disqualifiedPeriods: Set<string> } {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const disqualifiedPeriods = new Set(
+    candidateHoldings
+      .filter(
+        (holding) =>
+          holding.mappingResolution !== "reliably_mapped" ||
+          holding.metadata?.symbol.trim().toUpperCase() !== normalizedSymbol,
+      )
+      .map((holding) => holding.periodOfReport),
+  );
+  return {
+    disqualifiedPeriods,
+    trustedPeriods: new Set(
+      candidateHoldings
+        .filter(
+          (holding) =>
+            holding.mappingResolution === "reliably_mapped" &&
+            holding.metadata?.symbol.trim().toUpperCase() === normalizedSymbol,
+        )
+        .map((holding) => holding.periodOfReport),
+    ),
+  };
+}
+
 export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepository =
   {
     async getStockInstitutionalTrendSource(
@@ -183,12 +260,41 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
         ) {
           return null;
         }
+        // Canonical aggregate rows are never identity proof. Revalidate the
+        // underlying holdings through the shared enrichment resolver before a
+        // cached numeric series can be returned.
+        const evidencePeriods = Array.from(new Set([
+          ...rows.map((row) => dateText(row.periodOfReport)),
+          ...rows
+            .map((row) => row.prevPeriodOfReport ? dateText(row.prevPeriodOfReport) : null)
+            .filter((period): period is string => period !== null),
+        ]));
+        const candidateHoldings = await loadAllCanonicalCandidateHoldings(
+          query.symbol,
+          evidencePeriods,
+        );
+        const { trustedPeriods, disqualifiedPeriods } =
+          classifyCanonicalCandidatePeriods(candidateHoldings, query.symbol);
+        const trustedRows = rows.filter((row) => {
+          const period = dateText(row.periodOfReport);
+          const previous = row.prevPeriodOfReport
+            ? dateText(row.prevPeriodOfReport)
+            : null;
+          return !disqualifiedPeriods.has(period) &&
+            trustedPeriods.has(period) &&
+            (previous === null ||
+              (!disqualifiedPeriods.has(previous) && trustedPeriods.has(previous)));
+        });
+        if (
+          trustedRows.length === 0 ||
+          (selectedPeriod && dateText(trustedRows[0].periodOfReport) !== selectedPeriod)
+        ) return null;
         const returnedPeriods = new Set(
-          rows.map((row) => dateText(row.periodOfReport)),
+          trustedRows.map((row) => dateText(row.periodOfReport)),
         );
         const missingPreviousPeriods = Array.from(
           new Set(
-            rows
+            trustedRows
               .map((row) =>
                 row.prevPeriodOfReport
                   ? dateText(row.prevPeriodOfReport)
@@ -221,7 +327,7 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
             row,
           ]),
         );
-        const quarters = rows
+        const quarters = trustedRows
           .map((row): StockInstitutionalTrendQuarterSource | null => {
             const previousPeriod = row.prevPeriodOfReport
               ? dateText(row.prevPeriodOfReport)

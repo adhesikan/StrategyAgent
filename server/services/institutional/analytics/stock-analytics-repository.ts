@@ -20,6 +20,7 @@ import {
 import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
+import { resolveInstitutionalSecurity } from "../security-resolver";
 import {
   filterByCohortManagerIds,
   getActiveManagerIdsForCohort,
@@ -138,6 +139,7 @@ export async function loadAllStockInstitutionalHoldings(
 interface StockCandidateIdentity {
   candidateCusips: string[];
   hasReliableSecurityIdentity: boolean;
+  hasDisqualifyingCandidateEvidence: boolean;
   hasTargetSpecificCandidateEvidence: boolean;
 }
 
@@ -185,28 +187,65 @@ export async function loadStockCandidateIdentity(
         ),
       ),
     );
-  const reliableStatuses = new Set(["exact", "reviewed"]);
   const matchesTarget = (value: string | null | undefined) =>
     value?.trim().toUpperCase() === normalizedSymbol;
+  const resolvedRows = evidenceRows.map((row) => ({
+    row,
+    resolution: resolveInstitutionalSecurity([
+      { source: "security_master", symbol: row.masterTicker, status: row.masterReviewStatus },
+      { source: "institutional_mapping", symbol: row.mappingSymbol, status: row.mappingStatus },
+      { source: "holding", symbol: row.holdingMappedSymbol, status: row.holdingMappingStatus },
+    ]),
+  }));
+  const trustedForTarget = resolvedRows.filter(
+    ({ resolution }) =>
+      resolution.outcome === "RESOLVED_TRUSTED" &&
+      matchesTarget(resolution.symbol),
+  );
+  const trustedCanonicalForTarget = canonicalRows.some((canonical) => {
+    if (canonical.reviewStatus !== "reviewed") return false;
+    const sameCusipEvidence = evidenceRows.filter(
+      (row) => row.cusip === canonical.cusip,
+    );
+    const resolution = resolveInstitutionalSecurity([
+      {
+        source: "security_master",
+        symbol: normalizedSymbol,
+        status: canonical.reviewStatus,
+        cusip: canonical.cusip,
+      },
+      ...sameCusipEvidence.flatMap((row) => [
+        { source: "institutional_mapping", symbol: row.mappingSymbol, status: row.mappingStatus, cusip: row.cusip },
+        { source: "holding", symbol: row.holdingMappedSymbol, status: row.holdingMappingStatus, cusip: row.cusip },
+      ]),
+    ]);
+    return resolution.outcome === "RESOLVED_TRUSTED" &&
+      matchesTarget(resolution.symbol);
+  });
+  const hasDisqualifyingCandidateEvidence = resolvedRows.some(
+    ({ resolution }) =>
+      resolution.outcome === "CONFLICTING" ||
+      resolution.outcome === "AMBIGUOUS" ||
+      (resolution.outcome === "RESOLVED_TRUSTED" &&
+        !matchesTarget(resolution.symbol)),
+  );
   return {
     candidateCusips: Array.from(
     new Set(
-      [...canonicalRows, ...evidenceRows]
+       [
+          ...canonicalRows,
+          // Candidate CUSIPs are diagnostic evidence, not trusted identity.
+          // Keep target-specific filing rows visible so unresolved/conflicting
+          // populations can be reported instead of disappearing as zero.
+          ...evidenceRows,
+       ]
         .map((row) => row.cusip)
         .filter((cusip): cusip is string => Boolean(cusip)),
     ),
     ).sort(),
     hasReliableSecurityIdentity:
-      canonicalRows.some((row) => row.reviewStatus === "reviewed") ||
-      evidenceRows.some(
-        (row) =>
-          (matchesTarget(row.masterTicker) &&
-            row.masterReviewStatus === "reviewed") ||
-          (matchesTarget(row.mappingSymbol) &&
-            reliableStatuses.has(row.mappingStatus ?? "")) ||
-          (matchesTarget(row.holdingMappedSymbol) &&
-            reliableStatuses.has(row.holdingMappingStatus ?? "")),
-      ),
+      trustedForTarget.length > 0 || trustedCanonicalForTarget,
+    hasDisqualifyingCandidateEvidence,
     hasTargetSpecificCandidateEvidence:
       canonicalRows.length > 0 || evidenceRows.length > 0,
   };
@@ -465,20 +504,10 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       canonicalAggregate,
     );
     if (!selected) {
-      return canonicalAggregate
-        ? {
-            symbol: query.symbol,
-            quarter: canonicalAggregate.quarter,
-            previousQuarter: canonicalAggregate.previousQuarter,
-            dataAsOf: canonicalAggregate.quarter.periodEndDate,
-            currentHoldings: [],
-            previousHoldings: [],
-            managerPortfolioValues: {},
-            currentFilingManagerIds: [],
-            comparableManagerIds: [],
-            canonicalAggregate,
-          }
-        : null;
+      // A persisted aggregate is only a cache. Without an aligned effective
+      // filing population there is no evidence set to revalidate, so fail
+      // closed rather than exposing cached numeric totals.
+      return null;
     }
 
     const currentAccessions = selected.currentFilings.map(
@@ -491,6 +520,15 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       [...currentAccessions, ...previousAccessions],
       query.symbol,
     );
+    // Persisted canonical aggregates are a cache, not identity evidence. Never
+    // expose one unless the underlying requested-symbol holdings still resolve
+    // through the shared deterministic boundary.
+    if (
+      !candidateIdentity.hasReliableSecurityIdentity ||
+      candidateIdentity.hasDisqualifyingCandidateEvidence
+    ) {
+      canonicalAggregate = null;
+    }
     const candidateCusips = candidateIdentity.candidateCusips;
     const [currentHoldings, previousHoldings, managerPortfolioValues] =
       await Promise.all([

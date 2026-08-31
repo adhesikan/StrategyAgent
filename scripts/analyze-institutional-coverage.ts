@@ -1,7 +1,8 @@
 #!/usr/bin/env tsx
 /** Generic, read-only institutional coverage analyzer.  It never applies a plan. */
-import { db } from "../server/db";
+import { db, pool } from "../server/db";
 import { sql } from "drizzle-orm";
+import { runCli } from "../server/cli-runtime";
 import {
   applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, categoryCoverageMetrics, classifyCusipEvidence, coverageTotals, rankCoverageRootCauses,
   securityTypeCoverageMetrics,
@@ -225,4 +226,11 @@ async function main() {
     categories: categoryMetrics, securityTypes: securityTypeMetrics, rootCauseRanking: rankCoverageRootCauses(categoryMetrics),
     materialization: plan.affected, plan }, null, 2));
 }
-if (!process.env.VITEST) main().catch(error => { console.error(`[institutional-coverage] ERROR: ${String(error.message ?? error).slice(0, 300)}`); process.exit(1); });
+if (!process.env.VITEST) {
+  void runCli(main, {
+    label: "institutional-coverage",
+    close: () => pool.end(),
+  }).then((exitCode) => {
+    process.exitCode = exitCode;
+  });
+}

@@ -107,3 +107,4 @@
 - [OpenFIGI reference boundary](openfigi-reference-boundary.md) — exact CUSIP enrichment is approved with modeled-metadata-only persistence; Task #189 remains the sole trust authority.
 - [Institutional enrichment selection](institutional-enrichment-selection.md) — prioritize never-processed/retryable CUSIPs; terminal unresolved outcomes require explicit refresh.
 - [Institutional security-type gate](institutional-security-type-gate.md) — stock analytics require persisted eligible classification; preserve fund/reference identity separately and fail closed for ambiguity.
+- [Institutional CLI lifecycle](institutional-cli-lifecycle.md) — one-shot commands must close the shared pool and set exitCode after output/error handling, never hard-exit.

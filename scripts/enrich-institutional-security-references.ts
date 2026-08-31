@@ -3,8 +3,9 @@
  * Population reference-enrichment operator. Default mode is read-only except
  * for OpenFIGI reads; it never prints credentials or provider response bodies.
  */
-import { db } from "../server/db";
+import { db, pool } from "../server/db";
 import { sql } from "drizzle-orm";
+import { runCli } from "../server/cli-runtime";
 import { OpenFigiClient } from "../server/services/institutional/openfigi-client";
 import { DrizzleInstitutionalSecurityReferenceRepository, persistSecurityReferenceResolution } from "../server/services/institutional/security-reference-repository";
 import {
@@ -275,4 +276,11 @@ async function main() {
   });
   console.log(JSON.stringify(result));
 }
-if (!process.env.VITEST) main().catch(error => { console.error(`[reference-enrichment] ERROR: ${String(error.message ?? error).slice(0, 200)}`); process.exit(1); });
+if (!process.env.VITEST) {
+  void runCli(main, {
+    label: "reference-enrichment",
+    close: () => pool.end(),
+  }).then((exitCode) => {
+    process.exitCode = exitCode;
+  });
+}

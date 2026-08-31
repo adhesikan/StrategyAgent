@@ -4,12 +4,13 @@ import { db, pool } from "../server/db";
 import { sql } from "drizzle-orm";
 import { runCli } from "../server/cli-runtime";
 import {
-  applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, categoryCoverageMetrics, classifyCusipEvidence, coverageTotals, rankCoverageRootCauses,
+  applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, categoryCoverageMetrics, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, rankCoverageRootCauses,
   securityTypeCoverageMetrics,
   type CoveragePlan,
 } from "../server/services/institutional/institutional-coverage-analyzer";
 import { classifyInstitutionalSecurityType } from "../server/services/institutional/security-type-eligibility";
 import { createCoveragePostgresAdapter } from "../server/services/institutional/institutional-coverage-postgres-adapter";
+import { canonicalSecurityTypeStateQuery, reconcileCanonicalStockEligibility } from "../server/services/institutional/canonical-security-state";
 import { recomputeAggregateForSymbol } from "../server/services/institutional/ingestion-service";
 import { rebuildInstitutionalSignalForSymbol } from "../server/services/institutional/signal-engine";
 import { runIntelligencePrecomputation } from "../server/services/intelligence-orchestrator";
@@ -50,7 +51,7 @@ all_history AS (
  SELECT cusip,MAX(asset_type) asset_type,
    JSONB_AGG(JSONB_BUILD_OBJECT('source','security_master','symbol',ticker,'status',review_status,'assetType',asset_type)) master_evidence
  FROM security_master GROUP BY cusip
-) SELECT a.*,l.latest_holding_rows,l.latest_null_value_rows,l.latest_reported_value_usd,m.mapping_evidence,s.master_evidence
+) SELECT a.*,l.latest_holding_rows,l.latest_null_value_rows,l.latest_reported_value_usd,m.mapping_evidence,s.asset_type,s.master_evidence
  FROM all_history a
  LEFT JOIN latest_history l USING(cusip)
  LEFT JOIN mapping_evidence m USING(cusip)
@@ -105,6 +106,7 @@ async function loadCoverage(executor: Executor) {
     diagnostics: rowsOf(await executor.execute(sql.raw(newestQuarterDiagnosticsQuery)))[0] ?? {},
     aggregateTargets: rowsOf(await executor.execute(sql.raw(aggregateTargetsQuery))),
     signalTargets: rowsOf(await executor.execute(sql.raw(signalTargetsQuery))),
+    canonicalState: rowsOf(await executor.execute(sql.raw(canonicalSecurityTypeStateQuery)))[0] ?? {},
   };
   const classifications = rows.evidence.map((r) => ({
     ...classifyCusipEvidence({
@@ -130,7 +132,14 @@ async function loadCoverage(executor: Executor) {
       theme_intelligence_snapshots: Number(rows.diagnostics.theme_snapshot_rows ?? 0),
     },
   });
-  return { rows, classifications, before, plan };
+  const canonicalReconciliation = reconcileCanonicalStockEligibility(
+    Number(rows.canonicalState.stock_eligible_cusips ?? 0),
+    countCanonicalStockEligibleInputs(classifications),
+  );
+  if (!canonicalReconciliation.reconciled) {
+    throw new Error(`CANONICAL_ELIGIBILITY_RECONCILIATION_FAILED:${JSON.stringify(canonicalReconciliation)}`);
+  }
+  return { rows, classifications, before, plan, canonicalReconciliation };
 }
 export async function loadInstitutionalCoveragePlan(executor: Executor): Promise<CoveragePlan> {
   return (await loadCoverage(executor)).plan;
@@ -154,7 +163,7 @@ async function main() {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
     return loadCoverage(tx as unknown as Executor);
   });
-  const { rows: data, classifications, before, plan } = rows;
+  const { rows: data, classifications, before, plan, canonicalReconciliation } = rows;
   const latestClassifications = data.evidence
     .filter((r) => Number(r.latest_holding_rows ?? 0) > 0)
      .map((r) => ({
@@ -198,6 +207,7 @@ async function main() {
     new Set(data.signalTargets.map(row => String(row.symbol))),
   );
   console.log(JSON.stringify({ funnel: data.diagnostics, allHistory: before, latestQuarter,
+    canonicalReconciliation,
     trustedIdentityCoverage: {
       note: "Potential identity coverage; distinct from currently materialized holding coverage.",
       cusips: before.reliablyMappedCusips, knownValueUsd: before.reliablyMappedValueUsd,

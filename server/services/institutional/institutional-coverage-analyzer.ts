@@ -188,6 +188,16 @@ export function securityTypeCoverageMetrics(
     }));
 }
 
+export function countCanonicalStockEligibleInputs(rows: readonly CusipClassification[]): number {
+  return new Set(rows
+    .filter((row) =>
+      row.category === "TRUSTED"
+      && row.projectedSymbol !== null
+      && row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS",
+    )
+    .map((row) => row.cusip)).size;
+}
+
 function percent(numerator: bigint, denominator: bigint): number | null {
   if (denominator === BigInt(0)) return null;
   return Number((numerator * BigInt(1_000_000)) / denominator) / 10_000;
@@ -342,7 +352,12 @@ export function classifyCusipEvidence(input: CusipEvidence): CusipClassification
     ...references.map((symbol) => ({ source: "institutional_mapping", symbol, status: "reviewed" })),
     ...(input.hasUnreliableReference ? [{ source: "institutional_mapping", symbol: null, status: "unsupported" }] : []),
   ];
-  const resolution = resolveInstitutionalSecurity(evidence);
+  // Rejected identity evidence is an owner-controlled block. The repository
+  // enforces this before persistence; the analyzer must apply the same
+  // fail-closed rule before projecting a symbol into downstream targets.
+  const resolution = evidence.some((item) => item.status?.trim().toLowerCase() === "rejected")
+    ? { outcome: "INSUFFICIENT_EVIDENCE" as const, symbol: null, evidence: [] }
+    : resolveInstitutionalSecurity(evidence);
   const category: CoverageCategory = ({
     RESOLVED_TRUSTED: "TRUSTED", AMBIGUOUS: "AMBIGUOUS", CONFLICTING: "CONFLICTING",
     UNSUPPORTED: "UNSUPPORTED", INSUFFICIENT_EVIDENCE: "INSUFFICIENT_NO_REFERENCE",

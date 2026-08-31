@@ -14,3 +14,9 @@ Trusted identity and asset-type completeness are separate: an exact/reviewed CUS
 **Why:** Identity evidence establishes what a CUSIP refers to; it does not by itself establish whether that instrument belongs in stock analytics. Combining the two gates either loses valid identity coverage or risks overwriting reviewed classification decisions.
 
 **How to apply:** Let the existing reference-enrichment planner select trusted rows only when their type is missing/stale, reuse current provider candidate observations before issuing a lookup, and keep unresolved/contradictory classifications out of stock analytics.
+
+The aggregate-only verifier and remediation analyzer must share the same effective-holding scope and canonical type source, and the analyzer must fail closed if their stock-eligible CUSIP counts differ.
+
+**Why:** Joining `security_master` without projecting its type silently converted fully typed trusted identities into insufficient evidence, suppressing all downstream aggregate and signal targets.
+
+**How to apply:** Reconcile canonical verifier counts against analyzer inputs before creating a plan; stale holding symbols never override a trusted CUSIP mapping, while rejected or conflicting evidence remains blocked.

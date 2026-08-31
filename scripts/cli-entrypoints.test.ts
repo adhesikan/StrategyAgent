@@ -17,4 +17,11 @@ describe("institutional CLI entrypoint lifecycle", () => {
       expect(source).not.toContain("process.exit(");
     });
   }
+
+  it("projects security_master.asset_type into analyzer classifications", () => {
+    const source = readFileSync("scripts/analyze-institutional-coverage.ts", "utf8");
+    expect(source).toContain("s.asset_type,s.master_evidence");
+    expect(source).toContain("canonicalSecurityTypeStateQuery");
+    expect(source).toContain("canonicalReconciliation");
+  });
 });

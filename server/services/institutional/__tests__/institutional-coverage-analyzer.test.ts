@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
+import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
+import { reconcileCanonicalStockEligibility } from "../canonical-security-state";
+import { classifyInstitutionalSecurityType } from "../security-type-eligibility";
 
 describe("institutional coverage analyzer", () => {
   const base = { cusip: "123456789", holdingRows: 2, reportedValueUsd: 100, latestQuarter: "2025-12-31" };
@@ -70,6 +72,166 @@ describe("institutional coverage analyzer", () => {
         signalTargets: 0,
       },
     ]);
+  });
+  it("uses canonical identity and type when a holding symbol is stale or null", () => {
+    const row = {
+      ...classifyCusipEvidence({
+        ...base,
+        cusip: "111111111",
+        holdingSymbols: [],
+        staleUnmappedHoldingRows: 1,
+        reliableReferenceSymbols: ["ABC"],
+        sourceEvidence: [
+          { source: "holding", symbol: null, status: "stale" },
+          { source: "institutional_mapping", symbol: "ABC", status: "exact" },
+          { source: "security_master", symbol: "ABC", status: "probable" },
+        ],
+        periods: ["2025-09-30", "2025-12-31"],
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    };
+    const plan = buildActionableCoveragePlan({
+      classifications: [row],
+      before: coverageTotals([row]),
+      existingAggregateTargets: new Set(),
+      existingSignalSymbols: new Set(),
+    });
+    expect(row.category).toBe("TRUSTED");
+    expect(row.projectedSymbol).toBe("ABC");
+    expect(plan.operations).toHaveLength(1);
+    expect(plan.operations?.[0]).toMatchObject({
+      cusip: "111111111",
+      symbol: "ABC",
+      mappingAction: "PROMOTE_TRUSTED_REFERENCE",
+      aggregateTargets: [
+        { symbol: "ABC", period: "2025-09-30" },
+        { symbol: "ABC", period: "2025-12-31" },
+      ],
+      signalTarget: { symbol: "ABC" },
+    });
+  });
+
+  it("keeps Task 196 stock, fund, unsupported, and unresolved populations separate", () => {
+    expect(classifyInstitutionalSecurityType({ assetType: "REIT" })).toMatchObject({
+      canonicalType: "reit",
+      analyticsPopulation: "ELIGIBLE_STOCK_ANALYTICS",
+    });
+    expect(classifyInstitutionalSecurityType({ assetType: "ETF" })).toMatchObject({
+      canonicalType: "etf",
+      analyticsPopulation: "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS",
+    });
+    expect(classifyInstitutionalSecurityType({ assetType: "ADR" })).toMatchObject({
+      canonicalType: "adr",
+      analyticsPopulation: "UNSUPPORTED_FOR_STOCK_ANALYTICS",
+    });
+    expect(classifyInstitutionalSecurityType({})).toMatchObject({
+      canonicalType: "insufficient_evidence",
+      analyticsPopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+    });
+  });
+
+  it("does not plan fund, unsupported, or unresolved rows for stock materialization", () => {
+    const makeTyped = (
+      cusip: string,
+      symbol: string,
+      canonicalSecurityType: "reit" | "etf" | "adr" | "insufficient_evidence",
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" | "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS" | "UNSUPPORTED_FOR_STOCK_ANALYTICS" | "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+    ) => ({
+      ...classifyCusipEvidence({
+        ...base, cusip, reliableReferenceSymbols: symbol === "" ? [] : [symbol],
+        sourceEvidence: symbol === "" ? [] : [{ source: "institutional_mapping", symbol, status: "exact" }],
+      }),
+      canonicalSecurityType,
+      securityTypePopulation,
+    });
+    const plan = buildActionableCoveragePlan({
+      classifications: [
+        makeTyped("111111111", "REIT", "reit", "ELIGIBLE_STOCK_ANALYTICS"),
+        makeTyped("222222222", "ETF", "etf", "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS"),
+        makeTyped("333333333", "ADR", "adr", "UNSUPPORTED_FOR_STOCK_ANALYTICS"),
+        makeTyped("444444444", "", "insufficient_evidence", "INSUFFICIENT_SECURITY_TYPE_EVIDENCE"),
+      ],
+      before: coverageTotals([]),
+    });
+    expect(plan.operations).toHaveLength(1);
+    expect(plan.operations?.[0].symbol).toBe("REIT");
+  });
+
+  it("fails closed for rejected identity evidence", () => {
+    const row = classifyCusipEvidence({
+      ...base,
+      reliableReferenceSymbols: ["ABC"],
+      sourceEvidence: [
+        { source: "institutional_mapping", symbol: "ABC", status: "exact" },
+        { source: "security_master", symbol: "ABC", status: "rejected" },
+      ],
+    });
+    expect(row.category).toBe("INSUFFICIENT_NO_REFERENCE");
+    expect(row.projectedSymbol).toBeNull();
+    expect(buildActionableCoveragePlan({
+      classifications: [{
+        ...row,
+        canonicalSecurityType: "common_stock",
+        securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS",
+      }],
+      before: coverageTotals([row]),
+    }).operations).toEqual([]);
+  });
+
+  it("deduplicates aggregate and signal targets when multiple CUSIPs map to one symbol", () => {
+    const rows = ["111111111", "222222222"].map((cusip) => ({
+      ...classifyCusipEvidence({
+        ...base, cusip, reliableReferenceSymbols: ["ABC"],
+        periods: ["2025-09-30", "2025-12-31"],
+        sourceEvidence: [{ source: "institutional_mapping", symbol: "ABC", status: "reviewed" }],
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    }));
+    const plan = buildActionableCoveragePlan({
+      classifications: rows,
+      before: coverageTotals(rows),
+    });
+    expect(plan.operations).toHaveLength(2);
+    expect(plan.affected.aggregates).toEqual([
+      "insert:ABC:2025-09-30",
+      "insert:ABC:2025-12-31",
+    ]);
+    expect(plan.affected.signals).toEqual(["insert:ABC"]);
+  });
+
+  it("reconciles canonical verifier and analyzer eligibility for the same population", () => {
+    const rows = [
+      {
+        ...classifyCusipEvidence({
+          ...base, cusip: "111111111",
+          sourceEvidence: [{ source: "institutional_mapping", symbol: "ABC", status: "exact" }],
+        }),
+        canonicalSecurityType: "common_stock" as const,
+        securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+      },
+      {
+        ...classifyCusipEvidence({
+          ...base, cusip: "222222222",
+          sourceEvidence: [{ source: "institutional_mapping", symbol: "REIT", status: "reviewed" }],
+        }),
+        canonicalSecurityType: "reit" as const,
+        securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+      },
+      {
+        ...classifyCusipEvidence({
+          ...base, cusip: "333333333",
+          sourceEvidence: [{ source: "institutional_mapping", symbol: "ETF", status: "exact" }],
+        }),
+        canonicalSecurityType: "etf" as const,
+        securityTypePopulation: "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS" as const,
+      },
+    ];
+    expect(reconcileCanonicalStockEligibility(
+      2,
+      countCanonicalStockEligibleInputs(rows),
+    )).toMatchObject({ difference: 0, reconciled: true });
   });
   it("hashes equivalent plans deterministically", () => {
     const one = classifyCusipEvidence(base); const input = { version: 1 as const, mode: "REMEDIATION_PLAN" as const, before: coverageTotals([one]), projected: coverageTotals([one]), classifications: [one], affected: { mappings: ["b", "a"], holdings: 0, quarters: [], aggregates: [], signals: [], snapshots: [] } };

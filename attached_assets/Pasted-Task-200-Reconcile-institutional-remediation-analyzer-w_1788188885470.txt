@@ -1,0 +1,232 @@
+Task #200 — Reconcile institutional remediation analyzer with canonical trusted security state
+
+DO NOT perform production writes.
+DO NOT run remediation APPLY.
+DO NOT run ingestion.
+DO NOT run migrations in production.
+DO NOT change feature flags.
+DO NOT create ticker/CUSIP-specific fixes.
+
+CURRENT VERIFIED PRODUCTION STATE
+
+The aggregate-only Task #199 verifier reports:
+
+trustedCusips: 3206
+assetTypePopulated: 3206
+assetTypeMissing: 0
+stockEligibleCusips: 1475
+separateFundCusips: 1687
+unsupportedOrInsufficientCusips: 44
+
+Therefore canonical production security identity/type state is populated.
+
+However, immediately afterward:
+
+npx tsx scripts/analyze-institutional-coverage.ts
+
+produced a remediation plan with:
+
+affected.mappings: []
+affected.holdings: 0
+affected.aggregates: []
+affected.signals: []
+affected.snapshots: []
+
+operations: []
+
+downstream.aggregates:
+  expected: 0
+  present: 0
+  missing: 0
+
+downstream.signals:
+  expected: 0
+  present: 0
+  missing: 0
+
+snapshots.refreshFamilies: []
+
+planHash:
+3031f98a18766d06f95e5d965ffc9c37c674132c3a60392b54a3eb7759debf27
+
+The same analyzer output still contains unresolved records with:
+
+security_master.assetType: null
+category: INSUFFICIENT_NO_REFERENCE
+resolverOutcome: INSUFFICIENT_EVIDENCE
+projectedSymbol: null
+securityTypePopulation: INSUFFICIENT_SECURITY_TYPE_EVIDENCE
+
+This is inconsistent with the canonical production verifier.
+
+OBJECTIVE
+
+Find and fix the systemic integration gap between:
+
+canonical trusted institutional security state
+        ↓
+Task #189 resolver/analyzer
+        ↓
+Task #196 security-type eligibility
+        ↓
+stock-eligible holding materialization
+        ↓
+quarterly aggregates
+        ↓
+signals/trends
+        ↓
+sector/theme snapshots
+        ↓
+StockMetrics APIs
+
+The analyzer must consume the same canonical trusted identity and
+security_master asset-type state that the production verifier sees.
+
+INVESTIGATE FIRST
+
+Compare the exact database joins/repositories/source-of-truth used by:
+
+1. verify-institutional-security-type-state.ts
+2. analyze-institutional-coverage.ts
+3. Task #189 resolver
+4. Task #196 classifier
+5. institutional mapping repository
+6. security_master repository
+7. effective-holding candidate loader
+8. aggregate/signal materialization planner
+
+Determine why the verifier sees:
+
+3206 trusted
+3206 typed
+1475 stock eligible
+
+while the analyzer derives zero eligible aggregate/signal targets.
+
+Specifically inspect for:
+
+- analyzer using stale/legacy mapping source
+- analyzer failing to join canonical security_master
+- asset_type read from a different relation/path
+- trusted mappings excluded by an incorrect status/source filter
+- resolver not consuming already-persisted trusted mappings
+- projected state ignoring current canonical mappings
+- security-type classifier receiving incomplete evidence
+- symbol identity lost between mapping and holding candidate stages
+- effective-holding query requiring stale holding.symbol instead of canonical mapping symbol
+- incorrect inner/left join behavior
+- current vs projected state mismatch
+- analyzer repository snapshot loaded before canonical enrichment state
+- sourceEvidence built from stale holding rows instead of canonical identity
+
+CANONICAL RULE
+
+Already-trusted canonical mappings must not need to be rediscovered.
+
+For an effective eligible holding:
+
+holding CUSIP
+→ trusted canonical institutional_security_mapping
+→ canonical symbol/security identity
+→ security_master.asset_type
+→ Task #196 eligibility
+→ stock aggregate candidate
+
+The stale/null symbol currently stored on a holding must not override a
+trusted canonical CUSIP mapping.
+
+Task #189 remains the identity trust authority.
+Task #196 remains the stock-analytics eligibility authority.
+
+Do not weaken either.
+
+FIX
+
+Make the smallest generic architectural correction so the analyzer and
+materialization planner use canonical trusted state consistently.
+
+Do not:
+- manually map tickers
+- create allowlists/blocklists
+- fuzzy-match names
+- infer stock eligibility from ticker existence
+- classify based only on positive shares
+- re-run OpenFIGI unnecessarily
+- duplicate the security resolver
+- create a second security master
+- change canonical USD semantics
+- mix options/PRN with common equity
+- mix fund analytics into stock analytics
+
+After the fix, the analyzer should reconcile its population against the
+same canonical counts used by the verifier.
+
+Add an explicit internal invariant/check:
+
+canonical verifier stock-eligible population
+versus
+analyzer canonical stock-eligible input population
+
+They should reconcile under the same effective-holding scope, with any
+legitimate scope difference explicitly quantified and explained.
+
+TESTS
+
+Add systemic tests proving:
+
+1. trusted CUSIP mapping + common_stock asset type + stale null holding symbol
+   still produces an eligible stock aggregate candidate.
+
+2. trusted CUSIP mapping + REIT type is stock eligible.
+
+3. trusted CUSIP mapping + ETF type remains excluded from stock analytics.
+
+4. trusted CUSIP mapping + ADR remains unsupported according to Task #196.
+
+5. unresolved CUSIP remains fail-closed.
+
+6. reviewed/rejected protections remain intact.
+
+7. multiple CUSIPs mapping to one symbol aggregate correctly.
+
+8. current and previous quarter use the same canonical identity/type gate.
+
+9. options/put/call/PRN/nonpositive shares remain excluded.
+
+10. analyzer dry-run remains zero-write.
+
+11. verifier and analyzer canonical eligibility counts reconcile for the
+    same fixture/population.
+
+12. downstream aggregate/signal planner receives eligible symbols after
+    canonical reconciliation.
+
+Run:
+- focused resolver/analyzer tests
+- Task #196 eligibility tests
+- Task #197/#198 enrichment tests
+- aggregate/signal tests
+- full institutional suite
+- smoke
+- regression
+- integration
+- security
+- production build
+- git diff --check
+
+RETURN
+
+ROOT CAUSE
+WHY VERIFIER AND ANALYZER DISAGREED
+CANONICAL SOURCE OF TRUTH
+FIX
+VERIFIER/ANALYZER RECONCILIATION
+DOWNSTREAM MATERIALIZATION EFFECT
+FAIL-CLOSED BEHAVIOR
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+EXACT NEXT PRODUCTION READ-ONLY COMMAND
+
+Do not execute production commands.
+Do not perform any production write.

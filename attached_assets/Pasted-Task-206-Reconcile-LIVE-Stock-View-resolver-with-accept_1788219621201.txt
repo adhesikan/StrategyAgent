@@ -1,0 +1,287 @@
+Task #206 — Reconcile LIVE Stock View resolver with accepted production canonical population
+
+STOP MAKING FIXES UNTIL THIS RECONCILIATION IS COMPLETE.
+
+PRODUCTION FACTS
+
+Institutional production remediation has already passed:
+
+canonicalStockEligibleCusips: 1466
+remediationStockEligibleCusips: 1466
+stockEligibilityReconciled: true
+
+aggregateExpected: 2994
+aggregatePresent: 2994
+aggregateMissing: 0
+
+signalExpected: 1465
+signalPresent: 1465
+signalMissing: 0
+
+mappingOperationsPending: 0
+holdingMappingOperationsPending: 0
+remediationOperationsPending: 0
+
+remediationComplete: true
+
+Yet after Task #205, the LIVE Stock View still reports for many normal
+stocks:
+
+"<SYMBOL> is not in the institutional security master"
+
+Confirmed examples include:
+
+JPM
+ORCL
+AVGO
+
+AAPL/NVDA/COST and approximately one other original repair symbol work.
+
+Task #205 changed asset-type enrichment for mapping-only identities,
+but that did NOT resolve the live behavior.
+
+OBJECTIVE
+
+Do NOT make another speculative fix.
+
+Build/run ONE population-wide READ-ONLY reconciliation that answers:
+
+Why does the accepted canonical/remediated production population contain
+1466 stock-eligible CUSIPs and 1465 signals while the LIVE Stock View
+resolver appears able to resolve only a tiny number of symbols?
+
+We need to reconcile the exact data population consumed by the live
+Stock View against the exact population accepted by the remediation
+analyzer.
+
+NO WRITES.
+NO APPLY.
+NO INGESTION.
+NO OPENFIGI.
+NO MANUAL TICKER REPAIRS.
+NO TICKER ALLOWLIST.
+NO NEW ARCHITECTURE.
+
+PART 1 — IDENTIFY EXACT LIVE RESOLVER
+
+Trace the actual production route:
+
+GET /api/v1/institutional/stocks/:symbol
+
+Identify:
+
+route
+handler
+service
+repository
+identity resolver
+security-master query
+mapping query
+eligibility query
+aggregate query
+signal query
+
+Document the exact SQL/data source used to decide:
+
+"<symbol> is not in the institutional security master"
+
+Identify the exact branch that emits this state/message.
+
+PART 2 — IDENTIFY EXACT ACCEPTANCE POPULATION
+
+Trace the analyzer path that produced:
+
+canonicalStockEligibleCusips = 1466
+aggregatePresent = 2994
+signalPresent = 1465
+
+Document the exact:
+
+tables
+joins
+mapping predicates
+trust predicates
+asset-type predicates
+symbol source
+CUSIP source
+
+PART 3 — POPULATION-LEVEL RECONCILIATION
+
+Create/reuse a READ-ONLY verifier comparing:
+
+A = canonical stock symbols accepted by remediation
+
+B = symbols resolvable by the exact LIVE Stock View identity resolver
+
+Report compactly:
+
+canonicalStockEligibleCusips
+canonicalStockEligibleSymbols
+
+liveResolverResolvableSymbols
+liveResolverUnresolvableCanonicalSymbols
+
+liveResolverReconciled
+
+aggregateBackedSymbols
+signalBackedSymbols
+
+aggregateBackedButLiveUnresolvable
+signalBackedButLiveUnresolvable
+
+trustedMappingSymbols
+securityMasterTickerSymbols
+
+mappingOnlyCanonicalSymbols
+directSecurityMasterSymbols
+
+Do NOT output thousands of symbols.
+
+A small sample of at most 10 mismatches is acceptable solely for
+diagnostic evidence.
+
+PART 4 — RECONCILE THE DATA PATH
+
+For every canonical stock symbol S:
+
+if S is accepted by the canonical remediation identity contract,
+the live Stock View resolver must either:
+
+A) resolve S to the SAME trusted CUSIP identity set
+
+or
+
+B) provide a deterministic documented reason why the runtime contract
+intentionally excludes it.
+
+There must not be two incompatible definitions of canonical identity.
+
+Check specifically for:
+
+- live resolver querying a different table
+- live resolver requiring security_master.ticker
+- analyzer using institutional_security_mappings canonical_symbol
+- provenance filters differing
+- reviewed/exact filters differing
+- asset_type filters differing
+- symbol normalization differences
+- CUSIP normalization differences
+- multi-CUSIP grouping differences
+- mapping-only identities ignored
+- stale application cache
+- process-level cache populated before remediation
+- Railway deployment using old code
+- Railway deployment connected to a different database
+- runtime feature flag selecting old resolver
+- production app service and Railway shell using different DATABASE_URL
+- migrations/schema differences
+
+IMPORTANT
+
+Task #205 may be correct code but not deployed to the runtime serving
+the UI.
+
+Therefore explicitly establish:
+
+RUNNING_COMMIT
+EXPECTED_COMMIT
+SAME_COMMIT: true/false
+
+and verify that the live application process and the production analyzer
+are connected to the SAME database identity without printing credentials.
+
+Report:
+
+runtimeDatabaseName
+analyzerDatabaseName
+sameDatabaseIdentity
+
+Do not print DATABASE_URL.
+
+PART 5 — ONLY AFTER ROOT CAUSE IS PROVEN
+
+If reconciliation identifies a code defect:
+make the smallest generic fix.
+
+If it identifies stale deployment:
+do NOT change code; report deployment action required.
+
+If it identifies different databases:
+do NOT copy data; report configuration mismatch.
+
+If it identifies cache:
+fix/invalidate cache generically.
+
+If it identifies incompatible resolver predicates:
+make the live resolver consume the SAME canonical identity contract as
+the accepted remediation pipeline.
+
+Do not authorize identity from aggregates, signals, or holding tickers.
+
+TESTS IF CODE CHANGES
+
+Regression must prove:
+
+canonical accepted symbol
+→ live resolver resolves same CUSIP set
+
+for:
+- direct security-master identity
+- mapping-only identity
+- common stock
+- REIT
+- multi-CUSIP symbol
+
+And still fail closed for:
+- fund
+- unsupported security
+- unresolved identity
+- conflicting identity
+- malformed/unknown symbol
+
+VALIDATION
+
+Focused resolver/reconciliation tests
+Task #187 availability tests
+Task #189 identity tests
+Task #201 canonical tests
+Task #202 holding tests
+Task #205 mapping-only tests
+full institutional suite
+release suite
+production build
+git diff --check
+
+RETURN
+
+ROOT CAUSE
+
+RUNNING_COMMIT
+EXPECTED_COMMIT
+SAME_COMMIT
+
+RUNTIME DATABASE
+ANALYZER DATABASE
+SAME DATABASE IDENTITY
+
+CANONICAL STOCK ELIGIBLE SYMBOLS
+LIVE RESOLVER RESOLVABLE SYMBOLS
+LIVE RESOLVER UNRESOLVABLE CANONICAL SYMBOLS
+LIVE RESOLVER RECONCILED
+
+AGGREGATE-BACKED BUT LIVE-UNRESOLVABLE
+SIGNAL-BACKED BUT LIVE-UNRESOLVABLE
+
+FIRST DIVERGENCE POINT
+
+FIX OR DEPLOYMENT ACTION
+
+TEST RESULTS
+COMMIT if code changed
+
+PRODUCTION BLOCKER YES/NO
+
+Then give exactly ONE next production verification command.
+
+Do not execute it.
+Do not provide an APPLY command.

@@ -104,6 +104,98 @@ export interface CoveragePlanOperation {
   signalTarget: { symbol: string; action: "insert" | "update" } | null;
 }
 
+export interface CoverageAcceptanceSummary {
+  aggregateExpected: number;
+  aggregatePresent: number;
+  aggregateMissing: number;
+  signalExpected: number;
+  signalPresent: number;
+  signalMissing: number;
+  sectorSnapshotExpected: number;
+  sectorSnapshotPresent: number;
+  sectorSnapshotMissing: number;
+  themeSnapshotExpected: number;
+  themeSnapshotPresent: number;
+  themeSnapshotMissing: number;
+  mappingOperationsPending: number;
+  holdingMappingOperationsPending: number;
+  remediationOperationsPending: number;
+  remediationComplete: boolean;
+}
+
+/**
+ * Converts the existing hash-bound plan state into acceptance counts.
+ *
+ * Target counts remain useful after APPLY: an existing target is represented
+ * by action=update, while a missing target is represented by action=insert.
+ * Snapshot families are intentionally counted as materialized/unmaterialized
+ * families because the planner receives family row counts, not a new target
+ * schema.
+ */
+export function summarizeCoverageAcceptance(plan: CoveragePlan): CoverageAcceptanceSummary {
+  const aggregates = plan.downstream?.aggregates ?? {
+    expected: 0, present: 0, missing: 0,
+  };
+  const signals = plan.downstream?.signals ?? {
+    expected: 0, present: 0, missing: 0,
+  };
+  const snapshots = plan.downstream?.snapshots;
+  const currentRowsByFamily = snapshots?.currentRowsByFamily ?? {};
+  const familyIsExpected = (family: string) => snapshots?.refreshFamilies.includes(family) ?? false;
+  const familyIsPresent = (family: string) =>
+    familyIsExpected(family) && Number(currentRowsByFamily[family] ?? 0) > 0;
+  const sectorSnapshotExpected = familyIsExpected("sector_intelligence_snapshots") ? 1 : 0;
+  const sectorSnapshotPresent = familyIsPresent("sector_intelligence_snapshots") ? 1 : 0;
+  const themeSnapshotExpected = familyIsExpected("theme_intelligence_snapshots") ? 1 : 0;
+  const themeSnapshotPresent = familyIsPresent("theme_intelligence_snapshots") ? 1 : 0;
+  const operations = plan.operations ?? [];
+  const mappingOperationsPending = operations.filter(
+    (operation) => operation.mappingAction !== "NONE",
+  ).length;
+  const holdingMappingOperationsPending = operations.reduce(
+    (total, operation) => total + operation.holdingUpdateRows,
+    0,
+  );
+  const remediationOperationsPending = operations.filter((operation) =>
+    operation.mappingAction !== "NONE"
+    || operation.holdingUpdateRows > 0
+    || operation.aggregateTargets.some((target) => target.action === "insert")
+    || operation.signalTarget?.action === "insert",
+  ).length;
+  const aggregateMissing = aggregates.missing;
+  const signalMissing = signals.missing;
+  const sectorSnapshotMissing = sectorSnapshotExpected - sectorSnapshotPresent;
+  const themeSnapshotMissing = themeSnapshotExpected - themeSnapshotPresent;
+  return {
+    aggregateExpected: aggregates.expected,
+    aggregatePresent: aggregates.present,
+    aggregateMissing,
+    signalExpected: signals.expected,
+    signalPresent: signals.present,
+    signalMissing,
+    sectorSnapshotExpected,
+    sectorSnapshotPresent,
+    sectorSnapshotMissing,
+    themeSnapshotExpected,
+    themeSnapshotPresent,
+    themeSnapshotMissing,
+    mappingOperationsPending,
+    holdingMappingOperationsPending,
+    remediationOperationsPending,
+    remediationComplete:
+      plan.stockEligibility.stockEligibilityReconciled
+      && !plan.stockEligibility.remediationBlocked
+      && plan.holdingCountReconciled === true
+      && (plan.holdingCountMismatchCusips?.length ?? 0) === 0
+      && mappingOperationsPending === 0
+      && holdingMappingOperationsPending === 0
+      && aggregateMissing === 0
+      && signalMissing === 0
+      && sectorSnapshotMissing === 0
+      && themeSnapshotMissing === 0,
+  };
+}
+
 export interface StockRemediationEligibilityReconciliation {
   canonicalStockEligibleCusips: number;
   remediationStockEligibleCusips: number;

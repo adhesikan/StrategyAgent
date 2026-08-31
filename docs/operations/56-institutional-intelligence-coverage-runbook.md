@@ -116,6 +116,13 @@ Output is JSON containing:
 - `holdingCountReconciled`, `holdingCountMismatchCusips`, and
   `holdingCountContractVersion`: the planner's stale-row self-check and the
   versioned canonical effective-holding contract used again inside APPLY;
+- summary-only acceptance fields: `aggregateExpected`/`Present`/`Missing`,
+  `signalExpected`/`Present`/`Missing`, family-level
+  `sectorSnapshotExpected`/`Present`/`Missing` and
+  `themeSnapshotExpected`/`Present`/`Missing`, plus pending mapping/holding
+  operations and `remediationComplete`. Expected target counts normally remain
+  nonzero after APPLY; acceptance requires their missing counts and pending
+  operation counts to be zero.
 - `plan`: sorted evidence classifications plus a deterministic SHA-256
   `planHash`, with mode `REMEDIATION_PLAN`.
 

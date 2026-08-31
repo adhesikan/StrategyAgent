@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { runCli } from "../server/cli-runtime";
 import {
   applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, categoryCoverageMetrics, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, providerNormalizationAudit, rankCoverageRootCauses,
-  securityTypeCoverageMetrics,
+  securityTypeCoverageMetrics, summarizeCoverageAcceptance,
   type CoveragePlan,
 } from "../server/services/institutional/institutional-coverage-analyzer";
 import { classifyInstitutionalSecurityType } from "../server/services/institutional/security-type-eligibility";
@@ -321,6 +321,9 @@ async function main() {
     return;
   }
   if (summaryOnly) {
+    const acceptance = summarizeCoverageAcceptance(plan);
+    const correctionBlockerCount = Object.values(correctionPlan.blockers)
+      .reduce((total, value) => total + Number(value), 0);
     console.log(JSON.stringify({
       eligibleCusips: before.eligibleCusips,
       holdingRows: before.holdingRows,
@@ -336,8 +339,10 @@ async function main() {
       separateFundCusips: classifications.filter((row) => row.securityTypePopulation === "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS").length,
       canonicalCorrectionActions: correctionPlan.actions.length,
       canonicalBlockers: correctionPlan.blockers,
-       holdingCountReconciled: plan.holdingCountReconciled ?? false,
-       holdingCountMismatchCusips: plan.holdingCountMismatchCusips ?? [],
+      ...acceptance,
+      remediationComplete: acceptance.remediationComplete
+        && correctionPlan.actions.length === 0
+        && correctionBlockerCount === 0,
       remediationBlocked: plan.stockEligibility.remediationBlocked,
       planHash: plan.planHash,
     }));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, isCanonicalStockRemediationEligible, providerNormalizationAudit, reconcileHoldingUpdateCounts, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
+import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, isCanonicalStockRemediationEligible, providerNormalizationAudit, reconcileHoldingUpdateCounts, securityTypeCoverageMetrics, summarizeCoverageAcceptance, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
 import { parseCanonicalStockEligibleIdentities, reconcileCanonicalStockEligibility } from "../canonical-security-state";
 import { classifyInstitutionalSecurityType } from "../security-type-eligibility";
 
@@ -437,6 +437,68 @@ describe("institutional coverage analyzer", () => {
     expect(plan.affected.signals).toHaveLength(1);
     expect(plan.downstream?.aggregates).toMatchObject({ expected: 1, missing: 1, inserts: 1 });
     expect(plan.downstream?.signals).toMatchObject({ expected: 1, missing: 1, inserts: 1 });
+    expect(summarizeCoverageAcceptance(plan)).toMatchObject({
+      aggregateExpected: 1,
+      aggregatePresent: 0,
+      aggregateMissing: 1,
+      signalExpected: 1,
+      signalPresent: 0,
+      signalMissing: 1,
+      sectorSnapshotExpected: 1,
+      sectorSnapshotPresent: 1,
+      sectorSnapshotMissing: 0,
+      themeSnapshotExpected: 1,
+      themeSnapshotPresent: 1,
+      themeSnapshotMissing: 0,
+      mappingOperationsPending: 0,
+      holdingMappingOperationsPending: 0,
+      remediationOperationsPending: 1,
+      remediationComplete: false,
+    });
+  });
+
+  it("reports acceptance complete only when all existing targets are present", () => {
+    const trusted = {
+      ...classifyCusipEvidence({
+        ...base,
+        holdingRows: 2,
+        currentlyMaterializedHoldingRows: 2,
+        staleUnmappedHoldingRows: 0,
+        reliableReferenceSymbols: ["ABC"],
+        periods: ["2025-09-30"],
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    };
+    const plan = buildActionableCoveragePlan({
+      classifications: [trusted],
+      before: coverageTotals([trusted]),
+      canonicalStockEligibleIdentities: new Map([[trusted.cusip, "ABC"]]),
+      existingAggregateTargets: new Set(["ABC:2025-09-30"]),
+      existingSignalSymbols: new Set(["ABC"]),
+      snapshotRowsByFamily: {
+        sector_intelligence_snapshots: 12,
+        theme_intelligence_snapshots: 25,
+      },
+    });
+    expect(summarizeCoverageAcceptance(plan)).toMatchObject({
+      aggregateExpected: 1,
+      aggregatePresent: 1,
+      aggregateMissing: 0,
+      signalExpected: 1,
+      signalPresent: 1,
+      signalMissing: 0,
+      sectorSnapshotExpected: 1,
+      sectorSnapshotPresent: 1,
+      sectorSnapshotMissing: 0,
+      themeSnapshotExpected: 1,
+      themeSnapshotPresent: 1,
+      themeSnapshotMissing: 0,
+      mappingOperationsPending: 0,
+      holdingMappingOperationsPending: 0,
+      remediationOperationsPending: 0,
+      remediationComplete: true,
+    });
   });
   it("does not plan stock aggregates or signals for separate or unclassified types", () => {
     const trusted = classifyCusipEvidence({

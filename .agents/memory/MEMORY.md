@@ -111,3 +111,4 @@
 - [Institutional type normalization](security-type-normalization-audit.md) — provider type fields are authoritative; descriptions and ticker heuristics never create stock eligibility.
 - [Guarded canonical corrections](canonical-correction-apply.md) — type/symbol corrections are hash-bound and must clear canonical blockers before institutional remediation.
 - [Institutional holding-count contract](institutional-holding-count-contract.md) — planner and APPLY must share canonical filing/holding semantics; validate counts before mutation.
+- [Institutional acceptance semantics](institutional-acceptance-semantics.md) — expected target counts persist after APPLY; acceptance depends on missing/pending counts and reconciliation.

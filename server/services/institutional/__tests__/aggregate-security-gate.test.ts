@@ -12,6 +12,7 @@ const holding = (overrides: Record<string, unknown> = {}) => ({
   mappingMappingStatus: "reviewed",
   masterTicker: null,
   masterReviewStatus: null,
+  masterAssetType: "common_stock",
   reportedShares: 100,
   putCall: null,
   sharesPrnType: "SH",
@@ -79,6 +80,31 @@ describe("aggregate security resolver gate", () => {
       holding({ cusip: "222222222" }),
     ], "NVDA");
     expect(population.trusted).toHaveLength(2);
+    expect(population.hasDisqualifyingEvidence).toBe(false);
+  });
+
+  it.each([
+    ["ETF", "etf"],
+    ["mutual_fund", "mutual_fund"],
+    ["adr", "adr"],
+    ["preferred", "preferred"],
+    [null, "missing"],
+  ])("blocks %s security classifications from stock aggregates", (assetType) => {
+    const population = evaluateAggregateCandidatePopulation([
+      holding({ masterAssetType: assetType }),
+    ], "NVDA");
+    expect(population.trusted).toEqual([]);
+    expect(population.hasDisqualifyingEvidence).toBe(true);
+    expect(trustedAggregateHoldingsForSymbol([
+      holding({ masterAssetType: assetType }),
+    ], "NVDA")).toEqual([]);
+  });
+
+  it("allows a classified REIT as a stock-analytics security", () => {
+    const population = evaluateAggregateCandidatePopulation([
+      holding({ masterAssetType: "reit" }),
+    ], "NVDA");
+    expect(population.trusted).toHaveLength(1);
     expect(population.hasDisqualifyingEvidence).toBe(false);
   });
 });

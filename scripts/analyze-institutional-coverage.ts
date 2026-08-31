@@ -4,8 +4,10 @@ import { db } from "../server/db";
 import { sql } from "drizzle-orm";
 import {
   applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, categoryCoverageMetrics, classifyCusipEvidence, coverageTotals, rankCoverageRootCauses,
+  securityTypeCoverageMetrics,
   type CoveragePlan,
 } from "../server/services/institutional/institutional-coverage-analyzer";
+import { classifyInstitutionalSecurityType } from "../server/services/institutional/security-type-eligibility";
 import { createCoveragePostgresAdapter } from "../server/services/institutional/institutional-coverage-postgres-adapter";
 import { recomputeAggregateForSymbol } from "../server/services/institutional/ingestion-service";
 import { rebuildInstitutionalSignalForSymbol } from "../server/services/institutional/signal-engine";
@@ -44,7 +46,8 @@ all_history AS (
  SELECT cusip,JSONB_AGG(JSONB_BUILD_OBJECT('source','institutional_mapping','symbol',mapped_symbol,'status',mapping_status)) mapping_evidence
  FROM institutional_security_mappings GROUP BY cusip
 ), master_evidence AS (
- SELECT cusip,JSONB_AGG(JSONB_BUILD_OBJECT('source','security_master','symbol',ticker,'status',review_status)) master_evidence
+ SELECT cusip,MAX(asset_type) asset_type,
+   JSONB_AGG(JSONB_BUILD_OBJECT('source','security_master','symbol',ticker,'status',review_status,'assetType',asset_type)) master_evidence
  FROM security_master GROUP BY cusip
 ) SELECT a.*,l.latest_holding_rows,l.latest_null_value_rows,l.latest_reported_value_usd,m.mapping_evidence,s.master_evidence
  FROM all_history a
@@ -102,7 +105,8 @@ async function loadCoverage(executor: Executor) {
     aggregateTargets: rowsOf(await executor.execute(sql.raw(aggregateTargetsQuery))),
     signalTargets: rowsOf(await executor.execute(sql.raw(signalTargetsQuery))),
   };
-  const classifications = rows.evidence.map((r) => classifyCusipEvidence({
+  const classifications = rows.evidence.map((r) => ({
+    ...classifyCusipEvidence({
     cusip: String(r.cusip), holdingRows: Number(r.holding_rows), staleUnmappedHoldingRows: Number(r.stale_unmapped_holding_rows),
     staleUnmappedValueUsd: r.stale_unmapped_value_usd === null ? null : String(r.stale_unmapped_value_usd),
     currentlyMaterializedHoldingRows: Number(r.currently_materialized_holding_rows),
@@ -111,6 +115,9 @@ async function loadCoverage(executor: Executor) {
     nullValueRows: Number(r.null_value_rows ?? 0), latestQuarter: r.latest_quarter ? String(r.latest_quarter) : null,
     periods: Array.isArray(r.periods) ? r.periods.map(String) : [],
     sourceEvidence: [...(r.holding_evidence ?? []), ...(r.mapping_evidence ?? []), ...(r.master_evidence ?? [])],
+    }),
+    canonicalSecurityType: classifyInstitutionalSecurityType({ assetType: r.asset_type }).canonicalType,
+    securityTypePopulation: classifyInstitutionalSecurityType({ assetType: r.asset_type }).analyticsPopulation,
   }));
   const before = coverageTotals(classifications);
   const plan = buildActionableCoveragePlan({
@@ -149,15 +156,19 @@ async function main() {
   const { rows: data, classifications, before, plan } = rows;
   const latestClassifications = data.evidence
     .filter((r) => Number(r.latest_holding_rows ?? 0) > 0)
-    .map((r) => classifyCusipEvidence({
+     .map((r) => ({
+       ...classifyCusipEvidence({
       cusip: String(r.cusip),
       holdingRows: Number(r.latest_holding_rows),
       staleUnmappedHoldingRows: Number(r.stale_unmapped_holding_rows),
       reportedValueUsd: r.latest_reported_value_usd === null ? null : String(r.latest_reported_value_usd),
       nullValueRows: Number(r.latest_null_value_rows ?? 0),
       latestQuarter: r.latest_quarter ? String(r.latest_quarter) : null,
-      sourceEvidence: [...(r.holding_evidence ?? []), ...(r.mapping_evidence ?? []), ...(r.master_evidence ?? [])],
-    }));
+       sourceEvidence: [...(r.holding_evidence ?? []), ...(r.mapping_evidence ?? []), ...(r.master_evidence ?? [])],
+       }),
+       canonicalSecurityType: classifyInstitutionalSecurityType({ assetType: r.asset_type }).canonicalType,
+       securityTypePopulation: classifyInstitutionalSecurityType({ assetType: r.asset_type }).analyticsPopulation,
+     }));
   const latestQuarter = coverageTotals(latestClassifications);
   if (apply) {
     await applyInstitutionalCoveragePlan({
@@ -180,6 +191,11 @@ async function main() {
   }
   const latestByCusip = Object.fromEntries(data.evidence.map(row => [String(row.cusip), Number(row.latest_holding_rows ?? 0)]));
   const categoryMetrics = categoryCoverageMetrics(classifications, latestByCusip);
+  const securityTypeMetrics = securityTypeCoverageMetrics(
+    classifications,
+    new Set(data.aggregateTargets.map(row => `${row.symbol}:${row.period}`)),
+    new Set(data.signalTargets.map(row => String(row.symbol))),
+  );
   console.log(JSON.stringify({ funnel: data.diagnostics, allHistory: before, latestQuarter,
     trustedIdentityCoverage: {
       note: "Potential identity coverage; distinct from currently materialized holding coverage.",
@@ -206,7 +222,7 @@ async function main() {
       latestTrustedCusips: latestQuarter.reliablyMappedCusips,
       latestNullValueCusips: latestQuarter.nullValueCusips,
     },
-    categories: categoryMetrics, rootCauseRanking: rankCoverageRootCauses(categoryMetrics),
+    categories: categoryMetrics, securityTypes: securityTypeMetrics, rootCauseRanking: rankCoverageRootCauses(categoryMetrics),
     materialization: plan.affected, plan }, null, 2));
 }
 if (!process.env.VITEST) main().catch(error => { console.error(`[institutional-coverage] ERROR: ${String(error.message ?? error).slice(0, 300)}`); process.exit(1); });

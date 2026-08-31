@@ -34,7 +34,10 @@ function candidateCusipsQuery(rows: unknown[]) {
     from: () => ({
       leftJoin: () => ({
         leftJoin: () => ({
-          where: async () => rows,
+          where: async () => rows.map((row) => ({
+            masterAssetType: "common_stock",
+            ...(row as Record<string, unknown>),
+          })),
         }),
       }),
     }),
@@ -44,7 +47,10 @@ function candidateCusipsQuery(rows: unknown[]) {
 function canonicalCusipsQuery(rows: unknown[]) {
   return {
     from: () => ({
-      where: async () => rows,
+      where: async () => rows.map((row) => ({
+        assetType: "common_stock",
+        ...(row as Record<string, unknown>),
+      })),
     }),
   };
 }

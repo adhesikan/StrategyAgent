@@ -27,6 +27,7 @@ import {
   institutional13fFilings,
   institutional13fHoldings,
   institutionalQuarterlyAggregates,
+  institutionalSymbolSignals,
   institutionalIngestionRuns,
   institutionalSecurityMappings,
   securityMaster,
@@ -58,6 +59,7 @@ import { computeQuarterlyAggregate, derivePeriodLabel, type AggregationInput } f
 import { classifyTrend } from "./trend-classifier";
 import { computeEvidenceAlignment } from "./evidence-alignment";
 import { resolveInstitutionalSecurity } from "./security-resolver";
+import { isEligibleForStockInstitutionalAnalytics } from "./security-type-eligibility";
 import { rebuildInstitutionalSignalForSymbol } from "./signal-engine";
 import { runIntelligencePrecomputation } from "../intelligence-orchestrator";
 import { OpenFigiClient } from "./openfigi-client";
@@ -397,6 +399,7 @@ type AggregateHoldingEvidence = {
   mappingMappingStatus: string | null;
   masterTicker: string | null;
   masterReviewStatus: string | null;
+  masterAssetType: string | null;
 };
 
 /** The aggregate cache may only contain holdings still trusted for its symbol. */
@@ -406,6 +409,9 @@ export function trustedAggregateHoldingsForSymbol<T extends AggregateHoldingEvid
 ): T[] {
   const target = symbol.trim().toUpperCase();
   return holdings.filter((holding) => {
+    if (!isEligibleForStockInstitutionalAnalytics({ assetType: holding.masterAssetType })) {
+      return false;
+    }
     const resolution = resolveInstitutionalSecurity([
       { source: "security_master", symbol: holding.masterTicker, status: holding.masterReviewStatus, cusip: holding.cusip },
       { source: "institutional_mapping", symbol: holding.mappingSymbol, status: holding.mappingMappingStatus, cusip: holding.cusip },
@@ -436,6 +442,10 @@ export function evaluateAggregateCandidatePopulation<
   const trusted: T[] = [];
   let hasDisqualifyingEvidence = false;
   for (const holding of eligible) {
+    if (!isEligibleForStockInstitutionalAnalytics({ assetType: holding.masterAssetType })) {
+      hasDisqualifyingEvidence = true;
+      continue;
+    }
     const resolution = resolveInstitutionalSecurity([
       { source: "security_master", symbol: holding.masterTicker, status: holding.masterReviewStatus, cusip: holding.cusip },
       { source: "institutional_mapping", symbol: holding.mappingSymbol, status: holding.mappingMappingStatus, cusip: holding.cusip },
@@ -477,6 +487,7 @@ export async function recomputeAggregateForSymbol(
       mappingMappingStatus: institutionalSecurityMappings.mappingStatus,
       masterTicker: securityMaster.ticker,
       masterReviewStatus: securityMaster.reviewStatus,
+      masterAssetType: securityMaster.assetType,
     })
     .from(institutional13fHoldings)
     // Join to only include holdings from effective filings
@@ -520,6 +531,7 @@ export async function recomputeAggregateForSymbol(
            mappingMappingStatus: institutionalSecurityMappings.mappingStatus,
            masterTicker: securityMaster.ticker,
            masterReviewStatus: securityMaster.reviewStatus,
+           masterAssetType: securityMaster.assetType,
         })
         .from(institutional13fHoldings)
         .innerJoin(
@@ -567,6 +579,11 @@ export async function recomputeAggregateForSymbol(
         eq(institutionalQuarterlyAggregates.symbol, symbol),
         eq(institutionalQuarterlyAggregates.periodOfReport, periodOfReport),
       ),
+    );
+    // A removed aggregate can no longer support a symbol-level signal. Delete
+    // it in the same fail-closed path rather than leaving stale derived data.
+    await db.delete(institutionalSymbolSignals).where(
+      eq(institutionalSymbolSignals.symbol, symbol),
     );
     return;
   }

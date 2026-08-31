@@ -21,6 +21,7 @@ import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
 import { resolveInstitutionalSecurity } from "../security-resolver";
+import { isEligibleForStockInstitutionalAnalytics } from "../security-type-eligibility";
 import {
   filterByCohortManagerIds,
   getActiveManagerIdsForCohort,
@@ -131,7 +132,13 @@ export async function loadAllStockInstitutionalHoldings(
       offset,
     });
     holdings.push(...page);
-    if (page.length < pageSize) return holdings;
+    if (page.length < pageSize) {
+      return holdings.filter((holding) =>
+        isEligibleForStockInstitutionalAnalytics({
+          assetType: holding.metadata?.assetType,
+        }),
+      );
+    }
     offset += page.length;
   }
 }
@@ -152,6 +159,7 @@ export async function loadStockCandidateIdentity(
     .select({
       cusip: securityMaster.cusip,
       reviewStatus: securityMaster.reviewStatus,
+      assetType: securityMaster.assetType,
     })
     .from(securityMaster)
     .where(sql`UPPER(${securityMaster.ticker}) = ${normalizedSymbol}`);
@@ -160,6 +168,7 @@ export async function loadStockCandidateIdentity(
       cusip: institutional13fHoldings.cusip,
       masterTicker: securityMaster.ticker,
       masterReviewStatus: securityMaster.reviewStatus,
+      masterAssetType: securityMaster.assetType,
       mappingSymbol: institutionalSecurityMappings.mappedSymbol,
       mappingStatus: institutionalSecurityMappings.mappingStatus,
       holdingMappedSymbol: institutional13fHoldings.mappedSymbol,
@@ -198,12 +207,22 @@ export async function loadStockCandidateIdentity(
     ]),
   }));
   const trustedForTarget = resolvedRows.filter(
-    ({ resolution }) =>
+    ({ row, resolution }) =>
       resolution.outcome === "RESOLVED_TRUSTED" &&
-      matchesTarget(resolution.symbol),
+      matchesTarget(resolution.symbol) &&
+      isEligibleForStockInstitutionalAnalytics({
+        assetType: row.masterAssetType,
+      }),
   );
   const trustedCanonicalForTarget = canonicalRows.some((canonical) => {
     if (canonical.reviewStatus !== "reviewed") return false;
+    if (
+      !isEligibleForStockInstitutionalAnalytics({
+        assetType: canonical.assetType,
+      })
+    ) {
+      return false;
+    }
     const sameCusipEvidence = evidenceRows.filter(
       (row) => row.cusip === canonical.cusip,
     );
@@ -223,7 +242,10 @@ export async function loadStockCandidateIdentity(
       matchesTarget(resolution.symbol);
   });
   const hasDisqualifyingCandidateEvidence = resolvedRows.some(
-    ({ resolution }) =>
+    ({ row, resolution }) =>
+      !isEligibleForStockInstitutionalAnalytics({
+        assetType: row.masterAssetType,
+      }) ||
       resolution.outcome === "CONFLICTING" ||
       resolution.outcome === "AMBIGUOUS" ||
       (resolution.outcome === "RESOLVED_TRUSTED" &&

@@ -9,6 +9,10 @@ import {
   type SecurityResolutionEvidence,
   type SecurityResolverOutcome,
 } from "./security-resolver";
+import type {
+  CanonicalInstitutionalSecurityType,
+  SecurityAnalyticsPopulation,
+} from "./security-type-eligibility";
 
 export type CoverageCategory =
   | "TRUSTED" | "AMBIGUOUS" | "CONFLICTING" | "UNSUPPORTED" | "INSUFFICIENT_NO_REFERENCE";
@@ -39,6 +43,8 @@ export interface CusipClassification extends CusipEvidence {
   sourceEvidence: SecurityResolutionEvidence[];
   projectedSymbol: string | null;
   remediation: "NONE" | "REVIEW_CANONICAL_MAPPING" | "RESOLVE_CONFLICT";
+  canonicalSecurityType?: CanonicalInstitutionalSecurityType;
+  securityTypePopulation?: SecurityAnalyticsPopulation;
 }
 
 export interface CoveragePlan {
@@ -109,6 +115,79 @@ export interface CoverageCategoryMetric {
   valuePercent: number | null;
 }
 
+export interface SecurityTypeCoverageMetric {
+  canonicalSecurityType: CanonicalInstitutionalSecurityType;
+  securityTypePopulation: SecurityAnalyticsPopulation;
+  distinctCusips: number;
+  distinctSymbols: number;
+  holdingRows: number;
+  reportedValueUsd: string;
+  aggregateTargets: number;
+  signalTargets: number;
+}
+
+export function securityTypeCoverageMetrics(
+  rows: CusipClassification[],
+  aggregateTargets: ReadonlySet<string> = new Set(),
+  signalTargets: ReadonlySet<string> = new Set(),
+): SecurityTypeCoverageMetric[] {
+  const groups = new Map<string, {
+    type: CanonicalInstitutionalSecurityType;
+    population: SecurityAnalyticsPopulation;
+    cusips: Set<string>;
+    symbols: Set<string>;
+    holdingRows: number;
+    reportedValueUsd: bigint;
+    aggregateTargets: Set<string>;
+    signalTargets: Set<string>;
+  }>();
+  for (const row of rows) {
+    const type = row.canonicalSecurityType ?? "insufficient_evidence";
+    const population = row.securityTypePopulation ?? "INSUFFICIENT_SECURITY_TYPE_EVIDENCE";
+    const key = `${type}:${population}`;
+    const group = groups.get(key) ?? {
+      type,
+      population,
+      cusips: new Set<string>(),
+      symbols: new Set<string>(),
+      holdingRows: 0,
+      reportedValueUsd: BigInt(0),
+      aggregateTargets: new Set<string>(),
+      signalTargets: new Set<string>(),
+    };
+    group.cusips.add(row.cusip);
+    group.holdingRows += Number(row.holdingRows || 0);
+    if (row.reportedValueUsd !== null) {
+      group.reportedValueUsd += BigInt(String(row.reportedValueUsd));
+    }
+    for (const symbol of symbols([
+      ...(row.holdingSymbols ?? []),
+      ...(row.reliableReferenceSymbols ?? []),
+      ...(row.projectedSymbol ? [row.projectedSymbol] : []),
+      ...(row.sourceEvidence ?? []).map((evidence) => evidence.symbol ?? ""),
+    ])) {
+      group.symbols.add(symbol);
+      for (const target of Array.from(aggregateTargets)) {
+        if (target.split(":")[0] === symbol) group.aggregateTargets.add(target);
+      }
+      if (signalTargets.has(symbol)) group.signalTargets.add(symbol);
+    }
+    groups.set(key, group);
+  }
+  return Array.from(groups.values())
+    .sort((a, b) => a.type.localeCompare(b.type) || a.population.localeCompare(b.population))
+    .map((group) => ({
+      canonicalSecurityType: group.type,
+      securityTypePopulation: group.population,
+      distinctCusips: group.cusips.size,
+      distinctSymbols: group.symbols.size,
+      holdingRows: group.holdingRows,
+      reportedValueUsd: group.reportedValueUsd.toString(),
+      aggregateTargets: group.aggregateTargets.size,
+      signalTargets: group.signalTargets.size,
+    }));
+}
+
 function percent(numerator: bigint, denominator: bigint): number | null {
   if (denominator === BigInt(0)) return null;
   return Number((numerator * BigInt(1_000_000)) / denominator) / 10_000;
@@ -156,7 +235,11 @@ export function buildActionableCoveragePlan(input: {
 }): CoveragePlan {
   const operations: CoveragePlanOperation[] = [...input.classifications]
     .sort((a, b) => a.cusip.localeCompare(b.cusip))
-    .filter(row => row.category === "TRUSTED" && row.projectedSymbol)
+    .filter(row =>
+      row.category === "TRUSTED" &&
+      row.projectedSymbol &&
+      row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS"
+    )
     .map(row => {
       const trusted = row.sourceEvidence
         .filter(evidence => evidence.symbol?.trim().toUpperCase() === row.projectedSymbol &&

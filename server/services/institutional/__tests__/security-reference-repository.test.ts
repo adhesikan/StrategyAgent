@@ -35,6 +35,30 @@ describe("security reference repository", () => {
     expect(assetTypeForOpenFigiCandidate(candidate)).toBe("common_stock");
   });
 
+  it("preserves non-stock reference identity classifications for separate analytics", () => {
+    expect(assetTypeForOpenFigiCandidate({
+      ...candidate,
+      securityType: "ETF",
+    })).toBe("etf");
+    expect(assetTypeForOpenFigiCandidate({
+      ...candidate,
+      securityType: "Closed-End Fund",
+    })).toBe("closed_end_fund");
+    expect(assetTypeForOpenFigiCandidate({
+      ...candidate,
+      securityType: "ADR",
+    })).toBe("adr");
+  });
+
+  it("does not guess a stock type when provider classification is absent", () => {
+    expect(assetTypeForOpenFigiCandidate({
+      ...candidate,
+      securityType: undefined,
+      securityType2: undefined,
+      marketSector: undefined,
+    })).toBe("insufficient_evidence");
+  });
+
   it("keeps reviewed evidence ahead of automation and bounds orchestration", async () => {
     const memory = store("reviewed");
     const result = await orchestrateSecurityReferenceLookups(memory, {

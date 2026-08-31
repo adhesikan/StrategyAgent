@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
+import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
 
 describe("institutional coverage analyzer", () => {
   const base = { cusip: "123456789", holdingRows: 2, reportedValueUsd: 100, latestQuarter: "2025-12-31" };
@@ -18,6 +18,59 @@ describe("institutional coverage analyzer", () => {
       classifyCusipEvidence({ ...base, cusip: "987654321", reportedValueUsd: 900 }),
     ])).toMatchObject({ reportedValueUsd: "900", knownValueCusips: 1, nullValueCusips: 1, nullValueRows: 2 });
   });
+  it("reports security-type populations and their existing derived targets", () => {
+    const rows = [
+      {
+        ...classifyCusipEvidence({
+          ...base,
+          cusip: "111111111",
+          holdingRows: 3,
+          reportedValueUsd: "1200",
+          sourceEvidence: [{ source: "security_master", symbol: "ABC", status: "reviewed" }],
+        }),
+        canonicalSecurityType: "common_stock" as const,
+        securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+      },
+      {
+        ...classifyCusipEvidence({
+          ...base,
+          cusip: "222222222",
+          reportedValueUsd: "800",
+          sourceEvidence: [{ source: "security_master", symbol: "SPY", status: "reviewed" }],
+        }),
+        canonicalSecurityType: "etf" as const,
+        securityTypePopulation: "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS" as const,
+      },
+    ];
+    expect(
+      securityTypeCoverageMetrics(
+        rows,
+        new Set(["ABC:2026-06-30", "SPY:2026-06-30"]),
+        new Set(["ABC"]),
+      ),
+    ).toEqual([
+      {
+        canonicalSecurityType: "common_stock",
+        securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS",
+        distinctCusips: 1,
+        distinctSymbols: 1,
+        holdingRows: 3,
+        reportedValueUsd: "1200",
+        aggregateTargets: 1,
+        signalTargets: 1,
+      },
+      {
+        canonicalSecurityType: "etf",
+        securityTypePopulation: "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS",
+        distinctCusips: 1,
+        distinctSymbols: 1,
+        holdingRows: 2,
+        reportedValueUsd: "800",
+        aggregateTargets: 1,
+        signalTargets: 0,
+      },
+    ]);
+  });
   it("hashes equivalent plans deterministically", () => {
     const one = classifyCusipEvidence(base); const input = { version: 1 as const, mode: "REMEDIATION_PLAN" as const, before: coverageTotals([one]), projected: coverageTotals([one]), classifications: [one], affected: { mappings: ["b", "a"], holdings: 0, quarters: [], aggregates: [], signals: [], snapshots: [] } };
     expect(buildCoveragePlan(input).planHash).toBe(buildCoveragePlan({ ...input, affected: { ...input.affected, mappings: ["a", "b"] } }).planHash);
@@ -33,7 +86,11 @@ describe("institutional coverage analyzer", () => {
     ]));
   });
   it("uses advisory lock, rechecks hash, and applies idempotent injected operations", async () => {
-    const trusted = classifyCusipEvidence({ ...base, reliableReferenceSymbols: ["ABC"], staleUnmappedHoldingRows: 2, periods: ["2025-09-30"] });
+    const trusted = {
+      ...classifyCusipEvidence({ ...base, reliableReferenceSymbols: ["ABC"], staleUnmappedHoldingRows: 2, periods: ["2025-09-30"] }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    };
     const plan = buildActionableCoveragePlan({ classifications: [trusted], before: coverageTotals([trusted]) });
     const calls: string[] = [];
     const result = await applyInstitutionalCoveragePlan({
@@ -64,11 +121,15 @@ describe("institutional coverage analyzer", () => {
     expect(coverageTotals([])).toMatchObject({ eligibleCusips: 0, holdingRows: 0 });
   });
   it("reports materialized percentages and missing derived targets for current trusted holdings", () => {
-    const trusted = classifyCusipEvidence({
+    const trusted = {
+      ...classifyCusipEvidence({
       ...base, holdingRows: 2, currentlyMaterializedHoldingRows: 2,
       currentlyMaterializedValueUsd: "100", reliableReferenceSymbols: ["ABC"],
       staleUnmappedHoldingRows: 0, periods: ["2025-09-30"],
-    });
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    };
     const before = coverageTotals([trusted]);
     const plan = buildActionableCoveragePlan({
       classifications: [trusted, { ...trusted, cusip: "987654321" }], before,
@@ -85,5 +146,24 @@ describe("institutional coverage analyzer", () => {
     expect(plan.affected.signals).toHaveLength(1);
     expect(plan.downstream?.aggregates).toMatchObject({ expected: 1, missing: 1, inserts: 1 });
     expect(plan.downstream?.signals).toMatchObject({ expected: 1, missing: 1, inserts: 1 });
+  });
+  it("does not plan stock aggregates or signals for separate or unclassified types", () => {
+    const trusted = classifyCusipEvidence({
+      ...base,
+      reliableReferenceSymbols: ["ETF"],
+      staleUnmappedHoldingRows: 2,
+      periods: ["2025-09-30"],
+    });
+    const separateFund = {
+      ...trusted,
+      canonicalSecurityType: "etf" as const,
+      securityTypePopulation: "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS" as const,
+    };
+    expect(
+      buildActionableCoveragePlan({
+        classifications: [separateFund, trusted],
+        before: coverageTotals([separateFund, trusted]),
+      }).operations,
+    ).toEqual([]);
   });
 });

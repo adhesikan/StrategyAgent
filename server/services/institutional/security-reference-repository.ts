@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { institutional13fFilings, institutional13fHoldings, institutionalSecurityCandidateObservations, institutionalSecurityLookupStates, institutionalSecurityMappings, securityMaster } from "@shared/schema";
 import { resolveInstitutionalSecurity } from "./security-resolver";
 import { isSupported13fIdentityCandidate, normalizeCusip, normalizeReferenceSymbol, type SecurityReferenceCandidate, type SecurityReferenceResolution } from "./security-reference-enrichment";
+import { classifyInstitutionalSecurityType } from "./security-type-eligibility";
 
 export type LocalSecurityEvidence = { source: string; symbol: string | null; status: string; cusip: string; figi: string | null };
 export interface InstitutionalSecurityReferenceStore {
@@ -20,11 +21,7 @@ export function candidateFingerprint(c: SecurityReferenceCandidate): string {
   return `src-${(h >>> 0).toString(16).padStart(8, "0")}`;
 }
 export function assetTypeForOpenFigiCandidate(c: SecurityReferenceCandidate): string {
-  const v = `${c.securityType ?? ""} ${c.securityType2 ?? ""} ${c.marketSector ?? ""}`.toUpperCase();
-  if (/\b(REIT|REAL ESTATE INVESTMENT TRUST)\b/.test(v)) return "reit";
-  if (/\b(ETF|ETP|EXCHANGE TRADED FUND)\b/.test(v)) return "etf";
-  if (/\b(ADR|ADS|DEPOSIT(?:ARY|ORY) RECEIPT)\b/.test(v)) return "adr";
-  return /\b(COMMON|EQUITY|ORDINARY|SHARE)\b/.test(v) ? "common_stock" : "other";
+  return classifyInstitutionalSecurityType(c).canonicalType;
 }
 const providerOf = (r: SecurityReferenceResolution) => r.candidates[0]?.provider?.trim().toLowerCase() || "openfigi";
 const providerEvidence = (r: SecurityReferenceResolution) => r.candidates.filter(c => isSupported13fIdentityCandidate(c) && normalizeReferenceSymbol(c.ticker)).map(c => ({ source: `openfigi:${candidateFingerprint(c)}`, symbol: c.ticker, status: "exact", cusip: r.cusip, figi: c.figi }));

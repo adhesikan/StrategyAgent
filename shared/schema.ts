@@ -3220,7 +3220,7 @@ export const securityMaster = pgTable("security_master", {
   issuerName: text("issuer_name"),
   /** NYSE | NASDAQ | OTC | CBOE | other */
   exchange: text("exchange"),
-  /** common_stock | etf | reit | adr | preferred | warrant | other */
+  /** common_stock | reit | etf | mutual_fund | closed_end_fund | money_market_fund | adr | foreign_listing | preferred | debt | warrant | rights | other */
   assetType: text("asset_type"),
   figi: text("figi"),
   /** 0–100 confidence in the ticker assignment */

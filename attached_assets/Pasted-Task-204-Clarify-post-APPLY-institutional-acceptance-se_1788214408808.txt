@@ -1,0 +1,147 @@
+Task #204 — Clarify post-APPLY institutional acceptance semantics
+
+DO NOT modify production.
+DO NOT run production commands.
+DO NOT perform ingestion.
+DO NOT perform APPLY.
+DO NOT create ticker-specific diagnostics.
+
+CONTEXT
+
+The guarded generic institutional remediation APPLY completed without error
+using production plan hash:
+
+27fe08371cb62d61e80f8f26e9ac4ba61e4a0e85d05cab4f1671d66f8da3c814
+
+APPLY output completed through intelligence precomputation.
+
+The ONE post-APPLY production acceptance command was then run:
+
+npx tsx scripts/analyze-institutional-coverage.ts --summary-only
+
+Result:
+
+{
+  "eligibleCusips":14713,
+  "holdingRows":534240,
+  "reportedValueUsd":"11041677693184",
+  "trustedCusips":3206,
+  "canonicalStockEligibleCusips":1466,
+  "remediationStockEligibleCusips":1466,
+  "stockEligibilityReconciled":true,
+  "fundCusipsExcludedFromStockRemediation":1687,
+  "nonStockCusipsInStockRemediation":0,
+  "aggregateTargets":2994,
+  "signalTargets":1465,
+  "separateFundCusips":1687,
+  "canonicalCorrectionActions":0,
+  "canonicalBlockers":{
+    "insufficientEvidenceCusips":0,
+    "contradictoryEvidenceCusips":0,
+    "staleMachineDerivedTypeCusips":0,
+    "canonicalSymbolReviewRequiredCusips":0
+  },
+  "holdingCountReconciled":true,
+  "holdingCountMismatchCusips":[],
+  "remediationBlocked":false,
+  "planHash":"5ff6d637fb52f338fb74b1c35abdf9d37e7bfec0f7aa9c4969bf2f48d0f1e568"
+}
+
+Before APPLY, aggregateTargets was also 2994 and signalTargets was also 1465.
+
+OBJECTIVE
+
+Determine from the EXISTING code exactly what these summary fields mean
+and whether this post-APPLY output proves remediation acceptance.
+
+Inspect the analyzer/remediation planner/executor only.
+
+ANSWER THESE QUESTIONS
+
+1. Does `aggregateTargets` mean:
+   A) total canonical aggregate rows expected,
+   B) aggregate rows still missing,
+   C) aggregate operations scheduled by the current plan,
+   or something else?
+
+2. Does `signalTargets` mean:
+   A) total canonical signal rows expected,
+   B) signal rows still missing,
+   C) signal operations scheduled by the current plan,
+   or something else?
+
+3. After a successful APPLY, should either number normally drop to zero?
+   Explain from code, not assumption.
+
+4. What exact fields/counts in the analyzer prove:
+   - mappings materialized
+   - holding mappings materialized
+   - quarterly aggregates materialized
+   - signals materialized
+   - sector snapshots materialized
+   - theme snapshots materialized
+
+5. Does the new post-APPLY plan hash
+   5ff6d637fb52f338fb74b1c35abdf9d37e7bfec0f7aa9c4969bf2f48d0f1e568
+   represent:
+   - an empty/idempotent plan,
+   - additional remediation still pending,
+   - or simply a deterministic hash of current target state?
+
+6. From the existing post-APPLY output alone, is production acceptance:
+   PASS
+   FAIL
+   or INSUFFICIENT_EVIDENCE?
+
+IMPORTANT
+
+Do not change code merely to add more diagnostics unless the existing
+analyzer genuinely cannot distinguish expected vs present vs missing.
+
+If existing analyzer already has the required acceptance fields outside
+--summary-only, identify them.
+
+If acceptance evidence is missing, make the SMALLEST generic enhancement
+to `--summary-only` so it exposes counts such as:
+
+aggregateExpected
+aggregatePresent
+aggregateMissing
+signalExpected
+signalPresent
+signalMissing
+sectorSnapshotExpected
+sectorSnapshotPresent
+sectorSnapshotMissing
+themeSnapshotExpected
+themeSnapshotPresent
+themeSnapshotMissing
+mappingOperationsPending
+holdingMappingOperationsPending
+remediationOperationsPending
+remediationComplete
+
+Use existing planner/verifier data only.
+No new architecture.
+No new database tables.
+No production writes.
+
+RETURN ONLY
+
+AGGREGATE TARGET SEMANTICS
+SIGNAL TARGET SEMANTICS
+POST-APPLY HASH SEMANTICS
+WHAT THE CURRENT OUTPUT PROVES
+ACCEPTANCE STATUS: PASS / FAIL / INSUFFICIENT_EVIDENCE
+ANY CODE CHANGE REQUIRED: YES/NO
+
+If NO code change is required, return the exact existing ONE read-only
+production command needed to establish final acceptance.
+
+If YES, include:
+FIX
+TESTS
+COMMIT
+and then exactly ONE read-only production acceptance command.
+
+Do not provide an APPLY command.

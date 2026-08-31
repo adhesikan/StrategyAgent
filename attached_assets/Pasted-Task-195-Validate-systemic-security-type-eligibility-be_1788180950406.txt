@@ -1,0 +1,168 @@
+Task #195 — Validate systemic security-type eligibility before institutional remediation APPLY
+
+DO NOT perform any production writes, remediation APPLY, ingestion,
+migration, feature-flag activation, or manual ticker repair.
+
+Context:
+
+Production security-reference enrichment has converged and Task #189
+now generates a materially expanded remediation plan.
+
+Current production analyzer reports approximately:
+
+Expected aggregates: 6,785
+Present aggregates: 141
+Missing aggregates: 6,644
+
+Expected signals: 3,205
+Present signals: 4
+Missing signals: 3,201
+
+The remediation plan includes many exact trusted-reference mappings,
+but inspection shows symbols that appear to represent mutual funds,
+fund share classes, ETFs, or other non-operating-company securities.
+
+Examples observed in the generic plan include identities such as:
+VFIAX
+VTSAX
+VSMAX
+VEXAX
+QQQT
+SPYT
+SOXY
+
+Do NOT audit these tickers individually.
+They are examples only of a possible systemic eligibility issue.
+
+OBJECTIVE
+
+Determine whether the generic institutional resolver/materialization
+pipeline is correctly enforcing the canonical security-type eligibility
+rules before we APPLY the production-wide Task #189 remediation plan.
+
+Review the complete generic pipeline:
+
+13F holding
+→ CUSIP
+→ security reference
+→ canonical security master
+→ trusted mapping
+→ security/instrument classification
+→ common-equity eligibility
+→ aggregate
+→ signal
+→ trend
+→ sector/theme snapshots
+→ product APIs
+
+Specifically determine:
+
+1. What canonical security types are currently eligible for
+   institutional stock-level aggregates and signals.
+
+2. Whether OpenFIGI identities representing:
+   - mutual funds
+   - mutual-fund share classes
+   - ETFs
+   - closed-end funds
+   - money-market funds
+   - preferred securities
+   - debt/fixed income
+   - warrants
+   - rights
+   - ADRs
+   - foreign listings
+   - other non-common-equity instruments
+
+   can currently pass through as ordinary stock-level institutional
+   identities.
+
+3. Whether eligibility is being inferred merely from:
+   - a valid ticker
+   - exact OpenFIGI match
+   - positive shares
+   - 13F presence
+
+   rather than from authoritative security/instrument classification.
+
+4. Quantify the CURRENT PRODUCTION-WIDE Task #189 remediation plan by
+   canonical security type:
+
+   security type
+   distinct CUSIPs
+   distinct symbols
+   holding rows
+   reported value
+   aggregate targets
+   signal targets
+
+5. Separate the population into:
+
+   ELIGIBLE_STOCK_ANALYTICS
+   ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS
+   UNSUPPORTED_FOR_STOCK_ANALYTICS
+   INSUFFICIENT_SECURITY_TYPE_EVIDENCE
+
+6. Verify that ambiguous or insufficient security-type evidence fails
+   closed and cannot create stock-level aggregates/signals.
+
+IMPORTANT
+
+Do not solve this with ticker allowlists/blocklists.
+Do not manually classify individual securities.
+Do not weaken Task #189 resolver trust requirements.
+Do not introduce fuzzy/inferred mappings.
+
+If a systemic eligibility gap exists:
+
+Implement the smallest generic fix so authoritative instrument/security
+classification becomes part of the canonical eligibility gate.
+
+Preserve:
+
+- Task #189 as sole trust authority
+- exact reference evidence requirements
+- reviewed/rejected protections
+- effective-filing semantics
+- positive-share rules
+- options/put-call separation
+- PRN exclusions
+- canonical USD semantics
+- QoQ by CUSIP
+- multi-CUSIP identity support
+- fail-closed behavior
+- deterministic remediation planning/hash
+- idempotent materialization
+
+Do NOT automatically exclude ETFs/funds from the underlying reference
+system if they may be useful later.
+
+Instead distinguish canonical identity/reference coverage from
+eligibility for STOCK-LEVEL institutional analytics.
+
+Reference identity may remain valid while downstream stock analytics
+eligibility is false or belongs to a separate future fund analytics
+category.
+
+After any required fix:
+
+Run:
+- focused eligibility/resolver tests
+- full canonical institutional regression suite
+- production build
+- git diff --check
+- architecture/safety review if available
+
+Then return:
+
+ROOT CAUSE
+CURRENT ELIGIBILITY RULE
+PRODUCTION-WIDE SECURITY-TYPE BREAKDOWN
+SYSTEMIC FIX
+FAIL-CLOSED BEHAVIOR
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+EXACT NEXT PRODUCTION READ-ONLY COMMAND
+
+Do not perform the production command yourself.

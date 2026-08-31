@@ -316,6 +316,60 @@ describe("institutional security reference enrichment planner", () => {
     })).toEqual([]);
   });
 
+  it("prioritizes every trusted asset-type backfill before retryable failures", () => {
+    const backfillCusips = ["900000001", "900000002", "900000003", "900000004"];
+    const retryCusips = Array.from({ length: 1036 }, (_, index) =>
+      `1${String(index + 1).padStart(8, "0")}`,
+    );
+    const population = [
+      ...backfillCusips.map((cusip, index) => ({
+        cusip,
+        holdingRows: index + 1,
+        reportedValueUsd: String(index + 1),
+        trustedSymbols: [`BACKFILL${index + 1}`],
+        currentAssetType: null,
+      })),
+      ...retryCusips.map((cusip) => ({
+        cusip,
+        holdingRows: 1,
+        reportedValueUsd: "1",
+      })),
+    ];
+    const trustedState = [
+      ...backfillCusips.map((cusip, index) => ({
+        cusip,
+        evidence: [{
+          source: "mapping",
+          cusip,
+          symbol: `BACKFILL${index + 1}`,
+          status: "exact" as const,
+        }],
+        trusted: true,
+        currentAssetType: null,
+      })),
+      ...retryCusips.map((cusip) => ({
+        cusip,
+        evidence: [],
+        lookupState: { outcome: "PROVIDER_FAILED" },
+      })),
+    ];
+    const selected = selectInstitutionalReferenceLookupCusips({
+      population,
+      trustedState,
+      maxCusips: 100,
+      includeAssetTypeBackfill: true,
+    });
+    expect(selected).toHaveLength(100);
+    expect(selected.slice(0, 4)).toEqual(backfillCusips);
+    expect(selected.slice(4)).toEqual(retryCusips.slice(0, 96));
+    expect(selectInstitutionalReferenceLookupCusips({
+      population,
+      trustedState,
+      maxCusips: 2,
+      includeAssetTypeBackfill: true,
+    })).toEqual(backfillCusips.slice(0, 2));
+  });
+
   it("counts insufficient and fund projections without making them stock-eligible", () => {
     const population = [
       { cusip: "000000001", holdingRows: 1, reportedValueUsd: "10", trustedSymbols: ["FUND"], currentAssetType: null },

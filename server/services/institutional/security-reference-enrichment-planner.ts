@@ -573,11 +573,19 @@ export function selectInstitutionalReferenceLookupCusips(input: {
     .sort((a, b) => {
       const aState = states.get(a) ?? { cusip: a, evidence: [] };
       const bState = states.get(b) ?? { cusip: b, evidence: [] };
+      const aRow = population.get(a);
+      const bRow = population.get(b);
       const priority = (kind: ReferenceSelectionKind) =>
-        kind === "never_processed" ? 0 : kind === "retryable_provider_failed"
-          || kind === "retryable_rate_limited" || kind === "retryable_other" ? 1 : 2;
-      const aPriority = stateIsTrusted(aState) ? (aState.candidateEvidence?.length ? 0 : 1) : priority(referenceSelectionKind(aState));
-      const bPriority = stateIsTrusted(bState) ? (bState.candidateEvidence?.length ? 0 : 1) : priority(referenceSelectionKind(bState));
+        kind === "never_processed" ? 1 : kind === "retryable_provider_failed"
+          || kind === "retryable_rate_limited" || kind === "retryable_other" ? 2 : 3;
+      // A trusted identity missing its canonical type is the purpose of this
+      // bounded run. It must outrank historical retry noise, regardless of
+      // whether cached candidates exist. Cached sufficient evidence is still
+      // reused later and does not consume a provider request.
+      const aAssetTypeBackfill = !!aRow && stateIsTrusted(aState) && assetTypeNeedsBackfill(aRow, aState);
+      const bAssetTypeBackfill = !!bRow && stateIsTrusted(bState) && assetTypeNeedsBackfill(bRow, bState);
+      const aPriority = aAssetTypeBackfill ? 0 : priority(referenceSelectionKind(aState));
+      const bPriority = bAssetTypeBackfill ? 0 : priority(referenceSelectionKind(bState));
       return aPriority - bPriority
         || a.localeCompare(b);
     }).slice(0, Math.max(0, Math.floor(input.maxCusips)));

@@ -12,6 +12,8 @@ import {
 export type ReferencePlanOutcome =
   | "authoritatively_resolvable" | "conflicting" | "ambiguous" | "unsupported"
   | "no_reference" | "provider_failed" | "rate_limited" | "partial"
+  | "terminal_ambiguous" | "terminal_unsupported" | "terminal_no_reference"
+  | "terminal_conflicting" | "retryable_other"
   /** No provider result was requested for this row in this cursor chunk. */
   | "not_processed";
 
@@ -28,6 +30,16 @@ export interface TrustedReferenceState {
   trusted?: boolean;
   /** A rejected local record is an explicit block on automated enrichment. */
   blocked?: boolean;
+  /** Persisted provider observation, if this CUSIP has been looked up before. */
+  lookupState?: PersistedReferenceLookupState;
+  /** Candidate history is supporting evidence that the provider has been queried. */
+  candidateHistoryPresent?: boolean;
+}
+export interface PersistedReferenceLookupState {
+  providerOutcome?: string | null;
+  outcome?: string | null;
+  fingerprint?: string | null;
+  currentCandidateCount?: number;
 }
 export interface ReferencePlanAction {
   cusip: string;
@@ -45,6 +57,16 @@ export interface ReferenceCoverage {
 }
 export interface ReferenceOutcomeCount extends ReferenceCoverage { outcome: ReferencePlanOutcome; }
 export interface ReferenceAttemptedOutcomeCount { outcome: Exclude<ReferencePlanOutcome, "not_processed">; count: number; }
+export interface ReferenceSelectionCounts {
+  skipped_terminal_ambiguous: number;
+  skipped_terminal_unsupported: number;
+  skipped_terminal_no_reference: number;
+  skipped_terminal_conflicting: number;
+  retryable_provider_failed: number;
+  retryable_rate_limited: number;
+  retryable_other: number;
+  never_processed: number;
+}
 export interface InstitutionalSecurityReferencePlan {
   version: 1;
   maxCusips: number;
@@ -57,6 +79,8 @@ export interface InstitutionalSecurityReferencePlan {
   outcomes: ReferenceOutcomeCount[];
   /** Requested provider outcomes only; counts must sum exactly to plannedLookups. */
   attemptedOutcomes: ReferenceAttemptedOutcomeCount[];
+  /** Population-level selection classifications used to explain skipped work. */
+  selection: ReferenceSelectionCounts;
   /** Bounded, sorted persistence action set. This is exactly what is hashed. */
   actions: ReferencePlanAction[];
   actionCounts: {
@@ -73,7 +97,9 @@ export interface InstitutionalSecurityReferencePlan {
 
 const outcomeOrder: ReferencePlanOutcome[] = [
   "authoritatively_resolvable", "conflicting", "ambiguous", "unsupported",
-  "no_reference", "provider_failed", "rate_limited", "partial", "not_processed",
+  "no_reference", "provider_failed", "rate_limited", "partial",
+  "terminal_ambiguous", "terminal_unsupported", "terminal_no_reference",
+  "terminal_conflicting", "retryable_other", "not_processed",
 ];
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -101,11 +127,51 @@ function stateIsTrusted(state: TrustedReferenceState): boolean {
   return state.evidence.length === 0 ? state.trusted === true :
     resolveReviewedSecurityReference(state.cusip, state.evidence).outcome === "AUTHORITATIVELY_RESOLVABLE";
 }
-function planOutcome(resolution: SecurityReferenceResolution | undefined, state: TrustedReferenceState, requested: boolean): { outcome: ReferencePlanOutcome; resolution?: SecurityReferenceResolution } {
+type ReferenceSelectionKind = "protected" | "never_processed" | "retryable_provider_failed"
+  | "retryable_rate_limited" | "retryable_other" | "terminal_ambiguous"
+  | "terminal_unsupported" | "terminal_no_reference" | "terminal_conflicting";
+
+function normalizedPersistedOutcome(state: TrustedReferenceState): string | null {
+  const value = state.lookupState?.outcome ?? state.lookupState?.providerOutcome;
+  if (!value) return null;
+  return value.trim().toUpperCase().replace(/[\s-]+/g, "_");
+}
+
+function referenceSelectionKind(state: TrustedReferenceState): ReferenceSelectionKind {
+  if (state.blocked || stateIsTrusted(state)) return "protected";
+  if (!state.lookupState && !state.candidateHistoryPresent) return "never_processed";
+  switch (normalizedPersistedOutcome(state)) {
+    case "AMBIGUOUS": return "terminal_ambiguous";
+    case "UNSUPPORTED": return "terminal_unsupported";
+    case "NO_REFERENCE":
+    case "NO_REFERENCE_AVAILABLE": return "terminal_no_reference";
+    case "CONFLICTING": return "terminal_conflicting";
+    case "PROVIDER_FAILED": return "retryable_provider_failed";
+    case "RATE_LIMITED": return "retryable_rate_limited";
+    case "PARTIAL":
+    case "PARTIAL_RESPONSE": return "retryable_other";
+    default: return "retryable_other";
+  }
+}
+
+function terminalPlanOutcome(state: TrustedReferenceState): ReferencePlanOutcome | null {
+  const kind = referenceSelectionKind(state);
+  return kind === "terminal_ambiguous" || kind === "terminal_unsupported"
+    || kind === "terminal_no_reference" || kind === "terminal_conflicting" ? kind : null;
+}
+
+function planOutcome(
+  resolution: SecurityReferenceResolution | undefined,
+  state: TrustedReferenceState,
+  requested: boolean,
+  refreshTerminal: boolean,
+): { outcome: ReferencePlanOutcome; resolution?: SecurityReferenceResolution } {
   if (state.blocked) return { outcome: "unsupported" };
   // Never trust a SQL status flag alone: Task #189 resolves conflicting
   // reviewed/exact evidence before it can count toward current coverage.
   if (stateIsTrusted(state)) return { outcome: "authoritatively_resolvable" };
+  const terminal = terminalPlanOutcome(state);
+  if (!requested && terminal && !refreshTerminal) return { outcome: terminal };
   // PARTIAL_RESPONSE describes a requested, incomplete provider response. It
   // must never be used to conceal work deliberately excluded by a chunk bound.
   if (!requested) return { outcome: "not_processed" };
@@ -133,8 +199,11 @@ export function buildInstitutionalSecurityReferencePlan(input: {
   cursor?: string | null;
   /** Exact provider request set. Omitted only for pure callers with supplied resolutions. */
   plannedLookupCusips?: readonly string[];
+  /** Explicitly re-query terminal unresolved outcomes. Defaults to false. */
+  refreshTerminal?: boolean;
 }): InstitutionalSecurityReferencePlan {
   const maxCusips = Math.max(0, Math.floor(input.maxCusips));
+  const refreshTerminal = input.refreshTerminal === true;
   const cursor = input.cursor == null ? null : normalizeCusip(input.cursor);
   if (input.cursor != null && !cursor) throw new Error("INVALID_CUSIP_CURSOR");
   const states = new Map(input.trustedState.map(row => [normalizeCusip(row.cusip), row]));
@@ -146,7 +215,7 @@ export function buildInstitutionalSecurityReferencePlan(input: {
     return !state.blocked && !stateIsTrusted(state);
   });
   const selected = selectInstitutionalReferenceLookupCusips({
-    population, trustedState: input.trustedState, maxCusips, cursor,
+    population, trustedState: input.trustedState, maxCusips, cursor, refreshTerminal,
   });
   const requested = Array.from(new Set((input.plannedLookupCusips ?? selected)
     .map(normalizeCusip).filter((cusip): cusip is string => !!cusip)))
@@ -158,7 +227,7 @@ export function buildInstitutionalSecurityReferencePlan(input: {
   }
   const assessed = population.map(row => {
     const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [], trusted: false };
-    return { row, ...planOutcome(resolutions.get(row.cusip), state, requested.includes(row.cusip)) };
+    return { row, ...planOutcome(resolutions.get(row.cusip), state, requested.includes(row.cusip), refreshTerminal) };
   });
   // Every observed provider resolution is persisted, including negative and
   // transport outcomes. Existing trusted state is already durable, so is not
@@ -189,17 +258,44 @@ export function buildInstitutionalSecurityReferencePlan(input: {
     outcome,
     count: assessed.filter(item => requested.includes(item.row.cusip) && item.outcome === outcome).length,
   }));
+  const selection = lookupEligible.reduce<ReferenceSelectionCounts>((counts, row) => {
+    const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [] };
+    const kind = referenceSelectionKind(state);
+    if (kind === "terminal_ambiguous" && !refreshTerminal) counts.skipped_terminal_ambiguous++;
+    if (kind === "terminal_unsupported" && !refreshTerminal) counts.skipped_terminal_unsupported++;
+    if (kind === "terminal_no_reference" && !refreshTerminal) counts.skipped_terminal_no_reference++;
+    if (kind === "terminal_conflicting" && !refreshTerminal) counts.skipped_terminal_conflicting++;
+    if (kind === "retryable_provider_failed") counts.retryable_provider_failed++;
+    if (kind === "retryable_rate_limited") counts.retryable_rate_limited++;
+    if (kind === "retryable_other") counts.retryable_other++;
+    if (kind === "never_processed") counts.never_processed++;
+    return counts;
+  }, {
+    skipped_terminal_ambiguous: 0,
+    skipped_terminal_unsupported: 0,
+    skipped_terminal_no_reference: 0,
+    skipped_terminal_conflicting: 0,
+    retryable_provider_failed: 0,
+    retryable_rate_limited: 0,
+    retryable_other: 0,
+    never_processed: 0,
+  });
+  const policyEligible = lookupEligible.filter(row => {
+    const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [] };
+    return refreshTerminal || !terminalPlanOutcome(state);
+  });
   const canonical = {
     // Include the complete normalized population plus the exact requested
     // CUSIPs and provider observations. Thus a hash cannot be reused for a
     // different population, cursor/chunk, or provider result set.
-    version: 1 as const, maxCusips, cursor, nextCursor: requested.at(-1) ?? null, before, projected, outcomes, attemptedOutcomes, actions,
+    version: 1 as const, maxCusips, cursor, refreshTerminal,
+    nextCursor: requested.at(-1) ?? null, before, projected, outcomes, attemptedOutcomes, selection, actions,
     population,
     requestedLookupCusips: requested,
     providerResults: requested.map(cusip => resolutions.get(cusip)!),
     actionCounts: { requestedCusipLimit: maxCusips, plannedLookups: actions.length, plannedWrites: actions.length,
       promotable: actions.filter(action => action.promotable).length,
-      skippedByLimit: lookupEligible.filter(row => (!cursor || row.cusip > cursor) && !requested.includes(row.cusip)).length,
+      skippedByLimit: policyEligible.filter(row => (!cursor || row.cusip > cursor) && !requested.includes(row.cusip)).length,
       skippedByCursor: lookupEligible.filter(row => !!cursor && row.cusip <= cursor).length,
       notProcessed: lookupEligible.length - requested.length },
   };
@@ -212,20 +308,40 @@ export function selectInstitutionalReferenceLookupCusips(input: {
   population: readonly EligibleReferencePopulationRow[]; trustedState: readonly TrustedReferenceState[]; maxCusips: number;
   /** Exclusive cursor: a continuation starts strictly after this CUSIP. */
   cursor?: string | null;
+  /** Explicitly include terminal unresolved outcomes. */
+  refreshTerminal?: boolean;
 }): string[] {
   const cursor = input.cursor == null ? null : normalizeCusip(input.cursor);
   if (input.cursor != null && !cursor) throw new Error("INVALID_CUSIP_CURSOR");
   const states = new Map(input.trustedState.map(row => [normalizeCusip(row.cusip), row]));
+  const refreshTerminal = input.refreshTerminal === true;
   return Array.from(new Set(input.population.map(row => normalizeCusip(row.cusip)).filter((x): x is string => !!x)))
     .filter(cusip => {
       const state = states.get(cusip) ?? { cusip, evidence: [] };
       return !state.blocked && !stateIsTrusted(state);
-    }).filter(cusip => !cursor || cusip > cursor).sort().slice(0, Math.max(0, Math.floor(input.maxCusips)));
+    }).filter(cusip => !cursor || cusip > cursor)
+    .filter(cusip => refreshTerminal || !terminalPlanOutcome(states.get(cusip) ?? { cusip, evidence: [] }))
+    .sort((a, b) => {
+      const aState = states.get(a) ?? { cusip: a, evidence: [] };
+      const bState = states.get(b) ?? { cusip: b, evidence: [] };
+      const priority = (kind: ReferenceSelectionKind) =>
+        kind === "never_processed" ? 0 : kind === "retryable_provider_failed"
+          || kind === "retryable_rate_limited" || kind === "retryable_other" ? 1 : 2;
+      return priority(referenceSelectionKind(aState)) - priority(referenceSelectionKind(bState))
+        || a.localeCompare(b);
+    }).slice(0, Math.max(0, Math.floor(input.maxCusips)));
 }
 
 /** Public CLI output intentionally excludes candidates, evidence, and errors. */
 export function referencePlanAggregateSummary(plan: InstitutionalSecurityReferencePlan) {
-  return { planHash: plan.planHash, before: plan.before, projected: plan.projected, outcomes: plan.outcomes, actionCounts: plan.actionCounts };
+  return {
+    planHash: plan.planHash,
+    before: plan.before,
+    projected: plan.projected,
+    outcomes: plan.outcomes,
+    selection: plan.selection,
+    actionCounts: plan.actionCounts,
+  };
 }
 /** Safe dry-run continuation metadata; nextCursor is the only disclosed CUSIP. */
 export function referencePlanChunkSummary(plan: InstitutionalSecurityReferencePlan) {

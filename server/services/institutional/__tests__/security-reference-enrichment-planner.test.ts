@@ -109,6 +109,74 @@ describe("institutional security reference enrichment planner", () => {
     expect(JSON.stringify(referencePlanAggregateSummary(plan))).not.toContain("023135106");
   });
 
+  it("prioritizes never-processed CUSIPs before retryable outcomes and skips terminals", () => {
+    const population = [
+      { cusip: "000000001", holdingRows: 1, reportedValueUsd: "1" },
+      { cusip: "000000002", holdingRows: 1, reportedValueUsd: "2" },
+      { cusip: "000000003", holdingRows: 1, reportedValueUsd: "3" },
+      { cusip: "000000004", holdingRows: 1, reportedValueUsd: "4" },
+      { cusip: "000000005", holdingRows: 1, reportedValueUsd: "5" },
+    ];
+    const trustedState = [
+      { cusip: "000000001", evidence: [], lookupState: { outcome: "AMBIGUOUS" } },
+      { cusip: "000000002", evidence: [], lookupState: { providerOutcome: "RATE_LIMITED" } },
+      { cusip: "000000004", evidence: [], lookupState: { outcome: "NO_REFERENCE_AVAILABLE" } },
+      { cusip: "000000005", evidence: [], lookupState: { outcome: "PROVIDER_FAILED" } },
+    ];
+    expect(selectInstitutionalReferenceLookupCusips({ population, trustedState, maxCusips: 3 }))
+      .toEqual(["000000003", "000000002", "000000005"]);
+    const plan = buildInstitutionalSecurityReferencePlan({
+      population,
+      trustedState,
+      providerResolutions: [],
+      plannedLookupCusips: ["000000003"],
+      maxCusips: 1,
+    });
+    expect(plan.selection).toMatchObject({
+      skipped_terminal_ambiguous: 1,
+      skipped_terminal_no_reference: 1,
+      retryable_provider_failed: 1,
+      retryable_rate_limited: 1,
+      never_processed: 1,
+    });
+    expect(plan.actionCounts.skippedByLimit).toBe(2);
+    expect(plan.outcomes.find(item => item.outcome === "terminal_ambiguous"))
+      .toMatchObject({ distinctCusips: 1 });
+    expect(plan.outcomes.find(item => item.outcome === "terminal_no_reference"))
+      .toMatchObject({ distinctCusips: 1 });
+  });
+
+  it("re-queries terminal outcomes only with an explicit refresh", () => {
+    const population = [{ cusip: "000000001", holdingRows: 1, reportedValueUsd: "1" }];
+    const trustedState = [{ cusip: "000000001", evidence: [], lookupState: { outcome: "UNSUPPORTED" } }];
+    expect(selectInstitutionalReferenceLookupCusips({ population, trustedState, maxCusips: 1 }))
+      .toEqual([]);
+    expect(selectInstitutionalReferenceLookupCusips({ population, trustedState, maxCusips: 1, refreshTerminal: true }))
+      .toEqual(["000000001"]);
+    const first = buildInstitutionalSecurityReferencePlan({
+      population, trustedState, providerResolutions: [], maxCusips: 1,
+    });
+    const refreshed = buildInstitutionalSecurityReferencePlan({
+      population, trustedState, providerResolutions: [], maxCusips: 1, refreshTerminal: true,
+    });
+    expect(first.planHash).not.toBe(refreshed.planHash);
+    expect(first.actionCounts.plannedLookups).toBe(0);
+  });
+
+  it("does not call a CUSIP with candidate history never-processed", () => {
+    const population = [
+      { cusip: "000000001", holdingRows: 1, reportedValueUsd: "1" },
+      { cusip: "000000002", holdingRows: 1, reportedValueUsd: "2" },
+    ];
+    const trustedState = [{
+      cusip: "000000001",
+      evidence: [],
+      candidateHistoryPresent: true,
+    }];
+    expect(selectInstitutionalReferenceLookupCusips({ population, trustedState, maxCusips: 2 }))
+      .toEqual(["000000002", "000000001"]);
+  });
+
   it("classifies unrequested bounded remainder as not processed, never partial", () => {
     const plan = buildInstitutionalSecurityReferencePlan({
       population: [

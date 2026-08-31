@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../server/db", () => ({ db: {} }));
 
 import { buildInstitutionalSecurityReferencePlan } from "../server/services/institutional/security-reference-enrichment-planner";
-import { evidenceQuery, executeReferenceEnrichment, parseReferenceEnrichmentArgs, populationQuery } from "./enrich-institutional-security-references";
+import { candidateHistoryQuery, evidenceQuery, executeReferenceEnrichment, lookupStateQuery, parseReferenceEnrichmentArgs, populationQuery } from "./enrich-institutional-security-references";
 
 describe("reference enrichment CLI arguments", () => {
   it("rejects unsafe or malformed invocation forms", () => {
@@ -19,7 +19,13 @@ describe("reference enrichment CLI arguments", () => {
   });
   it("normalizes a strict exclusive cursor with the bounded chunk size", () => {
     expect(parseReferenceEnrichmentArgs(["--dry-run", "--cursor", "037833100", "--max-cusips", "1"]))
-      .toEqual({ apply: false, dryRun: true, cursor: "037833100", maxCusips: 1 });
+      .toEqual({ apply: false, dryRun: true, cursor: "037833100", maxCusips: 1, refreshTerminal: false });
+  });
+  it("requires an explicit terminal refresh flag and rejects duplicate use", () => {
+    expect(parseReferenceEnrichmentArgs(["--dry-run", "--refresh-terminal"]))
+      .toMatchObject({ refreshTerminal: true });
+    expect(() => parseReferenceEnrichmentArgs(["--refresh-terminal", "--refresh-terminal"]))
+      .toThrow("DUPLICATE_REFRESH_TERMINAL");
   });
   it("performs zero persistence calls for injected dry-run orchestration", async () => {
     const plan = buildInstitutionalSecurityReferencePlan({
@@ -46,5 +52,12 @@ describe("reference enrichment CLI arguments", () => {
     expect(evidenceQuery).toContain("mapping_status");
     expect(evidenceQuery).toContain("review_status");
     expect(evidenceQuery).toContain("= 'rejected'");
+  });
+  it("loads persisted provider outcomes and current candidate history read-only", () => {
+    expect(lookupStateQuery).toContain("institutional_security_lookup_states");
+    expect(lookupStateQuery).toContain("institutional_security_candidate_observations");
+    expect(lookupStateQuery).toContain("s.provider='openfigi'");
+    expect(lookupStateQuery).toContain("current_candidate_count");
+    expect(candidateHistoryQuery).toContain("is_current=TRUE");
   });
 });

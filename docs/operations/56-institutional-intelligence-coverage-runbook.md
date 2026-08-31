@@ -171,6 +171,18 @@ The exact Railway production read-only dry-run command is:
 test "$RAILWAY_ENVIRONMENT_NAME" = "production" && npx tsx scripts/enrich-institutional-security-references.ts --dry-run
 ```
 
+Before selecting a provider chunk, the planner reads the persisted OpenFIGI
+lookup state and normalized current candidate-history counts in the same
+read-only transaction. Selection priority is deterministic: never-processed
+CUSIPs first, then retryable `PROVIDER_FAILED`, `RATE_LIMITED`, or partial
+observations, with CUSIP order used within each class. Existing
+`AMBIGUOUS`, `UNSUPPORTED`, `NO_REFERENCE_AVAILABLE`, and `CONFLICTING`
+outcomes are terminal skips by default; use `--refresh-terminal` only when a
+separately reviewed refresh is intended. Reviewed and rejected local evidence
+always remains protected. The JSON `selection` block reports terminal skips,
+retryable outcomes, and `never_processed` independently from the exact
+`plannedLookups` action count.
+
 The JSON output intentionally contains aggregate counts, the plan hash, safe
 execution-tier metadata, and dry-run continuation cursors only; it contains
 neither credentials nor raw provider payloads. Apply is never

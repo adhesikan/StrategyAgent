@@ -42,4 +42,22 @@ describe("one-shot CLI runtime", () => {
     expect(error).toHaveBeenCalledWith("[test-cli] CLOSE_ERROR: POOL_CLOSE_FAILURE");
     error.mockRestore();
   });
+
+  it("reports a safe database cause instead of hiding it behind a failed query", async () => {
+    const close = vi.fn().mockResolvedValue(undefined);
+    const errorOutput = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const cause = Object.assign(new Error('column reference "period_of_report" is ambiguous'), { code: "42702" });
+    const error = Object.assign(new Error("Failed query: SELECT sensitive-looking SQL"), { cause });
+
+    const exitCode = await runCli(
+      async () => { throw error; },
+      { label: "test-cli", close },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(errorOutput).toHaveBeenCalledWith(
+      '[test-cli] ERROR: column reference "period_of_report" is ambiguous [code=42702]',
+    );
+    errorOutput.mockRestore();
+  });
 });

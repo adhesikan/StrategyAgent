@@ -25,7 +25,7 @@ const query = `
 ${CANONICAL_EFFECTIVE_HOLDINGS_CTE},
 newest_canonical_quarter AS (SELECT MAX(period_of_report) period FROM canonical_filings),
 eligible AS (
- SELECT h.*, h.period_of_report canonical_period
+ SELECT h.*, h.canonical_period_of_report canonical_period
  FROM canonical_effective_holdings h
 ),
 all_history AS (

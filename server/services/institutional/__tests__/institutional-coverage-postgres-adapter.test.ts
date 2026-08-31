@@ -33,6 +33,7 @@ describe("coverage PostgreSQL adapter", () => {
     expect(statements.join("\n")).toContain("pg_advisory_xact_lock");
     expect(statements.join("\n")).toContain("on conflict (cusip) do update");
     expect(statements.join("\n")).toContain("f.is_effective = true");
+    expect(statements.join("\n")).toContain("f.period_of_report as canonical_period_of_report");
     expect(statements.join("\n")).toContain("holding_count");
     expect(statements.join("\n")).toContain("coalesce(upper(h.shares_prn_type), 'sh') <> 'prn'");
   });

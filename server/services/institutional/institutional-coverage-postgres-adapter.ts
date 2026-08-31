@@ -38,19 +38,19 @@ export function createCoveragePostgresAdapter(
         await executor.execute(sql`SELECT pg_advisory_xact_lock(${GLOBAL_COVERAGE_ADVISORY_LOCK})`);
         const adapter: CoverageApplyTransaction = {
           loadPlan: () => loadPlan(executor),
-            async validateHoldingCount(operation) {
-              const result = await executor.execute(sql`
-                ${sql.raw(CANONICAL_EFFECTIVE_HOLDINGS_CTE)}
-                SELECT COUNT(*)::int AS holding_count
-                FROM canonical_effective_holdings h
-                WHERE h.cusip=${operation.cusip}
-                  AND (h.mapped_symbol IS NULL OR h.mapping_status NOT IN ('exact','reviewed'))
-              `);
-              const holdingCount = Number(rows(result)[0]?.holding_count ?? 0);
-              if (holdingCount !== operation.holdingUpdateRows) {
-                throw new Error(`HOLDING_ROW_COUNT_MISMATCH:${operation.cusip}`);
-              }
-            },
+          async validateHoldingCount(operation) {
+            const result = await executor.execute(sql`
+              ${sql.raw(CANONICAL_EFFECTIVE_HOLDINGS_CTE)}
+              SELECT COUNT(*)::int AS holding_count
+              FROM canonical_effective_holdings h
+              WHERE h.cusip=${operation.cusip}
+                AND (h.mapped_symbol IS NULL OR h.mapping_status NOT IN ('exact','reviewed'))
+            `);
+            const holdingCount = Number(rows(result)[0]?.holding_count ?? 0);
+            if (holdingCount !== operation.holdingUpdateRows) {
+              throw new Error(`HOLDING_ROW_COUNT_MISMATCH:${operation.cusip}`);
+            }
+          },
           async promoteMapping(operation) {
             const result = await executor.execute(sql`
               INSERT INTO institutional_security_mappings
@@ -67,13 +67,13 @@ export function createCoveragePostgresAdapter(
           },
           async updateHoldings(operation) {
             const result = await executor.execute(sql`
-                ${sql.raw(CANONICAL_EFFECTIVE_HOLDINGS_CTE)}
+              ${sql.raw(CANONICAL_EFFECTIVE_HOLDINGS_CTE)}
               UPDATE institutional_13f_holdings h SET
                 mapped_symbol=${operation.symbol},mapping_status=${operation.mappingStatus}
-                FROM canonical_effective_holdings effective
-                WHERE effective.id=h.id
-                  AND effective.cusip=${operation.cusip}
-                  AND (effective.mapped_symbol IS NULL OR effective.mapping_status NOT IN ('exact','reviewed'))
+              FROM canonical_effective_holdings effective
+              WHERE effective.id=h.id
+                AND effective.cusip=${operation.cusip}
+                AND (effective.mapped_symbol IS NULL OR effective.mapping_status NOT IN ('exact','reviewed'))
               RETURNING h.id
             `);
             if (rows(result).length !== operation.holdingUpdateRows) {

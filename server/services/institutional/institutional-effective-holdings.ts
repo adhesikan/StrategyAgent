@@ -29,7 +29,10 @@ canonical_filings AS (
     AND f.filing_rank = 1
 ),
 canonical_effective_holdings AS (
-  SELECT h.*, f.filer_cik, f.period_of_report
+  SELECT
+    h.*,
+    f.filer_cik AS canonical_filer_cik,
+    f.period_of_report AS canonical_period_of_report
   FROM institutional_13f_holdings h
   JOIN canonical_filings f ON f.accession_number = h.accession_number
   WHERE h.put_call IS NULL

@@ -4,7 +4,17 @@ export interface CliRuntimeOptions {
 }
 
 function errorMessage(error: unknown): string {
-  return String(error instanceof Error ? error.message : error).slice(0, 500);
+  const value = error as Record<string, unknown>;
+  const cause = value.cause as Record<string, unknown> | undefined;
+  const message = typeof cause?.message === "string"
+    ? cause.message
+    : error instanceof Error ? error.message : String(error);
+  const code = typeof cause?.code === "string"
+    ? cause.code.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 32)
+    : typeof value.code === "string"
+      ? value.code.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 32)
+      : "";
+  return `${message}${code ? ` [code=${code}]` : ""}`.slice(0, 500);
 }
 
 /**

@@ -1,0 +1,242 @@
+Task #202 — Fix downstream stock-remediation eligibility leak
+
+CONTEXT
+
+Production canonical correction summary is clean:
+
+eligibleCusips: 14713
+trustedCusips: 3206
+stockEligibleCusips: 1475
+separateFundCusips: 1687
+correctionActions: 0
+
+correctionBlockers:
+  insufficientEvidenceCusips: 0
+  contradictoryEvidenceCusips: 0
+  staleMachineDerivedTypeCusips: 0
+  canonicalSymbolReviewRequiredCusips: 0
+
+Therefore there are NO canonical corrections to APPLY.
+
+However, the subsequent full production read-only institutional analyzer still
+generated STOCK aggregate targets for obvious fund/share-class symbols,
+including:
+
+TQGIX
+TRAIX
+TRBCX
+TRBUX
+TRLGX
+TRMIX
+TRNEX
+
+DO NOT create ticker-specific exclusions for these examples.
+
+This proves the remaining defect is downstream of canonical security state:
+the remediation/materialization planner is not enforcing the same canonical
+stock eligibility population used by the canonical verifier/correction
+summary.
+
+OBJECTIVE
+
+Find and fix the ONE generic eligibility leak between:
+
+canonical trusted security state
+→ Task #196 security-type classifier
+→ canonical stock-eligible population
+→ remediation candidate generation
+→ aggregate targets
+→ signal targets
+→ snapshots
+
+Do not redesign security identity.
+Do not change OpenFIGI enrichment.
+Do not add manual ticker/CUSIP lists.
+Do not use ticker suffix heuristics.
+Do not run production writes.
+Do not run remediation APPLY.
+Do not run correction APPLY.
+
+CANONICAL INVARIANT
+
+A CUSIP may enter STOCK institutional analytics only when ALL are true:
+
+1. effective eligible 13F holding
+2. trusted canonical identity under Task #189
+3. canonical security_master identity
+4. canonical persisted asset_type
+5. Task #196 classifies it ELIGIBLE_STOCK_ANALYTICS
+6. canonical type is specifically:
+   common_stock OR reit
+7. canonical symbol passes Task #201/#200 primary-symbol validation
+8. no unresolved canonical correction blocker applies
+
+Anything else must NOT create:
+
+- stock aggregate target
+- stock signal target
+- stock trend target
+- sector/theme stock snapshot contribution
+- Stock View stock analytics
+- Rotation stock analytics
+- Discovery stock analytics
+- Multibagger stock analytics
+
+Funds remain valid reference identities but belong only to:
+
+ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS
+
+and MUST NOT enter stock analytics.
+
+ROOT-CAUSE TRACE
+
+Compare the exact data/repository path used by:
+
+A. --summary-only stockEligibleCusips = 1475
+
+versus
+
+B. remediation affected.mappings / holdings / aggregates / signals
+
+Find the first point where B stops using the canonical eligible population.
+
+Inspect specifically:
+
+- remediation planner candidate loader
+- mapping promotion planning
+- holding materialization planning
+- aggregate target generation
+- signal target generation
+- current/previous-quarter aggregate loaders
+- any fallback to provider ticker
+- any fallback to holding symbol
+- any use of trusted mapping without asset-type eligibility
+- any code path that treats exact mapping as sufficient for stock eligibility
+- any path using stale projected security classification rather than canonical
+  persisted classification
+- any symbol-level grouping that loses CUSIP-level eligibility before
+  aggregation
+
+IMPORTANT
+
+Do not assume that because a mapping is exact/trusted it is stock eligible.
+
+Identity trust and stock analytics eligibility are separate gates.
+
+A trusted mutual fund or ETF identity MUST remain trusted while being excluded
+from stock analytics.
+
+FIX
+
+Make the smallest generic correction so every stock remediation candidate is
+derived from the SAME canonical stock-eligible CUSIP population used by the
+production summary/verifier.
+
+Prefer one shared canonical eligibility loader/function rather than duplicating
+filters.
+
+The remediation planner must not independently reconstruct stock eligibility
+if a canonical shared implementation exists.
+
+Add an invariant:
+
+remediationStockEligibleCusips
+must be a subset of
+canonicalStockEligibleCusips
+
+and preferably equal the canonical stock-eligible CUSIPs that actually have
+eligible effective holdings requiring materialization.
+
+If any remediation stock target comes from a CUSIP outside canonical stock
+eligibility:
+
+FAIL CLOSED.
+
+Return an aggregate error such as:
+
+STOCK_REMEDIATION_ELIGIBILITY_RECONCILIATION_FAILED
+
+Do not generate executable remediation operations.
+
+SYSTEMIC TESTS
+
+Add tests proving:
+
+- common stock trusted identity → stock remediation allowed
+- REIT → stock remediation allowed
+- ETF trusted identity → stock remediation excluded
+- mutual fund trusted identity → stock remediation excluded
+- closed-end fund → excluded
+- money-market fund → excluded
+- pooled fund → excluded
+- ADR → excluded
+- foreign listing → excluded
+- preferred → excluded
+- debt → excluded
+- warrant/right/unit/derivative → excluded
+- insufficient type → excluded
+- contradictory type → excluded
+- invalid canonical symbol → excluded
+- exact trusted mapping alone does NOT imply stock eligibility
+- provider ticker alone does NOT imply stock eligibility
+- holding symbol alone does NOT imply stock eligibility
+- multi-CUSIP symbol includes only eligible CUSIPs
+- fund and common-stock CUSIPs sharing/similar symbol identity cannot leak
+- aggregate generation uses canonical eligibility
+- signal generation uses canonical eligibility
+- snapshots use canonical eligibility
+- dry-run remediation fails closed on reconciliation mismatch
+
+Add regression fixtures representing the CHARACTERISTICS of the production
+fund leak, but do not hard-code production ticker exceptions.
+
+VALIDATION
+
+Run:
+
+focused remediation eligibility tests
+Task #189 resolver tests
+Task #196 eligibility tests
+Task #200 reconciliation tests
+Task #201/#200 canonical normalization tests
+aggregate/signal tests
+full institutional suite
+smoke
+regression
+integration
+security
+production build
+git diff --check
+
+NO production command.
+
+RETURN
+
+ROOT CAUSE
+FIRST LEAK POINT
+FIX
+SHARED CANONICAL ELIGIBILITY CONTRACT
+REMEDIATION RECONCILIATION INVARIANT
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+
+Finally provide exactly ONE next production command:
+
+the read-only institutional analyzer using --summary-only, enhanced if
+necessary so its compact output includes:
+
+canonicalStockEligibleCusips
+remediationStockEligibleCusips
+stockEligibilityReconciled
+fundCusipsExcludedFromStockRemediation
+nonStockCusipsInStockRemediation
+aggregateTargets
+signalTargets
+canonicalCorrectionActions
+canonicalBlockers
+remediationBlocked
+fresh remediation planHash
+
+Do not execute it.
+Do not provide an APPLY command.

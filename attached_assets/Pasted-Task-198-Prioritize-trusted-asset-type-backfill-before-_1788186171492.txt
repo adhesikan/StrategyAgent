@@ -1,0 +1,104 @@
+Task #198 — Prioritize trusted asset-type backfill before unrelated provider-failure retries
+
+Do not perform any production command or production write.
+
+Task #197 is implemented and deployed.
+
+Production read-only dry run reports:
+
+trustedCusips: 3206
+assetTypePopulated: 3202
+assetTypeMissing: 4
+
+selection:
+  asset_type_backfill: 4
+  retryable_provider_failed: 1036
+  never_processed: 0
+
+However, running:
+
+--dry-run --max-cusips 100
+
+selected 100 provider-failure candidates and produced:
+
+provider_failed: 100
+assetTypePopulated: 3202
+projectedAssetTypePopulated: 3202
+projectedAssetTypeInsufficient: 4
+
+Therefore the four trusted asset-type-backfill candidates were recognized
+but were not actually prioritized into the bounded provider request set.
+
+OBJECTIVE
+
+Make the smallest generic selection-order correction.
+
+Required priority must be:
+
+1. trusted identity with missing/stale canonical asset_type
+2. never-processed identity/reference candidates
+3. retryable provider_failed/rate_limited/partial candidates
+4. terminal unresolved only under explicit refresh behavior
+
+The trusted asset-type-backfill lane must not be starved by historical
+provider-failure retries.
+
+Do not special-case any ticker or CUSIP.
+
+Do not change:
+- Task #189 identity trust rules
+- Task #196 eligibility rules
+- canonical security-type normalization
+- OpenFIGI exact ID_CUSIP semantics
+- provider batching/pacing
+- reviewed/rejected protections
+- fail-closed behavior
+- dry-run zero-write behavior
+- deterministic ordering/hash
+- guarded APPLY requirements
+
+IMPORTANT
+
+A trusted identity that already has persisted provider candidate evidence
+sufficient to classify asset_type should reuse that evidence without an
+unnecessary provider request.
+
+Only perform a provider lookup when persisted authoritative evidence is
+insufficient.
+
+Add regression tests proving that when:
+
+asset_type_backfill = 4
+retryable_provider_failed = 1036
+max-cusips = 100
+
+all four asset-type-backfill candidates are selected before generic
+provider-failure retry candidates.
+
+Also test max-cusips values smaller than the asset-type-backfill population
+to prove deterministic bounded ordering.
+
+Run:
+- focused selection/backfill tests
+- security-reference enrichment tests
+- Task #196 eligibility tests
+- full canonical institutional suite
+- smoke
+- regression
+- integration
+- security
+- production build
+- git diff --check
+
+Return:
+
+ROOT CAUSE
+SELECTION ORDER BEFORE
+SELECTION ORDER AFTER
+PERSISTED-EVIDENCE REUSE
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+EXACT NEXT PRODUCTION READ-ONLY COMMAND
+
+Do not execute production commands.

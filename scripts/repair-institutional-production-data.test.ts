@@ -61,6 +61,47 @@ describe("institutional production repair safety", () => {
     expect(validateRepairDatabaseRuntime({ DATABASE_URL: "configured" })).toEqual([]);
   });
 
+  it("blocks repair until canonical security corrections are complete", () => {
+    const issues = getRepairBlockingIssues({
+      databaseIdentity: { database: "db", user: "user", schema: "public", railwayEnvironment: "production" },
+      schemaReady: true,
+      publicFeatureEnabled: false,
+      duplicateHoldingGroups: 0,
+      duplicateClassification: {
+        materiallyDistinctGroups: 0,
+        sourceIdentityUnresolvedGroups: 0,
+        affectedFilings: 0,
+        affectedCusips: 0,
+        exactSourceDuplicateCount: "UNDETERMINABLE_WITHOUT_INFOTABLE_SK",
+        rootCause: "DUPLICATE_CHECK_FALSE_POSITIVE_CONFIRMED",
+      },
+      dataQualityWarnings: [],
+      orphanHoldingRows: 0,
+      mappingCounts: {},
+      dataQuality: {
+        totalFilings: 2, effectiveFilings: 2, totalHoldings: 2, effectiveHoldings: 2,
+        effectiveManagers: 1, effectiveQuarters: 2, latestEffectiveQuarter: "2026-06-30",
+        mappedEffectiveHoldings: 0, mappingCoverage: 0, aggregateRows: 0, aggregateState: "incomplete",
+      },
+      expectedSecurities: [],
+      canonicalCorrectionState: {
+        verified: true,
+        correctionPlanHash: "hash",
+        correctionActions: 1,
+        unresolvedBlockers: 0,
+      },
+      plan: {
+        effectiveHoldings: 2, reliableMappingCandidates: 0, mappingRowsToInsert: 0,
+        mappingRowsToPromote: 0, ambiguousMappings: 0, unmappedMappings: 0, rejectedMappings: 0,
+        alreadyMappedEffectiveHoldings: 0, holdingsToUpdate: 0, remainingUnmappedEffectiveHoldings: 2,
+        conflictingMappedHoldings: 0, aggregateSymbols: 0, aggregateQuarters: 0,
+        aggregateRowsToInsert: 0, aggregateRowsToUpdate: 0, signalRowsToInsert: 0, signalRowsToUpdate: 0,
+        reliableMappingDigest: "", targetHoldingDigest: "",
+      },
+    });
+    expect(issues).toContain("CANONICAL_SECURITY_TYPE_CORRECTIONS_PENDING");
+  });
+
   it("contains only the four explicitly verified repair mappings", () => {
     expect(VERIFIED_REPAIR_MAPPINGS).toEqual([
       { symbol: "AAPL", cusip: "037833100", issuerName: "Apple Inc." },

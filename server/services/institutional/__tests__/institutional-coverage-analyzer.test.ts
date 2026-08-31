@@ -157,6 +157,31 @@ describe("institutional coverage analyzer", () => {
     expect(plan.operations).toHaveLength(1);
     expect(plan.operations?.[0].symbol).toBe("REIT");
   });
+  it("blocks stock remediation until canonical corrections are resolved", () => {
+    const row = {
+      ...classifyCusipEvidence({
+        ...base,
+        reliableReferenceSymbols: ["STALE"],
+        sourceEvidence: [{ source: "institutional_mapping", symbol: "STALE", status: "exact" }],
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+      canonicalCorrectionBlocker: "STALE_MACHINE_DERIVED_TYPE",
+    };
+    expect(buildActionableCoveragePlan({
+      classifications: [row],
+      before: coverageTotals([row]),
+    }).operations).toEqual([]);
+    expect(() => buildActionableCoveragePlan({
+      classifications: [row],
+      before: coverageTotals([row]),
+      canonicalCorrectionState: {
+        verified: false,
+        planHash: "correction",
+        unresolvedBlockers: 1,
+      },
+    })).toThrow("CANONICAL_SECURITY_STATE_CORRECTION_REQUIRED");
+  });
 
   it("fails closed for rejected identity evidence", () => {
     const row = classifyCusipEvidence({

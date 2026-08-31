@@ -12,6 +12,9 @@ import { classifyInstitutionalSecurityType } from "../server/services/institutio
 import { createCoveragePostgresAdapter } from "../server/services/institutional/institutional-coverage-postgres-adapter";
 import { canonicalSecurityTypeStateQuery, reconcileCanonicalStockEligibility } from "../server/services/institutional/canonical-security-state";
 import { buildInstitutionalAssetTypeCorrectionPlan } from "../server/services/institutional/security-reference-enrichment-planner";
+import {
+  applyInstitutionalSecurityTypeCorrections,
+} from "../server/services/institutional/security-reference-correction";
 import { recomputeAggregateForSymbol } from "../server/services/institutional/ingestion-service";
 import { rebuildInstitutionalSignalForSymbol } from "../server/services/institutional/signal-engine";
 import { runIntelligencePrecomputation } from "../server/services/intelligence-orchestrator";
@@ -63,7 +66,7 @@ all_history AS (
   FROM institutional_security_candidate_observations
   WHERE is_current=TRUE GROUP BY cusip
  ) SELECT a.*,l.latest_holding_rows,l.latest_null_value_rows,l.latest_reported_value_usd,
-   m.mapping_evidence,s.asset_type,s.asset_type_reviewed,s.mapping_method,s.master_evidence,p.provider_candidates
+   m.mapping_evidence,s.asset_type,s.master_evidence,s.asset_type_reviewed,s.mapping_method,p.provider_candidates
  FROM all_history a
  LEFT JOIN latest_history l USING(cusip)
  LEFT JOIN mapping_evidence m USING(cusip)
@@ -140,15 +143,6 @@ async function loadCoverage(executor: Executor) {
     securityTypePopulation: classifyInstitutionalSecurityType({ assetType: r.asset_type }).analyticsPopulation,
   }));
   const before = coverageTotals(classifications);
-  const plan = buildActionableCoveragePlan({
-    classifications, before,
-    existingAggregateTargets: new Set(rows.aggregateTargets.map(row => `${row.symbol}:${row.period}`)),
-    existingSignalSymbols: new Set(rows.signalTargets.map(row => String(row.symbol))),
-    snapshotRowsByFamily: {
-      sector_intelligence_snapshots: Number(rows.diagnostics.sector_snapshot_rows ?? 0),
-      theme_intelligence_snapshots: Number(rows.diagnostics.theme_snapshot_rows ?? 0),
-    },
-  });
   const canonicalReconciliation = reconcileCanonicalStockEligibility(
     Number(rows.canonicalState.stock_eligible_cusips ?? 0),
     countCanonicalStockEligibleInputs(classifications),
@@ -178,10 +172,32 @@ async function loadCoverage(executor: Executor) {
       candidateEvidence: row.providerCandidates ?? [],
     })),
   });
-  return { rows, classifications, before, plan, canonicalReconciliation, normalizationAudit, correctionPlan };
+  const correctionBlockers = new Map(
+    correctionPlan.blockerCusips.map((item) => [item.cusip, item.blocker]),
+  );
+  const correctedClassifications = classifications.map((row) => {
+    const action = correctionPlan.actions.find((candidate) => candidate.cusip === row.cusip);
+    const blocker = correctionBlockers.get(row.cusip) ??
+      (action?.action === "TYPE_CORRECTION" ? "STALE_MACHINE_DERIVED_TYPE" :
+        action?.action === "SYMBOL_CORRECTION" ? "CANONICAL_SYMBOL_REVIEW_REQUIRED" : undefined);
+    return blocker ? { ...row, canonicalCorrectionBlocker: blocker } : row;
+  });
+  const plan = buildActionableCoveragePlan({
+    classifications: correctedClassifications, before,
+    existingAggregateTargets: new Set(rows.aggregateTargets.map(row => `${row.symbol}:${row.period}`)),
+    existingSignalSymbols: new Set(rows.signalTargets.map(row => String(row.symbol))),
+    snapshotRowsByFamily: {
+      sector_intelligence_snapshots: Number(rows.diagnostics.sector_snapshot_rows ?? 0),
+      theme_intelligence_snapshots: Number(rows.diagnostics.theme_snapshot_rows ?? 0),
+    },
+  });
+  return { rows, classifications: correctedClassifications, before, plan, canonicalReconciliation, normalizationAudit, correctionPlan };
 }
 export async function loadInstitutionalCoveragePlan(executor: Executor): Promise<CoveragePlan> {
   return (await loadCoverage(executor)).plan;
+}
+export async function loadInstitutionalAssetTypeCorrectionPlan(executor: Executor) {
+  return (await loadCoverage(executor)).correctionPlan;
 }
 function priorCalendarQuarter(period: string, available: ReadonlySet<string>): string | null {
   const [year, month] = period.split("-").map(Number);
@@ -192,7 +208,11 @@ function priorCalendarQuarter(period: string, available: ReadonlySet<string>): s
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_RUNTIME_REJECTED:DATABASE_URL_REQUIRED");
   if (process.env.EXTERNAL_DATABASE_URL) throw new Error("DATABASE_RUNTIME_REJECTED:EXTERNAL_DATABASE_URL_FORBIDDEN");
-  const args = process.argv.slice(2); const apply = args.includes("--apply");
+  const args = process.argv.slice(2);
+  const apply = args.includes("--apply");
+  const applyCorrections = args.includes("--apply-corrections") || args.includes("--corrections") || args.includes("--correction-apply");
+  const summaryOnly = args.includes("--summary-only");
+  if (summaryOnly && apply) throw new Error("SUMMARY_ONLY_IS_READ_ONLY");
   const arg = (name: string) => args[args.indexOf(name) + 1];
   assertReadOnlySql(query);
   assertReadOnlySql(newestQuarterDiagnosticsQuery);
@@ -202,7 +222,7 @@ async function main() {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
     return loadCoverage(tx as unknown as Executor);
   });
-   const { rows: data, classifications, before, plan, canonicalReconciliation, normalizationAudit, correctionPlan } = rows;
+    const { rows: data, classifications, before, plan, canonicalReconciliation, normalizationAudit, correctionPlan } = rows;
   const latestClassifications = data.evidence
     .filter((r) => Number(r.latest_holding_rows ?? 0) > 0)
      .map((r) => ({
@@ -219,7 +239,71 @@ async function main() {
        securityTypePopulation: classifyInstitutionalSecurityType({ assetType: r.asset_type }).analyticsPopulation,
      }));
   const latestQuarter = coverageTotals(latestClassifications);
+  if (applyCorrections) {
+    if (!apply) throw new Error("CORRECTION_APPLY_REQUIRES_APPLY_FLAG");
+    await applyInstitutionalSecurityTypeCorrections({
+      database: {
+        async identity() {
+          const result = rowsOf(await db.execute(sql`SELECT current_database() AS database, current_schema() AS schema`))[0] ?? {};
+          return { database: String(result.database ?? ""), schema: String(result.schema ?? "") };
+        },
+        async withAdvisoryLock<T>(_key: number, fn: () => Promise<T>) { return fn(); },
+        async transaction<T>(fn: (tx: any) => Promise<T>) {
+          return db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(774412005::bigint)`);
+            return fn({
+              async loadPlan() { return (await loadCoverage(tx as unknown as Executor)).correctionPlan; },
+              async applyTypeCorrection(action: any) {
+                await tx.execute(sql`
+                  UPDATE security_master
+                  SET asset_type = ${action.projectedAssetType},
+                      last_verified = NOW(),
+                      notes = ${`provider correction: ${action.providerEvidence.join("|")}`}
+                  WHERE cusip = ${action.cusip}
+                    AND asset_type = ${action.currentAssetType}
+                    AND COALESCE(review_status, '') NOT IN ('reviewed', 'rejected')
+                `);
+              },
+              async applySymbolCorrection(action: any) {
+                await tx.execute(sql`
+                  UPDATE security_master
+                  SET ticker = ${action.projectedSymbol}, last_verified = NOW(),
+                      notes = ${`provider symbol correction: ${action.providerEvidence.join("|")}`}
+                  WHERE cusip = ${action.cusip}
+                    AND ticker IS NOT DISTINCT FROM ${action.currentSymbol}
+                    AND COALESCE(review_status, '') NOT IN ('reviewed', 'rejected')
+                `);
+                await tx.execute(sql`
+                  UPDATE institutional_security_mappings
+                  SET mapped_symbol = ${action.projectedSymbol}, last_verified_at = NOW(),
+                      notes = ${`provider symbol correction: ${action.providerEvidence.join("|")}`}
+                  WHERE cusip = ${action.cusip}
+                    AND mapped_symbol IS NOT DISTINCT FROM ${action.currentSymbol}
+                    AND COALESCE(mapping_status, '') NOT IN ('reviewed', 'rejected')
+                `);
+              },
+            });
+          });
+        },
+      },
+      artifact: correctionPlan,
+      confirmation: arg("--confirm"),
+      environment: arg("--environment"),
+      railwayEnvironment: process.env.RAILWAY_ENVIRONMENT_NAME,
+      nodeEnvironment: process.env.NODE_ENV,
+      correctionApplyEnabled: process.env.INSTITUTIONAL_SECURITY_TYPE_CORRECTION_APPLY_ENABLED,
+      expectedDatabase: arg("--database-name"),
+      expectedSchema: arg("--schema-name"),
+      databaseUrl: process.env.DATABASE_URL,
+      externalDatabaseUrl: process.env.EXTERNAL_DATABASE_URL,
+      suppliedPlanHash: arg("--plan-hash"),
+    });
+    return;
+  }
   if (apply) {
+    if (correctionPlan.actions.length || correctionPlan.blockerCusips.length) {
+      throw new Error("CANONICAL_SECURITY_STATE_CORRECTION_REQUIRED");
+    }
     await applyInstitutionalCoveragePlan({
       database: createCoveragePostgresAdapter(db as any, loadInstitutionalCoveragePlan),
       artifact: plan, environment: arg("--environment"), confirmation: arg("--confirm"),
@@ -236,6 +320,20 @@ async function main() {
         async refreshSnapshots(targets) { if (targets.length) await runIntelligencePrecomputation({ persist: true }); },
       },
     });
+    return;
+  }
+  if (summaryOnly) {
+    console.log(JSON.stringify({
+      eligibleCusips: before.eligibleCusips,
+      holdingRows: before.holdingRows,
+      reportedValueUsd: before.reportedValueUsd,
+      trustedCusips: before.reliablyMappedCusips,
+      stockEligibleCusips: classifications.filter((row) => row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS").length,
+      separateFundCusips: classifications.filter((row) => row.securityTypePopulation === "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS").length,
+      correctionActions: correctionPlan.actions.length,
+      correctionBlockers: correctionPlan.blockers,
+      planHash: correctionPlan.planHash,
+    }));
     return;
   }
   const latestByCusip = Object.fromEntries(data.evidence.map(row => [String(row.cusip), Number(row.latest_holding_rows ?? 0)]));
@@ -279,18 +377,26 @@ async function main() {
       actionCount: correctionPlan.actions.length,
       before: correctionPlan.before,
       projected: correctionPlan.projected,
-      actions: correctionPlan.actions.map((action) => ({
+       blockers: correctionPlan.blockers,
+       blockerCusips: correctionPlan.blockerCusips,
+       actions: correctionPlan.actions.map((action) => ({
+         action: action.action,
         cusip: action.cusip,
-        currentAssetType: action.currentAssetType,
-        projectedAssetType: action.projectedAssetType,
-        symbol: action.symbol,
+         ...(action.action === "TYPE_CORRECTION" ? {
+           currentAssetType: action.currentAssetType,
+           projectedAssetType: action.projectedAssetType,
+           symbol: action.symbol,
+         } : {
+           currentSymbol: action.currentSymbol,
+           projectedSymbol: action.projectedSymbol,
+         }),
         preservesTrustedIdentity: action.preservesTrustedIdentity,
       })),
     },
     rootCauseRanking: rankCoverageRootCauses(categoryMetrics),
     materialization: plan.affected, plan }, null, 2));
 }
-if (!process.env.VITEST) {
+if (!process.env.VITEST && /analyze-institutional-coverage\.(ts|js)$/.test(process.argv[1] ?? "")) {
   void runCli(main, {
     label: "institutional-coverage",
     close: () => pool.end(),

@@ -57,6 +57,7 @@ export interface CusipClassification extends CusipEvidence {
   remediation: "NONE" | "REVIEW_CANONICAL_MAPPING" | "RESOLVE_CONFLICT";
   canonicalSecurityType?: CanonicalInstitutionalSecurityType;
   securityTypePopulation?: SecurityAnalyticsPopulation;
+  canonicalCorrectionBlocker?: string;
 }
 
 export interface CoveragePlan {
@@ -429,13 +430,25 @@ export function buildActionableCoveragePlan(input: {
   existingAggregateTargets?: ReadonlySet<string>;
   existingSignalSymbols?: ReadonlySet<string>;
   snapshotRowsByFamily?: Readonly<Record<string, number>>;
+  canonicalCorrectionState?: {
+    verified: boolean;
+    planHash: string;
+    unresolvedBlockers: number;
+  };
 }): CoveragePlan {
+  if (input.canonicalCorrectionState && (
+    !input.canonicalCorrectionState.verified ||
+    input.canonicalCorrectionState.unresolvedBlockers > 0
+  )) {
+    throw new Error("CANONICAL_SECURITY_STATE_CORRECTION_REQUIRED");
+  }
   const operations: CoveragePlanOperation[] = [...input.classifications]
     .sort((a, b) => a.cusip.localeCompare(b.cusip))
     .filter(row =>
       row.category === "TRUSTED" &&
       row.projectedSymbol &&
-      row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS"
+      row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS" &&
+      !row.canonicalCorrectionBlocker
     )
     .map(row => {
       const trusted = row.sourceEvidence

@@ -47,6 +47,14 @@ export type RepairSourceIdentityReconciler = (
 export interface RepairPreflightOptions {
   fetchSource?: RepairSourceTextFetcher;
   reconcileSourceIdentity?: RepairSourceIdentityReconciler;
+  loadCanonicalCorrectionState?: (
+    executor: SqlExecutor,
+  ) => Promise<{
+    verified: boolean;
+    correctionPlanHash: string;
+    correctionActions: number;
+    unresolvedBlockers: number;
+  }>;
 }
 
 export const REPAIR_SOURCE_CLASSIFICATIONS = [
@@ -151,6 +159,12 @@ export interface InstitutionalRepairPreflight {
   };
   expectedSecurities: ExpectedSecurityTrace[];
   provenance?: RepairProvenance;
+  canonicalCorrectionState?: {
+    verified: boolean;
+    correctionPlanHash: string;
+    correctionActions: number;
+    unresolvedBlockers: number;
+  };
   plan: {
     effectiveHoldings: number;
     reliableMappingCandidates: number;
@@ -554,6 +568,17 @@ export function getRepairBlockingIssues(
   ));
   if (preflight.plan.conflictingMappedHoldings > 0) {
     issues.push("CONFLICTING_EXISTING_HOLDING_MAPPINGS");
+  }
+  if (preflight.canonicalCorrectionState) {
+    if (!preflight.canonicalCorrectionState.verified) {
+      issues.push("CANONICAL_SECURITY_STATE_NOT_VERIFIED");
+    }
+    if (preflight.canonicalCorrectionState.correctionActions > 0) {
+      issues.push("CANONICAL_SECURITY_TYPE_CORRECTIONS_PENDING");
+    }
+    if (preflight.canonicalCorrectionState.unresolvedBlockers > 0) {
+      issues.push("CANONICAL_SECURITY_STATE_CORRECTION_BLOCKED");
+    }
   }
   return issues;
 }
@@ -977,6 +1002,9 @@ export async function loadInstitutionalRepairPreflight(
   };
   const dataQualityWarnings = buildDuplicateDataQualityWarnings(duplicateClassification);
   const provenance = await reconcileRepairProvenance(executor, expectedSecurities, options);
+  const canonicalCorrectionState = options.loadCanonicalCorrectionState
+    ? await options.loadCanonicalCorrectionState(executor)
+    : undefined;
 
   const base = {
     databaseIdentity: {
@@ -1000,6 +1028,7 @@ export async function loadInstitutionalRepairPreflight(
     },
     expectedSecurities,
     provenance,
+    ...(canonicalCorrectionState ? { canonicalCorrectionState } : {}),
     plan: {
       effectiveHoldings: asCount(planRow.effective_holdings),
       reliableMappingCandidates: asCount(planRow.reliable_mapping_candidates),

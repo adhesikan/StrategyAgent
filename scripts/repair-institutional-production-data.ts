@@ -29,6 +29,7 @@ import {
   validateInstitutionalRepairSymbols,
   validateRepairApplyRequest,
 } from "../server/services/institutional/production-repair";
+import { loadInstitutionalAssetTypeCorrectionPlan } from "./analyze-institutional-coverage";
 import { rebuildInstitutionalAggregates } from "../server/services/institutional/ingestion-service";
 import { rebuildInstitutionalSignals } from "../server/services/institutional/signal-engine";
 import { runIntelligencePrecomputation } from "../server/services/intelligence-orchestrator";
@@ -210,7 +211,18 @@ async function main(): Promise<void> {
     fail("INVALID_ARGS", String(error?.message ?? error));
   }
 
-  const preflight = await loadInstitutionalRepairPreflight();
+  const loadCanonicalCorrectionState = async (executor: { execute(query: unknown): Promise<unknown> }) => {
+    const correctionPlan = await loadInstitutionalAssetTypeCorrectionPlan(executor);
+    return {
+      verified: true,
+      correctionPlanHash: correctionPlan.planHash,
+      correctionActions: correctionPlan.actions.length,
+      unresolvedBlockers: correctionPlan.blockerCusips.length,
+    };
+  };
+  const preflight = await loadInstitutionalRepairPreflight(undefined, {
+    loadCanonicalCorrectionState,
+  });
   const intelligencePreview = await runIntelligencePrecomputation({ persist: false });
   if (!options.apply) {
     printDryRun(preflight, intelligencePreview, options);
@@ -306,14 +318,18 @@ async function main(): Promise<void> {
   };
 
   const refreshResumePlanHash = async (): Promise<void> => {
-    const refreshedPreflight = await loadInstitutionalRepairPreflight();
+    const refreshedPreflight = await loadInstitutionalRepairPreflight(undefined, {
+      loadCanonicalCorrectionState,
+    });
     checkpoint.resumePlanHash = refreshedPreflight.planHash;
     await persistCheckpoint(options.checkpointFile!, checkpoint);
   };
 
   const mappingResult = await runStage(
     "mapping",
-    async () => applyInstitutionalMappingRepair(preflight.planHash),
+    async () => applyInstitutionalMappingRepair(preflight.planHash, {
+      preflight: { loadCanonicalCorrectionState },
+    }),
   );
   if (mappingResult) {
     await refreshResumePlanHash();

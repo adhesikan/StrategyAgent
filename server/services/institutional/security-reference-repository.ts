@@ -21,6 +21,8 @@ export interface InstitutionalSecurityReferenceStore {
   markMissingCandidatesNonCurrent(cusip: string, provider: string, fingerprints: readonly string[]): Promise<void>;
   promoteExact(input: { cusip: string; ticker: string; figi: string | null; name: string | null; exchange: string | null; assetType: string | null; provenance: string }): Promise<void>;
   populateAssetType?(input: { cusip: string; assetType: CanonicalInstitutionalSecurityType; provenance: string }): Promise<void>;
+  correctAssetType?(input: { cusip: string; currentAssetType: string; assetType: CanonicalInstitutionalSecurityType; provenance: string }): Promise<void>;
+  correctCanonicalSymbol?(input: { cusip: string; currentSymbol: string | null; symbol: string; provenance: string }): Promise<void>;
 }
 const safeCode = (code: string | undefined) => code?.replace(/[^A-Z0-9_:-]/gi, "").slice(0, 64) || null;
 export function candidateFingerprint(c: SecurityReferenceCandidate): string {
@@ -224,6 +226,39 @@ export class DrizzleInstitutionalSecurityReferenceRepository implements Institut
         reviewStatus: trustedMapping.mappingStatus === "reviewed" ? "reviewed" : "probable",
         notes: i.provenance,
       });
+    });
+  }
+  async correctAssetType(i: { cusip: string; currentAssetType: string; assetType: CanonicalInstitutionalSecurityType; provenance: string }) {
+    await db.update(securityMaster).set({
+      assetType: i.assetType,
+      notes: i.provenance,
+      lastVerified: new Date(),
+    }).where(and(
+      eq(securityMaster.cusip, i.cusip),
+      eq(securityMaster.assetType, i.currentAssetType),
+      sql`${securityMaster.reviewStatus} NOT IN ('reviewed', 'rejected')`,
+    ));
+  }
+  async correctCanonicalSymbol(i: { cusip: string; currentSymbol: string | null; symbol: string; provenance: string }) {
+    await db.transaction(async (tx) => {
+      await tx.update(securityMaster).set({
+        ticker: i.symbol,
+        notes: i.provenance,
+        lastVerified: new Date(),
+      }).where(and(
+        eq(securityMaster.cusip, i.cusip),
+        sql`${securityMaster.ticker} IS NOT DISTINCT FROM ${i.currentSymbol}`,
+        sql`${securityMaster.reviewStatus} NOT IN ('reviewed', 'rejected')`,
+      ));
+      await tx.update(institutionalSecurityMappings).set({
+        mappedSymbol: i.symbol,
+        notes: i.provenance,
+        lastVerifiedAt: new Date(),
+      }).where(and(
+        eq(institutionalSecurityMappings.cusip, i.cusip),
+        sql`${institutionalSecurityMappings.mappedSymbol} IS NOT DISTINCT FROM ${i.currentSymbol}`,
+        sql`${institutionalSecurityMappings.mappingStatus} NOT IN ('reviewed', 'rejected')`,
+      ));
     });
   }
 }

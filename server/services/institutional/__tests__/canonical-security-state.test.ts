@@ -23,5 +23,6 @@ describe("canonical security state", () => {
     expect(canonicalSecurityTypeStateQuery).toContain("h.reported_shares > 0");
     expect(canonicalSecurityTypeStateQuery).toContain("FROM security_master");
     expect(canonicalSecurityTypeStateQuery).toContain("asset_type IN ('common_stock', 'reit')");
+    expect(canonicalSecurityTypeStateQuery).toContain("'other_pooled_fund'");
   });
 });

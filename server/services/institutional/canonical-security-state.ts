@@ -37,9 +37,9 @@ SELECT
   COUNT(*) FILTER (WHERE NULLIF(TRIM(asset_type), '') IS NOT NULL)::int AS asset_type_populated,
   COUNT(*) FILTER (WHERE NULLIF(TRIM(asset_type), '') IS NULL)::int AS asset_type_missing,
   COUNT(*) FILTER (WHERE asset_type IN ('common_stock', 'reit'))::int AS stock_eligible_cusips,
-  COUNT(*) FILTER (WHERE asset_type IN ('etf', 'mutual_fund', 'closed_end_fund', 'money_market_fund'))::int AS separate_fund_cusips,
+   COUNT(*) FILTER (WHERE asset_type IN ('etf', 'mutual_fund', 'closed_end_fund', 'money_market_fund', 'other_pooled_fund'))::int AS separate_fund_cusips,
   COUNT(*) FILTER (WHERE asset_type IS NULL OR asset_type NOT IN (
-    'common_stock', 'reit', 'etf', 'mutual_fund', 'closed_end_fund', 'money_market_fund'
+     'common_stock', 'reit', 'etf', 'mutual_fund', 'closed_end_fund', 'money_market_fund', 'other_pooled_fund'
   ))::int AS unsupported_or_insufficient_cusips
 FROM canonical`;
 

@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import {
-  normalizeCusip, resolveReviewedSecurityReference, type SecurityReferenceEvidence,
+  assessCanonicalPrimarySymbol, normalizeCusip, resolveReviewedSecurityReference, type SecurityReferenceEvidence,
   resolveProviderSecurityReference, type SecurityReferenceCandidate, type SecurityReferenceOutcome, type SecurityReferenceResolution,
 } from "./security-reference-enrichment";
 import {
@@ -144,9 +144,18 @@ export interface AssetTypeCorrectionCoverage {
   separateFundCusips: number;
   unsupportedCusips: number;
   insufficientCusips: number;
+  holdingRows: number;
+  reportedValueUsd: string;
 }
 
+export type CanonicalCorrectionBlocker =
+  | "STALE_MACHINE_DERIVED_TYPE"
+  | "CANONICAL_SYMBOL_REVIEW_REQUIRED"
+  | "CONTRADICTORY_SECURITY_TYPE_EVIDENCE"
+  | "INSUFFICIENT_SECURITY_TYPE_EVIDENCE";
+
 export interface AssetTypeCorrectionAction {
+  action: "TYPE_CORRECTION";
   cusip: string;
   currentAssetType: string;
   projectedAssetType: CanonicalInstitutionalSecurityType;
@@ -155,12 +164,31 @@ export interface AssetTypeCorrectionAction {
   preservesTrustedIdentity: true;
 }
 
+export interface SymbolCorrectionAction {
+  action: "SYMBOL_CORRECTION";
+  cusip: string;
+  currentSymbol: string | null;
+  projectedSymbol: string;
+  providerEvidence: string[];
+  preservesCusip: true;
+  preservesTrustedIdentity: true;
+}
+
+export type CanonicalCorrectionAction = AssetTypeCorrectionAction | SymbolCorrectionAction;
+
 export interface InstitutionalAssetTypeCorrectionPlan {
   version: 1;
   normalizationVersion: typeof INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION;
   before: AssetTypeCorrectionCoverage;
   projected: AssetTypeCorrectionCoverage;
-  actions: AssetTypeCorrectionAction[];
+  actions: CanonicalCorrectionAction[];
+  blockers: {
+    insufficientEvidenceCusips: number;
+    contradictoryEvidenceCusips: number;
+    staleMachineDerivedTypeCusips: number;
+    canonicalSymbolReviewRequiredCusips: number;
+  };
+  blockerCusips: Array<{ cusip: string; blocker: CanonicalCorrectionBlocker }>;
   planHash: string;
 }
 
@@ -356,11 +384,16 @@ function correctionCoverage(
   const result: AssetTypeCorrectionCoverage = {
     trustedCusips: 0, assetTypePopulated: 0, stockEligibleCusips: 0,
     separateFundCusips: 0, unsupportedCusips: 0, insufficientCusips: 0,
+    holdingRows: 0, reportedValueUsd: "0",
   };
   for (const row of rows) {
     const state = states.get(normalizeCusip(row.cusip)) ?? { cusip: row.cusip, evidence: [] };
     if (!stateIsTrusted(state)) continue;
     result.trustedCusips++;
+    result.holdingRows += row.holdingRows;
+    if (row.reportedValueUsd !== null) {
+      result.reportedValueUsd = (BigInt(result.reportedValueUsd) + BigInt(row.reportedValueUsd)).toString();
+    }
     const current = currentAssetTypeClassification(row, state);
     const provider = providerAssetTypeClassification(row, state, resolutions.get(normalizeCusip(row.cusip)));
     const classification = projected && !state.assetTypeReviewed && isPopulatedAssetType(provider)
@@ -386,39 +419,104 @@ export function buildInstitutionalAssetTypeCorrectionPlan(input: {
 }): InstitutionalAssetTypeCorrectionPlan {
   const states = new Map(input.trustedState.map((state) => [normalizeCusip(state.cusip), state]));
   const resolutions = new Map((input.providerResolutions ?? []).map((resolution) => [normalizeCusip(resolution.cusip), resolution]));
+  const blockerCusips: Array<{ cusip: string; blocker: CanonicalCorrectionBlocker }> = [];
   const actions = input.population
-    .map((row) => {
+    .flatMap((row): CanonicalCorrectionAction[] => {
       const state = states.get(normalizeCusip(row.cusip)) ?? { cusip: row.cusip, evidence: [] };
-      if (!stateIsTrusted(state) || state.assetTypeReviewed) return null;
+      if (!stateIsTrusted(state)) return [];
       const currentValue = state.currentAssetType ?? row.currentAssetType;
-      if (!currentValue?.trim()) return null;
       const current = currentAssetTypeClassification(row, state);
       const provider = providerAssetTypeClassification(row, state, resolutions.get(normalizeCusip(row.cusip)));
-      if (!isPopulatedAssetType(provider) || current.canonicalType === provider.canonicalType) return null;
-      const providerEvidence = provider.evidence.length > 0
-        ? [...provider.evidence].sort()
-        : ["provider_classification"];
-      const symbol = [...(row.trustedSymbols ?? []), ...state.evidence.map((item) => item.symbol ?? "")]
-        .map((value) => value.trim().toUpperCase()).find(Boolean) ?? null;
-      return {
-        cusip: row.cusip,
-        currentAssetType: currentValue.trim(),
-        projectedAssetType: provider.canonicalType,
-        providerEvidence,
-        symbol,
-        preservesTrustedIdentity: true as const,
-      };
+      const providerEvidence = provider.evidence.length > 0 ? [...provider.evidence].sort() : ["provider_classification"];
+      const localSymbols = normalizedSymbols([
+        ...(row.trustedSymbols ?? []),
+        ...state.evidence.map((item) => item.symbol ?? ""),
+      ]);
+      const acceptedProviderSymbols = Array.from(new Set(
+        (resolutions.get(normalizeCusip(row.cusip))?.candidates ?? state.candidateEvidence ?? [])
+          .map((candidate) => assessProviderSymbol(candidate))
+          .filter((symbol): symbol is string => symbol !== null),
+      )).sort();
+      const matchingProviderSymbols = acceptedProviderSymbols.filter((symbol) => localSymbols.includes(symbol));
+      const projectedSymbol = matchingProviderSymbols.length === 1
+        ? matchingProviderSymbols[0]
+        : acceptedProviderSymbols.length === 1 ? acceptedProviderSymbols[0] : null;
+      const currentSymbol = localSymbols[0] ?? null;
+      const identityReviewed = state.evidence.some(
+        (item) => item.status?.trim().toLowerCase() === "reviewed",
+      );
+      const symbolIsValid = currentSymbol !== null && /^[A-Z0-9]+(?:\.[A-Z0-9]+)?$/.test(currentSymbol)
+        && currentSymbol.length <= 12;
+      const providerSymbolEvidence = acceptedProviderSymbols.map((symbol) => `provider_ticker:${symbol}`);
+      const candidateTypes = Array.from(new Set(
+        (resolutions.get(normalizeCusip(row.cusip))?.candidates ?? state.candidateEvidence ?? [])
+          .map((candidate) => classifyInstitutionalSecurityType(candidate))
+          .filter(isPopulatedAssetType)
+          .map((classification) => classification.canonicalType),
+      ));
+      const result: CanonicalCorrectionAction[] = [];
+
+      if (!state.assetTypeReviewed && currentValue?.trim() && isPopulatedAssetType(provider)
+        && current.canonicalType !== provider.canonicalType) {
+        result.push({
+          action: "TYPE_CORRECTION",
+          cusip: row.cusip,
+          currentAssetType: currentValue.trim(),
+          projectedAssetType: provider.canonicalType,
+          providerEvidence,
+          symbol: projectedSymbol ?? currentSymbol,
+          preservesTrustedIdentity: true,
+        });
+        blockerCusips.push({ cusip: row.cusip, blocker: "STALE_MACHINE_DERIVED_TYPE" });
+      } else if (!state.assetTypeReviewed && currentValue?.trim()
+        && provider.analyticsPopulation === "INSUFFICIENT_SECURITY_TYPE_EVIDENCE"
+        && candidateTypes.length <= 1) {
+        blockerCusips.push({ cusip: row.cusip, blocker: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE" });
+      }
+      if (localSymbols.length > 1) {
+        blockerCusips.push({ cusip: row.cusip, blocker: "CANONICAL_SYMBOL_REVIEW_REQUIRED" });
+      } else if (!symbolIsValid) {
+        if (!identityReviewed && projectedSymbol && (!currentSymbol || projectedSymbol !== currentSymbol)
+          && acceptedProviderSymbols.length === 1) {
+          result.push({
+            action: "SYMBOL_CORRECTION",
+            cusip: row.cusip,
+            currentSymbol,
+            projectedSymbol,
+            providerEvidence: providerSymbolEvidence,
+            preservesCusip: true,
+            preservesTrustedIdentity: true,
+          });
+        } else {
+          blockerCusips.push({ cusip: row.cusip, blocker: "CANONICAL_SYMBOL_REVIEW_REQUIRED" });
+        }
+      }
+      if (!state.assetTypeReviewed && candidateTypes.length > 1
+        && result.every((action) => action.action !== "TYPE_CORRECTION")) {
+        blockerCusips.push({ cusip: row.cusip, blocker: "CONTRADICTORY_SECURITY_TYPE_EVIDENCE" });
+      }
+      return result;
     })
-    .filter((action): action is AssetTypeCorrectionAction => action !== null)
-    .sort((a, b) => a.cusip.localeCompare(b.cusip));
+    .sort((a, b) => a.cusip.localeCompare(b.cusip) || a.action.localeCompare(b.action));
   const before = correctionCoverage(input.population, states, resolutions, false);
   const projected = correctionCoverage(input.population, states, resolutions, true);
+  const uniqueBlockers = Array.from(new Map(
+    blockerCusips.map((item) => [`${item.cusip}:${item.blocker}`, item]),
+  ).values());
+  const blockers = {
+    insufficientEvidenceCusips: uniqueBlockers.filter((x) => x.blocker === "INSUFFICIENT_SECURITY_TYPE_EVIDENCE").length,
+    contradictoryEvidenceCusips: uniqueBlockers.filter((x) => x.blocker === "CONTRADICTORY_SECURITY_TYPE_EVIDENCE").length,
+    staleMachineDerivedTypeCusips: actions.filter((x) => x.action === "TYPE_CORRECTION").length,
+    canonicalSymbolReviewRequiredCusips: uniqueBlockers.filter((x) => x.blocker === "CANONICAL_SYMBOL_REVIEW_REQUIRED").length,
+  };
   const canonical = {
     version: 1 as const,
     normalizationVersion: INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION,
     before,
     projected,
     actions,
+    blockers,
+    blockerCusips: uniqueBlockers.sort((a, b) => a.cusip.localeCompare(b.cusip) || a.blocker.localeCompare(b.blocker)),
     population: input.population.map((row) => ({
       cusip: normalizeCusip(row.cusip) ?? row.cusip.trim().toUpperCase(),
       currentAssetType: row.currentAssetType ?? null,
@@ -428,6 +526,11 @@ export function buildInstitutionalAssetTypeCorrectionPlan(input: {
     ...canonical,
     planHash: createHash("sha256").update(stableJson(canonical)).digest("hex"),
   };
+}
+
+function assessProviderSymbol(candidate: SecurityReferenceCandidate): string | null {
+  const assessment = assessCanonicalPrimarySymbol(candidate);
+  return assessment.status === "ACCEPTED_PROVIDER_TICKER" ? assessment.symbol : null;
 }
 
 type ReferenceSelectionKind = "protected" | "never_processed" | "retryable_provider_failed"

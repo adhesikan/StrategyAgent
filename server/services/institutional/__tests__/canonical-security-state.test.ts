@@ -4,6 +4,7 @@ import {
   parseCanonicalStockEligibleIdentities,
   reconcileCanonicalStockEligibility,
 } from "../canonical-security-state";
+import { CANONICAL_EFFECTIVE_HOLDINGS_CTE } from "../institutional-effective-holdings";
 
 describe("canonical security state", () => {
   it("reconciles verifier and analyzer stock populations", () => {
@@ -27,6 +28,21 @@ describe("canonical security state", () => {
     expect(canonicalSecurityTypeStateQuery).toContain("'other_pooled_fund'");
     expect(canonicalSecurityTypeStateQuery).toContain("stock_eligible_identities");
     expect(canonicalSecurityTypeStateQuery).toContain("candidate.share_class_figi");
+  });
+
+  it("centralizes amendment, manager-quarter, and holding eligibility semantics", () => {
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain(
+      "PARTITION BY f.filer_cik, f.period_of_report",
+    );
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain("f.accepted_at DESC NULLS LAST");
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain("f.filing_date DESC");
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain("f.accession_number DESC");
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain("f.is_effective = TRUE");
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain("h.put_call IS NULL");
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain(
+      "COALESCE(UPPER(h.shares_prn_type), 'SH') <> 'PRN'",
+    );
+    expect(CANONICAL_EFFECTIVE_HOLDINGS_CTE).toContain("h.reported_shares > 0");
   });
 
   it("returns a deterministic canonical CUSIP to symbol identity map", () => {

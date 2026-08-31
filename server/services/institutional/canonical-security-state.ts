@@ -3,15 +3,13 @@
  * remediation analyzer. Identity trust is resolved from exact/reviewed
  * persisted mapping evidence; asset type is read from security_master.
  */
+import { CANONICAL_EFFECTIVE_HOLDINGS_CTE } from "./institutional-effective-holdings";
+
 export const canonicalSecurityTypeStateQuery = `
-WITH eligible_cusips AS (
+${CANONICAL_EFFECTIVE_HOLDINGS_CTE},
+eligible_cusips AS (
   SELECT DISTINCT h.cusip
-  FROM institutional_13f_holdings h
-  JOIN institutional_13f_filings f ON f.accession_number = h.accession_number
-  WHERE f.is_effective = TRUE
-    AND h.put_call IS NULL
-    AND COALESCE(UPPER(h.shares_prn_type), 'SH') <> 'PRN'
-    AND h.reported_shares > 0
+  FROM canonical_effective_holdings h
 ), evidence AS (
   SELECT cusip, mapped_symbol AS symbol, mapping_status AS status, NULL::text AS asset_type
   FROM institutional_security_mappings

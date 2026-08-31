@@ -113,6 +113,9 @@ Output is JSON containing:
   deduplicated aggregate symbol-period and signal-symbol targets, their
   expected/present/missing counts and percentages, insert/update summaries,
   current sector/theme snapshot-family row counts, and refresh scope;
+- `holdingCountReconciled`, `holdingCountMismatchCusips`, and
+  `holdingCountContractVersion`: the planner's stale-row self-check and the
+  versioned canonical effective-holding contract used again inside APPLY;
 - `plan`: sorted evidence classifications plus a deterministic SHA-256
   `planHash`, with mode `REMEDIATION_PLAN`.
 
@@ -215,6 +218,12 @@ fresh plan artifact generated on Railway, exact expected production database
 and schema identity, the exact confirmation phrase, and the matching supplied
 SHA-256 hash. The executor also acquires its advisory lock and re-reads and
 re-hashes the plan inside a repeatable-read transaction before bounded writes.
+The canonical effective-holding population is selected through one shared
+ranked-filing contract: one effective filing per filer/reporting period, then
+null put/call, non-PRN, positive-share holdings. APPLY validates the live stale
+row count before the mapping upsert and retains the returned-row assertion
+after the update. A count mismatch therefore fails before mutation; any later
+transaction error is rolled back by the database transaction boundary.
 
 For resumable Railway dry-run measurement, `--cursor` is an exclusive
 normalized CUSIP and `--max-cusips` is the provider-call bound:

@@ -11,6 +11,7 @@ import {
 import { classifyInstitutionalSecurityType } from "../server/services/institutional/security-type-eligibility";
 import { createCoveragePostgresAdapter } from "../server/services/institutional/institutional-coverage-postgres-adapter";
 import { canonicalSecurityTypeStateQuery, parseCanonicalStockEligibleIdentities, reconcileCanonicalStockEligibility } from "../server/services/institutional/canonical-security-state";
+import { CANONICAL_EFFECTIVE_HOLDINGS_CTE } from "../server/services/institutional/institutional-effective-holdings";
 import { buildInstitutionalAssetTypeCorrectionPlan } from "../server/services/institutional/security-reference-enrichment-planner";
 import {
   applyInstitutionalSecurityTypeCorrections,
@@ -21,17 +22,11 @@ import { runIntelligencePrecomputation } from "../server/services/intelligence-o
 
 function rowsOf(result: unknown): any[] { return (result as { rows?: any[] }).rows ?? (Array.isArray(result) ? result : []); }
 const query = `
-WITH ranked_filings AS (
- SELECT f.*, ROW_NUMBER() OVER (PARTITION BY filer_cik,period_of_report
-   ORDER BY is_effective DESC, accepted_at DESC NULLS LAST, filing_date DESC, accession_number DESC) rn
- FROM institutional_13f_filings f
-), canonical_filings AS (
- SELECT * FROM ranked_filings WHERE is_effective=TRUE AND rn=1
-), newest_canonical_quarter AS (SELECT MAX(period_of_report) period FROM canonical_filings),
+${CANONICAL_EFFECTIVE_HOLDINGS_CTE},
+newest_canonical_quarter AS (SELECT MAX(period_of_report) period FROM canonical_filings),
 eligible AS (
- SELECT h.*,f.period_of_report canonical_period,f.accession_number canonical_accession
- FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number
- WHERE h.put_call IS NULL AND h.shares_prn_type IS DISTINCT FROM 'PRN' AND h.reported_shares > 0
+ SELECT h.*, h.period_of_report canonical_period
+ FROM canonical_effective_holdings h
 ),
 all_history AS (
  SELECT cusip,COUNT(*)::int holding_rows,COUNT(*) FILTER (WHERE reported_value IS NULL)::int null_value_rows,
@@ -76,41 +71,34 @@ all_history AS (
 
 /** Kept separate so an empty eligible universe still reports the newest filing period. */
 const newestQuarterDiagnosticsQuery = `
-WITH ranked_filings AS (
- SELECT f.*, ROW_NUMBER() OVER (PARTITION BY filer_cik,period_of_report
-   ORDER BY is_effective DESC, accepted_at DESC NULLS LAST, filing_date DESC, accession_number DESC) rn
- FROM institutional_13f_filings f
-), canonical_filings AS (
- SELECT * FROM ranked_filings WHERE is_effective=TRUE AND rn=1
-), newest AS (SELECT MAX(period_of_report) period FROM canonical_filings),
+${CANONICAL_EFFECTIVE_HOLDINGS_CTE},
+newest AS (SELECT MAX(period_of_report) period FROM canonical_filings),
 eligible AS (
- SELECT h.id,h.reported_value,f.period_of_report FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number
- WHERE h.put_call IS NULL AND h.shares_prn_type IS DISTINCT FROM 'PRN' AND h.reported_shares > 0
+ SELECT h.id,h.reported_value,h.period_of_report FROM canonical_effective_holdings h
 )
 SELECT newest.period::text newest_canonical_filing_quarter,COUNT(eligible.id)::int eligible_rows_in_newest_quarter,
  COUNT(eligible.id) FILTER (WHERE eligible.reported_value IS NULL)::int null_value_rows_in_newest_quarter,
  (SELECT COUNT(*) FROM institutional_13f_filings)::int total_filings,
- (SELECT COUNT(*) FROM canonical_filings)::int effective_filings,
+  (SELECT COUNT(*) FROM canonical_filings)::int effective_filings,
  (SELECT COUNT(DISTINCT filer_cik) FROM institutional_13f_filings)::int total_managers,
- (SELECT COUNT(DISTINCT filer_cik) FROM canonical_filings)::int effective_managers,
+  (SELECT COUNT(DISTINCT filer_cik) FROM canonical_filings)::int effective_managers,
  (SELECT COUNT(DISTINCT period_of_report) FROM institutional_13f_filings)::int total_quarters,
- (SELECT COUNT(DISTINCT period_of_report) FROM canonical_filings)::int effective_quarters,
+  (SELECT COUNT(DISTINCT period_of_report) FROM canonical_filings)::int effective_quarters,
  (SELECT COUNT(*) FROM institutional_13f_holdings)::int total_holdings,
- (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number)::int effective_holdings,
- (SELECT COUNT(DISTINCT issuer_name) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number)::int distinct_issuers,
- (SELECT COUNT(DISTINCT class_title) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number)::int distinct_classes,
- (SELECT COUNT(DISTINCT cusip) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number)::int distinct_cusips,
- (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE put_call IS NOT NULL)::int option_rows,
- (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE LOWER(put_call)='put')::int put_rows,
- (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE LOWER(put_call)='call')::int call_rows,
- (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE shares_prn_type='PRN')::int prn_rows,
- (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE reported_shares IS NULL)::int null_share_rows,
- (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE reported_shares <= 0)::int nonpositive_share_rows,
+  (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number)::int effective_holdings,
+  (SELECT COUNT(DISTINCT issuer_name) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number)::int distinct_issuers,
+  (SELECT COUNT(DISTINCT class_title) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number)::int distinct_classes,
+  (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE h.put_call IS NOT NULL)::int option_rows,
+  (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE LOWER(h.put_call)='put')::int put_rows,
+  (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE LOWER(h.put_call)='call')::int call_rows,
+  (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE h.shares_prn_type='PRN')::int prn_rows,
+  (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE h.reported_shares IS NULL)::int null_share_rows,
+  (SELECT COUNT(*) FROM institutional_13f_holdings h JOIN canonical_filings f ON f.accession_number=h.accession_number WHERE h.reported_shares <= 0)::int nonpositive_share_rows,
  (SELECT COUNT(*) FROM institutional_quarterly_aggregates)::int aggregate_rows,
  (SELECT COUNT(*) FROM institutional_symbol_signals)::int signal_rows,
  (SELECT COUNT(*) FROM sector_intelligence_snapshots)::int sector_snapshot_rows,
  (SELECT COUNT(*) FROM theme_intelligence_snapshots)::int theme_snapshot_rows
-FROM newest LEFT JOIN eligible ON eligible.period_of_report=newest.period
+ FROM newest LEFT JOIN eligible ON eligible.period_of_report=newest.period
 GROUP BY newest.period`;
 const aggregateTargetsQuery = `SELECT symbol,period_of_report::text period FROM institutional_quarterly_aggregates ORDER BY symbol,period_of_report`;
 const signalTargetsQuery = `SELECT DISTINCT symbol FROM institutional_symbol_signals ORDER BY symbol`;
@@ -348,6 +336,8 @@ async function main() {
       separateFundCusips: classifications.filter((row) => row.securityTypePopulation === "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS").length,
       canonicalCorrectionActions: correctionPlan.actions.length,
       canonicalBlockers: correctionPlan.blockers,
+       holdingCountReconciled: plan.holdingCountReconciled ?? false,
+       holdingCountMismatchCusips: plan.holdingCountMismatchCusips ?? [],
       remediationBlocked: plan.stockEligibility.remediationBlocked,
       planHash: plan.planHash,
     }));

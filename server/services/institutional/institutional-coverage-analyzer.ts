@@ -23,6 +23,8 @@ import { INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION } from "./security-ty
 export type CoverageCategory =
   | "TRUSTED" | "AMBIGUOUS" | "CONFLICTING" | "UNSUPPORTED" | "INSUFFICIENT_NO_REFERENCE";
 
+export const CANONICAL_HOLDING_COUNT_CONTRACT_VERSION = "canonical-effective-holdings-v2" as const;
+
 export interface CusipEvidence {
   cusip: string;
   holdingRows: number;
@@ -83,6 +85,10 @@ export interface CoveragePlan {
     snapshots: { currentRowsByFamily: Record<string, number>; refreshFamilies: string[] };
   };
   stockEligibility: StockRemediationEligibilityReconciliation;
+  /** Planner-side self-check; APPLY also rechecks the live canonical population. */
+  holdingCountReconciled?: boolean;
+  holdingCountMismatchCusips?: string[];
+  holdingCountContractVersion?: typeof CANONICAL_HOLDING_COUNT_CONTRACT_VERSION;
   planHash: string;
 }
 
@@ -106,6 +112,43 @@ export interface StockRemediationEligibilityReconciliation {
   nonStockCusipsInStockRemediation: number;
   missingCanonicalCusipsInStockRemediation: number;
   remediationBlocked: boolean;
+}
+
+export interface HoldingCountReconciliation {
+  canonicalHoldingRows: number;
+  plannedHoldingRows: number;
+  holdingCountReconciled: boolean;
+  holdingCountMismatchCusips: string[];
+}
+
+/**
+ * Compares every operation with the canonical stale-row count that produced
+ * it. This catches artifact drift before the database adapter is invoked.
+ */
+export function reconcileHoldingUpdateCounts(
+  classifications: readonly CusipClassification[],
+  operations: readonly CoveragePlanOperation[],
+): HoldingCountReconciliation {
+  const expectedByCusip = new Map(
+    classifications
+      .filter(isCanonicalStockRemediationEligible)
+      .map((row) => [row.cusip, row.staleUnmappedHoldingRows ?? 0]),
+  );
+  const mismatchCusips = operations
+    .filter((operation) => operation.holdingUpdateRows !== (expectedByCusip.get(operation.cusip) ?? 0))
+    .map((operation) => operation.cusip)
+    .sort();
+  const canonicalHoldingRows = operations.reduce(
+    (total, operation) => total + (expectedByCusip.get(operation.cusip) ?? 0),
+    0,
+  );
+  const plannedHoldingRows = operations.reduce((total, operation) => total + operation.holdingUpdateRows, 0);
+  return {
+    canonicalHoldingRows,
+    plannedHoldingRows,
+    holdingCountReconciled: mismatchCusips.length === 0 && canonicalHoldingRows === plannedHoldingRows,
+    holdingCountMismatchCusips: mismatchCusips,
+  };
 }
 
 export interface CoverageTotals {
@@ -538,6 +581,7 @@ export function buildActionableCoveragePlan(input: {
       else seenSignals.add(operation.signalTarget.symbol);
     }
   }
+  const holdingCountReconciliation = reconcileHoldingUpdateCounts(input.classifications, operations);
   const affected = {
     mappings: operations.filter(x => x.mappingAction !== "NONE").map(x => x.cusip),
     holdings: operations.reduce((n, x) => n + x.holdingUpdateRows, 0),
@@ -567,7 +611,14 @@ export function buildActionableCoveragePlan(input: {
       : percent(BigInt(projected.currentlyMaterializedValueUsd), BigInt(projected.reportedValueUsd));
   return buildCoveragePlan({
     version: 1, mode: "REMEDIATION_PLAN", before: input.before,
-    projected, classifications: input.classifications, affected, operations, stockEligibility,
+    projected, classifications: input.classifications, affected, operations,
+    stockEligibility: {
+      ...stockEligibility,
+      remediationBlocked: !holdingCountReconciliation.holdingCountReconciled,
+    },
+    holdingCountReconciled: holdingCountReconciliation.holdingCountReconciled,
+    holdingCountMismatchCusips: holdingCountReconciliation.holdingCountMismatchCusips,
+    holdingCountContractVersion: CANONICAL_HOLDING_COUNT_CONTRACT_VERSION,
     idempotency: ["mapping upsert by CUSIP", "holding update only when stale", "aggregate upsert by symbol+period", "signal upsert by symbol"],
     rollback: {
       action: "SQL rollback covers pre-commit failures. After commit, source mapping repairs remain durable; rerun dry-run and execute its new hash-bound idempotent derived-target plan.",
@@ -743,6 +794,12 @@ export interface CoverageApplyDatabase {
 }
 export interface CoverageApplyTransaction {
   loadPlan(): Promise<CoveragePlan>;
+  /**
+   * Validate against the same canonical effective-holding population before
+   * the mapping upsert. The adapter may omit this only for lightweight test
+   * doubles; updateHoldings remains a second, fail-closed row assertion.
+   */
+  validateHoldingCount?(operation: CoveragePlanOperation): Promise<void>;
   promoteMapping(operation: CoveragePlanOperation): Promise<void>;
   updateHoldings(operation: CoveragePlanOperation): Promise<void>;
   upsertAggregate(target: CoveragePlanOperation["aggregateTargets"][number]): Promise<void>;
@@ -776,13 +833,30 @@ export async function applyInstitutionalCoveragePlan(input: {
     planHash: input.artifact.planHash, suppliedPlanHash: input.suppliedPlanHash,
   });
   if (issues.length) throw new Error(`COVERAGE_APPLY_REJECTED:${issues.join(",")}`);
+  if (input.artifact.holdingCountContractVersion !== CANONICAL_HOLDING_COUNT_CONTRACT_VERSION) {
+    throw new Error("COVERAGE_APPLY_REJECTED:STALE_PLAN_HASH");
+  }
   const operations = input.artifact.operations ?? [];
+  const holdingCountReconciliation = reconcileHoldingUpdateCounts(
+    input.artifact.classifications,
+    operations,
+  );
+  if (
+    input.artifact.holdingCountReconciled === false
+    || input.artifact.holdingCountMismatchCusips?.length
+    || !holdingCountReconciliation.holdingCountReconciled
+  ) {
+    throw new Error(
+      `COVERAGE_APPLY_REJECTED:HOLDING_ROW_COUNT_MISMATCH:${holdingCountReconciliation.holdingCountMismatchCusips.join(",")}`,
+    );
+  }
   await input.database.withAdvisoryLock(GLOBAL_COVERAGE_ADVISORY_LOCK, async () => {
     await input.database.transaction(async (tx) => {
       const fresh = await tx.loadPlan();
       if (fresh.planHash !== input.artifact.planHash) throw new Error("COVERAGE_APPLY_REJECTED:STALE_PLAN_HASH");
       for (const operation of operations) {
         if (operation.mappingAction === "PROMOTE_TRUSTED_REFERENCE") {
+          await tx.validateHoldingCount?.(operation);
           await tx.promoteMapping(operation);
           await tx.updateHoldings(operation);
         }

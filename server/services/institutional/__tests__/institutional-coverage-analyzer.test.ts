@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, isCanonicalStockRemediationEligible, providerNormalizationAudit, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
+import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, isCanonicalStockRemediationEligible, providerNormalizationAudit, reconcileHoldingUpdateCounts, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
 import { parseCanonicalStockEligibleIdentities, reconcileCanonicalStockEligibility } from "../canonical-security-state";
 import { classifyInstitutionalSecurityType } from "../security-type-eligibility";
 
@@ -269,6 +269,97 @@ describe("institutional coverage analyzer", () => {
       2,
       countCanonicalStockEligibleInputs(rows),
     )).toMatchObject({ difference: 0, reconciled: true });
+  });
+
+  it("reconciles every planned stale holding row without collapsing distinct CUSIPs", () => {
+    const rows = [
+      {
+        ...classifyCusipEvidence({
+          ...base,
+          cusip: "111111111",
+          reliableReferenceSymbols: ["ABC"],
+          staleUnmappedHoldingRows: 2,
+          periods: ["2024-12-31", "2025-03-31"],
+          sourceEvidence: [{ source: "institutional_mapping", symbol: "ABC", status: "reviewed" }],
+        }),
+        canonicalSecurityType: "common_stock" as const,
+        securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+      },
+      {
+        ...classifyCusipEvidence({
+          ...base,
+          cusip: "222222222",
+          reliableReferenceSymbols: ["ABC"],
+          staleUnmappedHoldingRows: 3,
+          periods: ["2025-03-31"],
+          sourceEvidence: [{ source: "institutional_mapping", symbol: "ABC", status: "reviewed" }],
+        }),
+        canonicalSecurityType: "common_stock" as const,
+        securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+      },
+    ];
+    const plan = buildActionableCoveragePlan({
+      classifications: rows,
+      before: coverageTotals(rows),
+      canonicalStockEligibleIdentities: new Map([
+        ["111111111", "ABC"],
+        ["222222222", "ABC"],
+      ]),
+    });
+    expect(plan).toMatchObject({
+      holdingCountReconciled: true,
+      holdingCountMismatchCusips: [],
+      stockEligibility: { remediationBlocked: false },
+      affected: { holdings: 5 },
+    });
+    expect(reconcileHoldingUpdateCounts(rows, plan.operations ?? [])).toEqual({
+      canonicalHoldingRows: 5,
+      plannedHoldingRows: 5,
+      holdingCountReconciled: true,
+      holdingCountMismatchCusips: [],
+    });
+  });
+
+  it("fails closed on a deliberately drifted holding count before any write", async () => {
+    const trusted = {
+      ...classifyCusipEvidence({
+        ...base,
+        reliableReferenceSymbols: ["ABC"],
+        staleUnmappedHoldingRows: 2,
+        periods: ["2025-09-30"],
+        sourceEvidence: [{ source: "institutional_mapping", symbol: "ABC", status: "reviewed" }],
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    };
+    const plan = buildActionableCoveragePlan({
+      classifications: [trusted],
+      before: coverageTotals([trusted]),
+      canonicalStockEligibleIdentities: new Map([[trusted.cusip, "ABC"]]),
+    });
+    plan.operations![0].holdingUpdateRows = 1;
+    const writes: string[] = [];
+    await expect(applyInstitutionalCoveragePlan({
+      artifact: plan,
+      environment: "production",
+      confirmation: "APPLY_INSTITUTIONAL_COVERAGE_PLAN",
+      expectedDatabase: "db",
+      expectedSchema: "public",
+      suppliedPlanHash: plan.planHash,
+      database: {
+        identity: async () => ({ database: "db", schema: "public" }),
+        withAdvisoryLock: async (_key, fn) => fn(),
+        transaction: async fn => fn({
+          loadPlan: async () => plan,
+          promoteMapping: async () => { writes.push("mapping"); },
+          updateHoldings: async () => { writes.push("holdings"); },
+          upsertAggregate: async () => { writes.push("aggregate"); },
+          upsertSignal: async () => { writes.push("signal"); },
+        }),
+      },
+      rebuilder: { refreshSnapshots: async () => { writes.push("snapshots"); } },
+    })).rejects.toThrow("HOLDING_ROW_COUNT_MISMATCH");
+    expect(writes).toEqual([]);
   });
   it("hashes equivalent plans deterministically", () => {
     const one = classifyCusipEvidence(base); const input = { version: 1 as const, mode: "REMEDIATION_PLAN" as const, before: coverageTotals([one]), projected: coverageTotals([one]), classifications: [one], affected: { mappings: ["b", "a"], holdings: 0, quarters: [], aggregates: [], signals: [], snapshots: [] }, stockEligibility: { canonicalStockEligibleCusips: 0, remediationStockEligibleCusips: 0, stockEligibilityReconciled: true, fundCusipsExcludedFromStockRemediation: 0, nonStockCusipsInStockRemediation: 0, missingCanonicalCusipsInStockRemediation: 0, remediationBlocked: false } };

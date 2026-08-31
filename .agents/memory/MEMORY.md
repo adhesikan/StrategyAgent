@@ -110,3 +110,4 @@
 - [Institutional CLI lifecycle](institutional-cli-lifecycle.md) — one-shot commands must close the shared pool and set exitCode after output/error handling, never hard-exit.
 - [Institutional type normalization](security-type-normalization-audit.md) — provider type fields are authoritative; descriptions and ticker heuristics never create stock eligibility.
 - [Guarded canonical corrections](canonical-correction-apply.md) — type/symbol corrections are hash-bound and must clear canonical blockers before institutional remediation.
+- [Institutional holding-count contract](institutional-holding-count-contract.md) — planner and APPLY must share canonical filing/holding semantics; validate counts before mutation.

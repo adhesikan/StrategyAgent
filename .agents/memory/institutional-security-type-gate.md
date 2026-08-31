@@ -20,3 +20,9 @@ The aggregate-only verifier and remediation analyzer must share the same effecti
 **Why:** Joining `security_master` without projecting its type silently converted fully typed trusted identities into insufficient evidence, suppressing all downstream aggregate and signal targets.
 
 **How to apply:** Reconcile canonical verifier counts against analyzer inputs before creating a plan; stale holding symbols never override a trusted CUSIP mapping, while rejected or conflicting evidence remains blocked.
+
+Canonical asset type is CUSIP-scoped and must remain attached when exact/reviewed identity comes from the institutional mapping rather than the security-master ticker.
+
+**Why:** Requiring the security-master ticker to match the resolved symbol dropped valid mapping-only common stocks and REITs during holding enrichment, making broad accepted coverage appear limited to legacy repaired symbols.
+
+**How to apply:** Use the security-master row joined by CUSIP as the type authority after identity resolves; only ticker-dependent descriptive metadata and theme membership require the master ticker to match the resolved symbol.

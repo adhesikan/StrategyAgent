@@ -229,7 +229,12 @@ export async function getEnrichedInstitutionalHoldings(
             (masterMatchesSymbol ? row.master?.exchange : null) ??
             null,
           country: metadataRow?.country ?? null,
-          assetType: masterMatchesSymbol ? row.master?.assetType ?? null : null,
+          // Canonical stock eligibility is CUSIP-scoped: identity may come
+          // from an exact/reviewed institutional mapping while asset type
+          // comes from security_master for that same CUSIP. Requiring the
+          // security-master ticker to match here discards valid mapping-only
+          // identities before stock analytics can consume them.
+          assetType: row.master?.assetType ?? null,
         }
       : null;
 

@@ -272,4 +272,71 @@ describe("institutional enrichment PostgreSQL repository", () => {
     expect(rendered.sql).toContain("cusip");
     expect(rendered.params).toContain("111111111");
   });
+
+  it("retains canonical CUSIP asset type for a generic mapping-only symbol", async () => {
+    selectMock
+      .mockReturnValueOnce(
+        holdingQuery([
+          {
+            holding: {
+              id: "holding-generic",
+              accessionNumber: "accession-1",
+              filerCik: "0001",
+              filerName: "Example Fund",
+              issuerName: "Generic Public Company",
+              classTitle: "COM",
+              cusip: "123456789",
+              reportedValue: 25_000,
+              reportedShares: 500,
+              sharesPrnType: "SH",
+              putCall: null,
+              periodOfReport: "2026-03-31",
+              mappedSymbol: "GENR",
+              mappingStatus: "reviewed",
+            },
+            master: {
+              id: "security-generic",
+              ticker: null,
+              issuerName: "Generic Public Company",
+              exchange: null,
+              assetType: "common_stock",
+              reviewStatus: "probable",
+            },
+            mapping: {
+              mappedSymbol: "GENR",
+              mappingStatus: "reviewed",
+            },
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        symbolQuery([
+          {
+            ticker: "GENR",
+            name: "Generic Public Company",
+            exchange: "NYSE",
+            sector: "Industrials",
+            industry: "Machinery",
+            subIndustry: null,
+            marketCap: 2_000_000_000,
+            country: "United States",
+          },
+        ]),
+      )
+      .mockReturnValueOnce(themeQuery([]));
+
+    const rows = await getEnrichedInstitutionalHoldings({
+      accessionNumbers: ["accession-1"],
+      cusips: ["123456789"],
+    });
+
+    expect(rows[0]).toMatchObject({
+      mappingResolution: "reliably_mapped",
+      metadataResolution: "canonical",
+      metadata: {
+        symbol: "GENR",
+        assetType: "common_stock",
+      },
+    });
+  });
 });

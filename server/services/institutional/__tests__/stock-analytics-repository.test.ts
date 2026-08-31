@@ -149,6 +149,108 @@ describe("stock analytics portfolio denominators", () => {
     ).resolves.toEqual(["111111111"]);
   });
 
+  it("accepts a generic stock identity carried by the canonical mapping for its CUSIP", async () => {
+    selectMock
+      .mockReturnValueOnce(canonicalCusipsQuery([]))
+      .mockReturnValueOnce(candidateCusipsQuery([
+        {
+          cusip: "123456789",
+          masterTicker: null,
+          masterReviewStatus: "probable",
+          masterAssetType: "reit",
+          mappingSymbol: "GENR",
+          mappingStatus: "reviewed",
+          holdingMappedSymbol: "GENR",
+          holdingMappingStatus: "reviewed",
+        },
+      ]));
+
+    await expect(
+      loadStockCandidateIdentity(["accession-generic"], "genr"),
+    ).resolves.toEqual({
+      candidateCusips: ["123456789"],
+      hasReliableSecurityIdentity: true,
+      hasDisqualifyingCandidateEvidence: false,
+      hasTargetSpecificCandidateEvidence: true,
+    });
+  });
+
+  it("retains every trusted CUSIP for one generic symbol", async () => {
+    selectMock
+      .mockReturnValueOnce(canonicalCusipsQuery([]))
+      .mockReturnValueOnce(candidateCusipsQuery([
+        {
+          cusip: "111111111",
+          masterTicker: null,
+          masterReviewStatus: null,
+          mappingSymbol: "GENR",
+          mappingStatus: "exact",
+          holdingMappedSymbol: null,
+          holdingMappingStatus: null,
+        },
+        {
+          cusip: "222222222",
+          masterTicker: null,
+          masterReviewStatus: null,
+          mappingSymbol: "GENR",
+          mappingStatus: "reviewed",
+          holdingMappedSymbol: "GENR",
+          holdingMappingStatus: "exact",
+        },
+      ]));
+
+    await expect(
+      loadStockCandidateIdentity(["accession-generic"], "GENR"),
+    ).resolves.toEqual({
+      candidateCusips: ["111111111", "222222222"],
+      hasReliableSecurityIdentity: true,
+      hasDisqualifyingCandidateEvidence: false,
+      hasTargetSpecificCandidateEvidence: true,
+    });
+  });
+
+  it("leaves an unknown symbol unsupported when no canonical evidence exists", async () => {
+    selectMock.mockReturnValueOnce(canonicalCusipsQuery([]));
+
+    await expect(
+      loadStockCandidateIdentity([], "UNKNOWN"),
+    ).resolves.toEqual({
+      candidateCusips: [],
+      hasReliableSecurityIdentity: false,
+      hasDisqualifyingCandidateEvidence: false,
+      hasTargetSpecificCandidateEvidence: false,
+    });
+  });
+
+  it.each([
+    ["etf", "fund"],
+    ["preferred", "unsupported security"],
+  ])("rejects a mapping-only %s from stock identity", async (assetType) => {
+    selectMock
+      .mockReturnValueOnce(canonicalCusipsQuery([]))
+      .mockReturnValueOnce(candidateCusipsQuery([
+        {
+          cusip: "123456789",
+          masterTicker: null,
+          masterReviewStatus: null,
+          masterAssetType: assetType,
+          mappingSymbol: "GENR",
+          mappingStatus: "reviewed",
+          holdingMappedSymbol: "GENR",
+          holdingMappingStatus: "exact",
+        },
+      ]));
+
+    await expect(
+      loadStockCandidateIdentity(["accession-generic"], "GENR"),
+    ).resolves.toMatchObject({
+      candidateCusips: ["123456789"],
+      hasReliableSecurityIdentity: false,
+      hasDisqualifyingCandidateEvidence: true,
+      hasTargetSpecificCandidateEvidence: true,
+    });
+  });
+
   it("does not let a trusted status for another symbol validate target evidence", async () => {
     selectMock
       .mockReturnValueOnce(

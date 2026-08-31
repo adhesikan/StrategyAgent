@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalSecurityTypeStateQuery,
+  parseCanonicalStockEligibleIdentities,
   reconcileCanonicalStockEligibility,
 } from "../canonical-security-state";
 
@@ -24,5 +25,17 @@ describe("canonical security state", () => {
     expect(canonicalSecurityTypeStateQuery).toContain("FROM security_master");
     expect(canonicalSecurityTypeStateQuery).toContain("asset_type IN ('common_stock', 'reit')");
     expect(canonicalSecurityTypeStateQuery).toContain("'other_pooled_fund'");
+    expect(canonicalSecurityTypeStateQuery).toContain("stock_eligible_identities");
+    expect(canonicalSecurityTypeStateQuery).toContain("candidate.share_class_figi");
+  });
+
+  it("returns a deterministic canonical CUSIP to symbol identity map", () => {
+    expect(Array.from(parseCanonicalStockEligibleIdentities({
+      "222222222": " reit ",
+      "111111111": "abc",
+    }))).toEqual([
+      ["111111111", "ABC"],
+      ["222222222", "REIT"],
+    ]);
   });
 });

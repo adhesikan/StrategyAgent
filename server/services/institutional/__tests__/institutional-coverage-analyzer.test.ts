@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, providerNormalizationAudit, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
-import { reconcileCanonicalStockEligibility } from "../canonical-security-state";
+import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, isCanonicalStockRemediationEligible, providerNormalizationAudit, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
+import { parseCanonicalStockEligibleIdentities, reconcileCanonicalStockEligibility } from "../canonical-security-state";
 import { classifyInstitutionalSecurityType } from "../security-type-eligibility";
 
 describe("institutional coverage analyzer", () => {
   const base = { cusip: "123456789", holdingRows: 2, reportedValueUsd: 100, latestQuarter: "2025-12-31" };
+  const canonicalIdentities = (rows: Array<ReturnType<typeof classifyCusipEvidence> & {
+    canonicalSecurityType?: any;
+    securityTypePopulation?: any;
+  }>) => new Map(rows
+    .filter(isCanonicalStockRemediationEligible)
+    .map((row) => [row.cusip, row.projectedSymbol!] as const));
   it("classifies evidence without guessing", () => {
     expect(classifyCusipEvidence(base).category).toBe("INSUFFICIENT_NO_REFERENCE");
     expect(classifyCusipEvidence({ ...base, sourceEvidence: [{ source: "mapping", symbol: "ABC", status: "probable" }] }).category).toBe("UNSUPPORTED");
@@ -94,6 +100,7 @@ describe("institutional coverage analyzer", () => {
     const plan = buildActionableCoveragePlan({
       classifications: [row],
       before: coverageTotals([row]),
+      canonicalStockEligibleIdentities: new Map([["111111111", "ABC"]]),
       existingAggregateTargets: new Set(),
       existingSignalSymbols: new Set(),
     });
@@ -153,6 +160,7 @@ describe("institutional coverage analyzer", () => {
         makeTyped("444444444", "", "insufficient_evidence", "INSUFFICIENT_SECURITY_TYPE_EVIDENCE"),
       ],
       before: coverageTotals([]),
+      canonicalStockEligibleIdentities: new Map([["111111111", "REIT"]]),
     });
     expect(plan.operations).toHaveLength(1);
     expect(plan.operations?.[0].symbol).toBe("REIT");
@@ -171,10 +179,12 @@ describe("institutional coverage analyzer", () => {
     expect(buildActionableCoveragePlan({
       classifications: [row],
       before: coverageTotals([row]),
+      canonicalStockEligibleIdentities: new Map(),
     }).operations).toEqual([]);
     expect(() => buildActionableCoveragePlan({
       classifications: [row],
       before: coverageTotals([row]),
+      canonicalStockEligibleIdentities: new Map(),
       canonicalCorrectionState: {
         verified: false,
         planHash: "correction",
@@ -201,6 +211,7 @@ describe("institutional coverage analyzer", () => {
         securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS",
       }],
       before: coverageTotals([row]),
+      canonicalStockEligibleIdentities: new Map(),
     }).operations).toEqual([]);
   });
 
@@ -217,6 +228,7 @@ describe("institutional coverage analyzer", () => {
     const plan = buildActionableCoveragePlan({
       classifications: rows,
       before: coverageTotals(rows),
+      canonicalStockEligibleIdentities: canonicalIdentities(rows),
     });
     expect(plan.operations).toHaveLength(2);
     expect(plan.affected.aggregates).toEqual([
@@ -259,7 +271,7 @@ describe("institutional coverage analyzer", () => {
     )).toMatchObject({ difference: 0, reconciled: true });
   });
   it("hashes equivalent plans deterministically", () => {
-    const one = classifyCusipEvidence(base); const input = { version: 1 as const, mode: "REMEDIATION_PLAN" as const, before: coverageTotals([one]), projected: coverageTotals([one]), classifications: [one], affected: { mappings: ["b", "a"], holdings: 0, quarters: [], aggregates: [], signals: [], snapshots: [] } };
+    const one = classifyCusipEvidence(base); const input = { version: 1 as const, mode: "REMEDIATION_PLAN" as const, before: coverageTotals([one]), projected: coverageTotals([one]), classifications: [one], affected: { mappings: ["b", "a"], holdings: 0, quarters: [], aggregates: [], signals: [], snapshots: [] }, stockEligibility: { canonicalStockEligibleCusips: 0, remediationStockEligibleCusips: 0, stockEligibilityReconciled: true, fundCusipsExcludedFromStockRemediation: 0, nonStockCusipsInStockRemediation: 0, missingCanonicalCusipsInStockRemediation: 0, remediationBlocked: false } };
     expect(buildCoveragePlan(input).planHash).toBe(buildCoveragePlan({ ...input, affected: { ...input.affected, mappings: ["a", "b"] } }).planHash);
   });
   it("rejects writes and refuses apply", () => {
@@ -278,7 +290,7 @@ describe("institutional coverage analyzer", () => {
       canonicalSecurityType: "common_stock" as const,
       securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
     };
-    const plan = buildActionableCoveragePlan({ classifications: [trusted], before: coverageTotals([trusted]) });
+    const plan = buildActionableCoveragePlan({ classifications: [trusted], before: coverageTotals([trusted]), canonicalStockEligibleIdentities: new Map([[trusted.cusip, "ABC"]]) });
     const calls: string[] = [];
     const result = await applyInstitutionalCoveragePlan({
       artifact: plan, environment: "production", confirmation: "APPLY_INSTITUTIONAL_COVERAGE_PLAN",
@@ -303,7 +315,7 @@ describe("institutional coverage analyzer", () => {
     const plan = buildCoveragePlan({ version: 1, mode: "REMEDIATION_PLAN", before: coverageTotals([trusted]), projected: coverageTotals([trusted]), classifications: [trusted], affected: {
       mappings: [trusted.cusip], holdings: 2, quarters: [...(trusted.periods ?? [])],
       aggregates: (trusted.periods ?? []).map(period => `${trusted.projectedSymbol}:${period}`), signals: ["ABC"], snapshots: [],
-    }});
+    }, stockEligibility: { canonicalStockEligibleCusips: 0, remediationStockEligibleCusips: 0, stockEligibilityReconciled: true, fundCusipsExcludedFromStockRemediation: 0, nonStockCusipsInStockRemediation: 0, missingCanonicalCusipsInStockRemediation: 0, remediationBlocked: false }});
     expect(plan.affected.quarters).toEqual(["2025-06-30", "2025-09-30"]);
     expect(coverageTotals([])).toMatchObject({ eligibleCusips: 0, holdingRows: 0 });
   });
@@ -320,6 +332,7 @@ describe("institutional coverage analyzer", () => {
     const before = coverageTotals([trusted]);
     const plan = buildActionableCoveragePlan({
       classifications: [trusted, { ...trusted, cusip: "987654321" }], before,
+      canonicalStockEligibleIdentities: new Map([[trusted.cusip, "ABC"], ["987654321", "ABC"]]),
       existingAggregateTargets: new Set(), existingSignalSymbols: new Set(),
       snapshotRowsByFamily: { sector_intelligence_snapshots: 3, theme_intelligence_snapshots: 4 },
     });
@@ -350,8 +363,126 @@ describe("institutional coverage analyzer", () => {
       buildActionableCoveragePlan({
         classifications: [separateFund, trusted],
         before: coverageTotals([separateFund, trusted]),
+        canonicalStockEligibleIdentities: new Map(),
       }).operations,
     ).toEqual([]);
+  });
+
+  it("fails closed when local remediation eligibility differs from canonical identity", () => {
+    const holdingAuthorized = {
+      ...classifyCusipEvidence({
+        ...base,
+        sourceEvidence: [{ source: "holding", symbol: "LEAK", status: "exact" }],
+        periods: ["2025-12-31"],
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    };
+    expect(() => buildActionableCoveragePlan({
+      classifications: [holdingAuthorized],
+      before: coverageTotals([holdingAuthorized]),
+      canonicalStockEligibleIdentities: new Map(),
+    })).toThrow("STOCK_REMEDIATION_ELIGIBILITY_RECONCILIATION_FAILED");
+  });
+
+  it("does not execute an artifact marked as unreconciled", async () => {
+    const calls: string[] = [];
+    const trusted = {
+      ...classifyCusipEvidence({
+        ...base,
+        sourceEvidence: [{ source: "security_master", symbol: "ABC", status: "reviewed" }],
+        periods: ["2025-12-31"],
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    };
+    const plan = buildActionableCoveragePlan({
+      classifications: [trusted],
+      before: coverageTotals([trusted]),
+      canonicalStockEligibleIdentities: new Map([[trusted.cusip, "ABC"]]),
+    });
+    plan.stockEligibility = {
+      ...plan.stockEligibility,
+      stockEligibilityReconciled: false,
+      remediationBlocked: true,
+    };
+    await expect(applyInstitutionalCoveragePlan({
+      artifact: plan,
+      environment: "production",
+      confirmation: "APPLY_INSTITUTIONAL_COVERAGE_PLAN",
+      expectedDatabase: "db",
+      expectedSchema: "public",
+      suppliedPlanHash: plan.planHash,
+      database: {
+        identity: async () => { calls.push("identity"); return { database: "db", schema: "public" }; },
+        withAdvisoryLock: async (_key, fn) => fn(),
+        transaction: async fn => fn({
+          loadPlan: async () => plan,
+          promoteMapping: async () => { calls.push("write"); },
+          updateHoldings: async () => { calls.push("write"); },
+          upsertAggregate: async () => { calls.push("write"); },
+          upsertSignal: async () => { calls.push("write"); },
+        }),
+      },
+      rebuilder: { refreshSnapshots: async () => { calls.push("refresh"); } },
+    })).rejects.toThrow("STOCK_REMEDIATION_ELIGIBILITY_RECONCILIATION_FAILED");
+    expect(calls).toEqual([]);
+  });
+
+  it("enforces the canonical stock type matrix without ticker-specific rules", () => {
+    const cases = [
+      ["common_stock", "ELIGIBLE_STOCK_ANALYTICS", true],
+      ["reit", "ELIGIBLE_STOCK_ANALYTICS", true],
+      ["etf", "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS", false],
+      ["mutual_fund", "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS", false],
+      ["closed_end_fund", "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS", false],
+      ["money_market_fund", "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS", false],
+      ["other_pooled_fund", "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS", false],
+      ["adr", "UNSUPPORTED_FOR_STOCK_ANALYTICS", false],
+      ["foreign_listing", "UNSUPPORTED_FOR_STOCK_ANALYTICS", false],
+      ["preferred", "UNSUPPORTED_FOR_STOCK_ANALYTICS", false],
+      ["debt", "UNSUPPORTED_FOR_STOCK_ANALYTICS", false],
+      ["warrant", "UNSUPPORTED_FOR_STOCK_ANALYTICS", false],
+      ["rights", "UNSUPPORTED_FOR_STOCK_ANALYTICS", false],
+      ["other", "UNSUPPORTED_FOR_STOCK_ANALYTICS", false],
+      ["insufficient_evidence", "INSUFFICIENT_SECURITY_TYPE_EVIDENCE", false],
+      ["ambiguous", "INSUFFICIENT_SECURITY_TYPE_EVIDENCE", false],
+    ] as const;
+    for (const [canonicalSecurityType, securityTypePopulation, expected] of cases) {
+      const row = {
+        ...classifyCusipEvidence({
+          ...base,
+          sourceEvidence: [{ source: "security_master", symbol: "GENERIC", status: "reviewed" }],
+        }),
+        canonicalSecurityType,
+        securityTypePopulation,
+      };
+      expect(isCanonicalStockRemediationEligible(row)).toBe(expected);
+    }
+  });
+
+  it("requires a structurally valid canonical symbol and provider evidence for share classes", () => {
+    const typed = (symbol: string, providerCandidates: any[] = []) => ({
+      ...classifyCusipEvidence({
+        ...base,
+        sourceEvidence: [{ source: "security_master", symbol, status: "reviewed" }],
+        providerCandidates,
+      }),
+      canonicalSecurityType: "common_stock" as const,
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" as const,
+    });
+    expect(isCanonicalStockRemediationEligible(typed("BAD/SYMBOL"))).toBe(false);
+    expect(isCanonicalStockRemediationEligible(typed("BRK.B"))).toBe(false);
+    expect(isCanonicalStockRemediationEligible(typed("BRK.B", [{
+      provider: "openfigi", ticker: "BRK.B", shareClassFigi: "BBG001", securityType: "Common Stock",
+    }]))).toBe(true);
+  });
+
+  it("parses canonical stock identity JSON without guessing malformed input", () => {
+    expect(Array.from(parseCanonicalStockEligibleIdentities('{"111111111":"abc"}'))).toEqual([
+      ["111111111", "ABC"],
+    ]);
+    expect(Array.from(parseCanonicalStockEligibleIdentities("not-json"))).toEqual([]);
   });
 
   it("groups provider tuples and counts type provenance and downstream targets", () => {

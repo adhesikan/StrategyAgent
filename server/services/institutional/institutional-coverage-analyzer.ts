@@ -82,6 +82,7 @@ export interface CoveragePlan {
     signals: { expected: number; present: number; missing: number; coveragePercent: number; inserts: number; updates: number };
     snapshots: { currentRowsByFamily: Record<string, number>; refreshFamilies: string[] };
   };
+  stockEligibility: StockRemediationEligibilityReconciliation;
   planHash: string;
 }
 
@@ -95,6 +96,16 @@ export interface CoveragePlanOperation {
   periods: string[];
   aggregateTargets: Array<{ symbol: string; period: string; action: "insert" | "update" }>;
   signalTarget: { symbol: string; action: "insert" | "update" } | null;
+}
+
+export interface StockRemediationEligibilityReconciliation {
+  canonicalStockEligibleCusips: number;
+  remediationStockEligibleCusips: number;
+  stockEligibilityReconciled: boolean;
+  fundCusipsExcludedFromStockRemediation: number;
+  nonStockCusipsInStockRemediation: number;
+  missingCanonicalCusipsInStockRemediation: number;
+  remediationBlocked: boolean;
 }
 
 export interface CoverageTotals {
@@ -234,13 +245,32 @@ export function securityTypeCoverageMetrics(
     }));
 }
 
+function hasValidCanonicalPrimarySymbol(row: CusipClassification): boolean {
+  if (!row.projectedSymbol) return false;
+  const matchingProvider = row.providerCandidates?.find(
+    (candidate) => assessCanonicalPrimarySymbol(candidate).symbol === row.projectedSymbol,
+  );
+  return assessCanonicalPrimarySymbol(
+    matchingProvider ?? { ticker: row.projectedSymbol },
+  ).status === "ACCEPTED_PROVIDER_TICKER";
+}
+
+/** Sole row-level contract for entering stock institutional remediation. */
+export function isCanonicalStockRemediationEligible(
+  row: CusipClassification,
+): boolean {
+  return row.holdingRows > 0
+    && row.category === "TRUSTED"
+    && row.projectedSymbol !== null
+    && (row.canonicalSecurityType === "common_stock" || row.canonicalSecurityType === "reit")
+    && row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS"
+    && hasValidCanonicalPrimarySymbol(row)
+    && !row.canonicalCorrectionBlocker;
+}
+
 export function countCanonicalStockEligibleInputs(rows: readonly CusipClassification[]): number {
   return new Set(rows
-    .filter((row) =>
-      row.category === "TRUSTED"
-      && row.projectedSymbol !== null
-      && row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS",
-    )
+    .filter(isCanonicalStockRemediationEligible)
     .map((row) => row.cusip)).size;
 }
 
@@ -427,6 +457,7 @@ export function rankCoverageRootCauses(metrics: CoverageCategoryMetric[]): Cover
 export function buildActionableCoveragePlan(input: {
   classifications: CusipClassification[];
   before: CoverageTotals;
+  canonicalStockEligibleIdentities: ReadonlyMap<string, string>;
   existingAggregateTargets?: ReadonlySet<string>;
   existingSignalSymbols?: ReadonlySet<string>;
   snapshotRowsByFamily?: Readonly<Record<string, number>>;
@@ -442,14 +473,39 @@ export function buildActionableCoveragePlan(input: {
   )) {
     throw new Error("CANONICAL_SECURITY_STATE_CORRECTION_REQUIRED");
   }
-  const operations: CoveragePlanOperation[] = [...input.classifications]
+  const locallyEligible = [...input.classifications]
     .sort((a, b) => a.cusip.localeCompare(b.cusip))
-    .filter(row =>
-      row.category === "TRUSTED" &&
-      row.projectedSymbol &&
-      row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS" &&
-      !row.canonicalCorrectionBlocker
-    )
+    .filter(isCanonicalStockRemediationEligible);
+  const localCusips = new Set(locallyEligible.map((row) => row.cusip));
+  const canonicalCusips = new Set(input.canonicalStockEligibleIdentities.keys());
+  const nonStockCusips = locallyEligible.filter((row) => {
+    const canonicalSymbol = input.canonicalStockEligibleIdentities.get(row.cusip);
+    return !canonicalSymbol || canonicalSymbol !== row.projectedSymbol;
+  });
+  const missingCanonicalCusips = Array.from(canonicalCusips)
+    .filter((cusip) => !localCusips.has(cusip));
+  const stockEligibilityReconciled =
+    nonStockCusips.length === 0 && missingCanonicalCusips.length === 0;
+  if (!stockEligibilityReconciled) {
+    throw new Error(`STOCK_REMEDIATION_ELIGIBILITY_RECONCILIATION_FAILED:${JSON.stringify({
+      canonicalStockEligibleCusips: canonicalCusips.size,
+      remediationStockEligibleCusips: localCusips.size,
+      nonStockCusipsInStockRemediation: nonStockCusips.length,
+      missingCanonicalCusipsInStockRemediation: missingCanonicalCusips.length,
+    })}`);
+  }
+  const stockEligibility: StockRemediationEligibilityReconciliation = {
+    canonicalStockEligibleCusips: canonicalCusips.size,
+    remediationStockEligibleCusips: localCusips.size,
+    stockEligibilityReconciled,
+    fundCusipsExcludedFromStockRemediation: new Set(input.classifications
+      .filter((row) => row.securityTypePopulation === "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS")
+      .map((row) => row.cusip)).size,
+    nonStockCusipsInStockRemediation: nonStockCusips.length,
+    missingCanonicalCusipsInStockRemediation: missingCanonicalCusips.length,
+    remediationBlocked: false,
+  };
+  const operations: CoveragePlanOperation[] = locallyEligible
     .map(row => {
       const trusted = row.sourceEvidence
         .filter(evidence => evidence.symbol?.trim().toUpperCase() === row.projectedSymbol &&
@@ -511,7 +567,7 @@ export function buildActionableCoveragePlan(input: {
       : percent(BigInt(projected.currentlyMaterializedValueUsd), BigInt(projected.reportedValueUsd));
   return buildCoveragePlan({
     version: 1, mode: "REMEDIATION_PLAN", before: input.before,
-    projected, classifications: input.classifications, affected, operations,
+    projected, classifications: input.classifications, affected, operations, stockEligibility,
     idempotency: ["mapping upsert by CUSIP", "holding update only when stale", "aggregate upsert by symbol+period", "signal upsert by symbol"],
     rollback: {
       action: "SQL rollback covers pre-commit failures. After commit, source mapping repairs remain durable; rerun dry-run and execute its new hash-bound idempotent derived-target plan.",
@@ -708,6 +764,10 @@ export async function applyInstitutionalCoveragePlan(input: {
   environment?: string; confirmation?: string; expectedDatabase?: string; expectedSchema?: string;
   suppliedPlanHash?: string;
 }): Promise<{ planHash: string; operations: number }> {
+  if (!input.artifact.stockEligibility.stockEligibilityReconciled
+    || input.artifact.stockEligibility.remediationBlocked) {
+    throw new Error("COVERAGE_APPLY_REJECTED:STOCK_REMEDIATION_ELIGIBILITY_RECONCILIATION_FAILED");
+  }
   const identity = await input.database.identity();
   const issues = validateCoverageApplyRequest({
     apply: true, environment: input.environment, confirmation: input.confirmation,

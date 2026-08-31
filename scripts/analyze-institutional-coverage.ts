@@ -10,7 +10,7 @@ import {
 } from "../server/services/institutional/institutional-coverage-analyzer";
 import { classifyInstitutionalSecurityType } from "../server/services/institutional/security-type-eligibility";
 import { createCoveragePostgresAdapter } from "../server/services/institutional/institutional-coverage-postgres-adapter";
-import { canonicalSecurityTypeStateQuery, reconcileCanonicalStockEligibility } from "../server/services/institutional/canonical-security-state";
+import { canonicalSecurityTypeStateQuery, parseCanonicalStockEligibleIdentities, reconcileCanonicalStockEligibility } from "../server/services/institutional/canonical-security-state";
 import { buildInstitutionalAssetTypeCorrectionPlan } from "../server/services/institutional/security-reference-enrichment-planner";
 import {
   applyInstitutionalSecurityTypeCorrections,
@@ -133,7 +133,8 @@ async function loadCoverage(executor: Executor) {
     reportedValueUsd: r.reported_value_usd === null ? null : String(r.reported_value_usd),
     nullValueRows: Number(r.null_value_rows ?? 0), latestQuarter: r.latest_quarter ? String(r.latest_quarter) : null,
     periods: Array.isArray(r.periods) ? r.periods.map(String) : [],
-    sourceEvidence: [...(r.holding_evidence ?? []), ...(r.mapping_evidence ?? []), ...(r.master_evidence ?? [])],
+    holdingSymbols: (r.holding_evidence ?? []).map((item: any) => item.symbol).filter(Boolean),
+    sourceEvidence: [...(r.mapping_evidence ?? []), ...(r.master_evidence ?? [])],
      providerCandidates: Array.isArray(r.provider_candidates) ? r.provider_candidates : [],
      persistedAssetType: r.asset_type === null || r.asset_type === undefined ? null : String(r.asset_type),
      assetTypeProvenance: r.mapping_method ? String(r.mapping_method) : null,
@@ -143,6 +144,9 @@ async function loadCoverage(executor: Executor) {
     securityTypePopulation: classifyInstitutionalSecurityType({ assetType: r.asset_type }).analyticsPopulation,
   }));
   const before = coverageTotals(classifications);
+  const canonicalStockEligibleIdentities = parseCanonicalStockEligibleIdentities(
+    rows.canonicalState.stock_eligible_identities,
+  );
   const canonicalReconciliation = reconcileCanonicalStockEligibility(
     Number(rows.canonicalState.stock_eligible_cusips ?? 0),
     countCanonicalStockEligibleInputs(classifications),
@@ -182,8 +186,14 @@ async function loadCoverage(executor: Executor) {
         action?.action === "SYMBOL_CORRECTION" ? "CANONICAL_SYMBOL_REVIEW_REQUIRED" : undefined);
     return blocker ? { ...row, canonicalCorrectionBlocker: blocker } : row;
   });
+  const remediationCanonicalIdentities = new Map(
+    Array.from(canonicalStockEligibleIdentities)
+      .filter(([cusip]) => !correctionBlockers.has(cusip)
+        && !correctionPlan.actions.some((action) => action.cusip === cusip)),
+  );
   const plan = buildActionableCoveragePlan({
     classifications: correctedClassifications, before,
+    canonicalStockEligibleIdentities: remediationCanonicalIdentities,
     existingAggregateTargets: new Set(rows.aggregateTargets.map(row => `${row.symbol}:${row.period}`)),
     existingSignalSymbols: new Set(rows.signalTargets.map(row => String(row.symbol))),
     snapshotRowsByFamily: {
@@ -328,11 +338,18 @@ async function main() {
       holdingRows: before.holdingRows,
       reportedValueUsd: before.reportedValueUsd,
       trustedCusips: before.reliablyMappedCusips,
-      stockEligibleCusips: classifications.filter((row) => row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS").length,
+      canonicalStockEligibleCusips: plan.stockEligibility.canonicalStockEligibleCusips,
+      remediationStockEligibleCusips: plan.stockEligibility.remediationStockEligibleCusips,
+      stockEligibilityReconciled: plan.stockEligibility.stockEligibilityReconciled,
+      fundCusipsExcludedFromStockRemediation: plan.stockEligibility.fundCusipsExcludedFromStockRemediation,
+      nonStockCusipsInStockRemediation: plan.stockEligibility.nonStockCusipsInStockRemediation,
+      aggregateTargets: plan.downstream?.aggregates.expected ?? 0,
+      signalTargets: plan.downstream?.signals.expected ?? 0,
       separateFundCusips: classifications.filter((row) => row.securityTypePopulation === "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS").length,
-      correctionActions: correctionPlan.actions.length,
-      correctionBlockers: correctionPlan.blockers,
-      planHash: correctionPlan.planHash,
+      canonicalCorrectionActions: correctionPlan.actions.length,
+      canonicalBlockers: correctionPlan.blockers,
+      remediationBlocked: plan.stockEligibility.remediationBlocked,
+      planHash: plan.planHash,
     }));
     return;
   }

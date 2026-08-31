@@ -1,0 +1,181 @@
+Task #203 — Fix Task #202 canonical effective-holdings SQL production failure
+
+CONTEXT
+
+Task #202 commit:
+354fdeb
+
+Task #202 introduced one shared canonical effective-holdings SQL contract
+used by:
+
+- analyzer
+- canonical verifier
+- count preflight
+- holding update
+
+Its purpose is to ensure planner and APPLY use exactly the same
+effective filing/holding population.
+
+The first production READ-ONLY verification after Task #202 failed.
+
+Command:
+
+test "$RAILWAY_ENVIRONMENT_NAME" = "production" && \
+npx tsx scripts/analyze-institutional-coverage.ts --summary-only
+
+Production error begins:
+
+[institutional-coverage] ERROR: Failed query:
+
+WITH ranked_filings AS (
+  SELECT
+    f.accession_number,
+    f.filer_cik,
+    f.period_of_report,
+    f.is_effective,
+    ROW_NUMBER() OVER (
+      PARTITION BY f.filer_cik, f.period_of_report
+      ORDER BY f.is_effective DESC,
+               f.accepted_at DESC NULLS LAST,
+               f.filing_date DESC,
+               f.accession_number DESC
+    ) AS filing_rank
+  FROM institutional_13f_filings f
+),
+canonical_filings AS (
+  SELECT accession_number, filer_cik, period_of_repo
+...
+
+The terminal error was truncated after this point.
+
+IMPORTANT
+
+This was READ ONLY.
+No production APPLY occurred.
+No production write should be performed during this task.
+
+The previous remediation plan hash is stale and MUST NOT be reused.
+
+OBJECTIVE
+
+Find and fix the generic SQL/query-construction defect in the Task #202
+shared canonical effective-holdings contract.
+
+Do not redesign the Task #202 solution.
+Do not revert to separate planner/executor holding definitions.
+Do not weaken holding-count reconciliation.
+Do not perform ticker/CUSIP-specific repairs.
+Do not run production APPLY.
+
+STEP 1 — REPRODUCE LOCALLY
+
+Locate the exact shared canonical effective-holdings SQL introduced in
+354fdeb.
+
+Run the actual generated query against the available development/test
+database or query test harness and capture the underlying PostgreSQL
+error, not merely the wrapper "Failed query" message.
+
+Inspect:
+
+- complete canonical_filings CTE
+- column names and aliases
+- period_of_report propagation
+- accepted_at availability/type
+- filing_date availability/type
+- accession_number joins
+- CTE composition/interpolation
+- parameter numbering/binding
+- aliases consumed by downstream CTEs
+- SQL fragments reused by analyzer/verifier/preflight/update
+- differences between test schema and production schema
+
+Determine the exact first SQL failure.
+
+STEP 2 — VERIFY TASK #202 SEMANTICS
+
+The corrected shared contract must still implement:
+
+1. one canonical filing per filer + period
+2. amendment/original supersession
+3. effective filing semantics
+4. put/call exclusion
+5. PRN exclusion
+6. positive reported shares
+7. preservation of legitimately distinct holding rows
+8. canonical CUSIP normalization
+9. identical planner/verifier/preflight/updater population
+
+Do NOT solve the SQL error by removing any of these invariants.
+
+STEP 3 — FIX THE SMALLEST GENERIC DEFECT
+
+Make only the minimum generic correction required.
+
+There must remain ONE shared canonical effective-holdings SQL contract.
+
+Do not create separate production SQL.
+Do not special-case production.
+Do not special-case any CUSIP/ticker.
+
+STEP 4 — ADD REGRESSION TEST
+
+Add a test that executes the actual shared SQL/SQL builder far enough to
+catch this exact production failure.
+
+Existing mocked/string-only tests are insufficient if they allowed the
+invalid query through.
+
+Test amendment/original supersession and verify the resulting canonical
+holding count.
+
+Also retain the Task #202 planner/executor count-agreement and rollback
+tests.
+
+STEP 5 — ERROR VISIBILITY
+
+If the analyzer currently hides the PostgreSQL root error behind only:
+
+"Failed query: <SQL>"
+
+improve SAFE error reporting so future failures include the PostgreSQL
+error code/message without printing DATABASE_URL, credentials, secrets,
+or sensitive connection information.
+
+Do not dump environment variables.
+
+VALIDATION
+
+Run:
+
+- new SQL execution regression test
+- Task #202 canonical holding tests
+- Task #201 canonical/remediation tests
+- focused institutional remediation tests
+- full institutional suite
+- release suite
+- production build
+- git diff --check
+
+No production writes.
+No APPLY.
+No ingestion.
+
+RETURN ONLY
+
+ROOT CAUSE
+EXACT SQL FAILURE
+FIX
+SHARED CONTRACT PRESERVED: YES/NO
+REGRESSION TEST
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+
+Then return exactly ONE next production command:
+
+test "$RAILWAY_ENVIRONMENT_NAME" = "production" && \
+npx tsx scripts/analyze-institutional-coverage.ts --summary-only
+
+Do not execute it.
+Do not provide an APPLY command.

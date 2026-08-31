@@ -1,0 +1,254 @@
+Task #205 — Remove legacy four-symbol gating from live Institutional Stock View
+
+CRITICAL OBSERVATION
+
+Production institutional remediation has fully passed:
+
+canonicalStockEligibleCusips: 1466
+remediationStockEligibleCusips: 1466
+aggregateExpected: 2994
+aggregatePresent: 2994
+aggregateMissing: 0
+signalExpected: 1465
+signalPresent: 1465
+signalMissing: 0
+mappingOperationsPending: 0
+holdingMappingOperationsPending: 0
+remediationOperationsPending: 0
+remediationComplete: true
+
+However, the LIVE Institutional Intelligence Stock View appears to work
+only for:
+
+AAPL
+NVDA
+MSFT
+COST
+
+These are exactly the original four symbols used in the first bounded
+production repair.
+
+Many other legitimate tickers return:
+
+"<SYMBOL> is not in the institutional security master"
+
+"No canonical CUSIP identity is available for this symbol."
+
+THIS IS NOW THE PRIMARY CLUE.
+
+Do NOT start another broad security-master enrichment project yet.
+Do NOT manually add tickers.
+Do NOT build allowlists.
+Do NOT reopen OpenFIGI.
+Do NOT modify accepted production remediation data.
+Do NOT run production writes.
+
+OBJECTIVE
+
+Determine why the live Stock View/API appears to expose only the original
+four-symbol repair population even though generic remediation now contains
+1466 stock-eligible CUSIPs, 2994 aggregate targets, and 1465 signals.
+
+TRACE THE EXACT LIVE PATH
+
+Trace:
+
+Institutional Intelligence Stock View
+→ client request
+→ API route
+→ service
+→ symbol resolver
+→ canonical security lookup
+→ holdings/aggregate lookup
+→ signal lookup
+→ availability classification
+
+Identify the FIRST point at which the generic 1466-symbol production
+population is reduced to or bypassed in favor of the original four symbols.
+
+SEARCH SPECIFICALLY FOR LEGACY FOUR-SYMBOL ARTIFACTS
+
+Search the repository for:
+
+AAPL
+NVDA
+MSFT
+COST
+
+and inspect all occurrences related to institutional intelligence.
+
+Look for:
+
+- hardcoded arrays
+- seed symbol lists
+- repair symbol lists
+- supported-symbol lists
+- validation allowlists
+- fallback maps
+- fixtures accidentally used at runtime
+- legacy security-master lookup maps
+- cached symbol sets
+- initialization code
+- API adapters
+- feature flags
+- old repair-specific resolver logic
+- old signal loaders
+- old aggregate loaders
+- demo/sample symbol gates
+- production bootstrap code
+- frontend symbol validation
+- route-level symbol restrictions
+
+Also inspect whether the live API is querying:
+
+A. institutional_security_mappings
+
+versus
+
+B. the generic canonical security master
+
+versus
+
+C. only rows created by the original four-symbol repair.
+
+VERIFY GENERIC PRODUCTION DATA PATH
+
+From code, establish exactly how a symbol outside the original four
+should resolve after the completed remediation.
+
+The intended path is:
+
+requested symbol
+→ canonical symbol
+→ canonical security_master row
+→ trusted CUSIP mapping(s)
+→ eligible effective holdings
+→ quarterly aggregates
+→ signal
+→ availability state
+
+The generic runtime resolver must use the SAME canonical trusted identity
+population that produced:
+
+1466 stock-eligible CUSIPs
+2994 aggregate targets
+1465 signals
+
+There must NOT be a separate legacy symbol authorization path.
+
+ROOT-CAUSE QUESTIONS
+
+Answer explicitly:
+
+1. Is there any runtime hardcoding or allowlisting of AAPL/NVDA/MSFT/COST?
+
+2. Is the live Stock View using a legacy table/query populated only by
+   the original four-symbol repair?
+
+3. Is the generic remediation writing rows to tables that the Stock View
+   does not query?
+
+4. Is the Stock View symbol resolver requiring a legacy mapping field
+   that generic remediation does not populate?
+
+5. Are generic mappings present in production but not visible because
+   the lookup filters on provenance/source/review state created only for
+   the original repair?
+
+6. Are aggregate/signal rows present for generic symbols but identity
+   lookup fails before reaching them?
+
+7. Is there a cache initialized with the original four symbols?
+
+8. Is a feature flag or deployment path selecting the legacy resolver?
+
+FIX
+
+Make the smallest generic fix so live Stock View uses the canonical
+production population already accepted by remediation.
+
+Do NOT weaken trust requirements.
+
+Do NOT authorize identity from:
+- holding ticker
+- aggregate presence
+- signal presence
+
+Identity must still come from the trusted canonical security state.
+
+Remove/bypass legacy four-symbol-specific runtime behavior if found.
+
+If the problem is a mismatched query or join, fix that shared query.
+
+If the problem is a stale cache, fix cache population/invalidation
+generically.
+
+If the problem is that remediation populated one canonical table while
+Stock View queries another, reconcile the runtime to the canonical source
+of truth.
+
+DO NOT create a second security master.
+
+TESTS
+
+Add regression tests proving:
+
+- original repaired symbols still work
+- a generic remediated common stock outside those four resolves
+- multiple generic symbols resolve without allowlisting
+- unknown/unmapped symbol still fails closed
+- fund does not leak into stock analytics
+- unsupported security remains unsupported
+- multi-CUSIP symbol works
+- no aggregate/signal/holding-derived identity authorization
+- no hardcoded ticker dependency
+
+Use synthetic fixtures.
+Do not special-case production tickers in runtime code.
+
+VALIDATION
+
+Run:
+- focused Stock View resolver tests
+- Task #187 availability tests
+- Task #189 resolver tests
+- Task #201 canonical identity tests
+- Task #202 holding contract tests
+- full institutional suite
+- release suite
+- production build
+- git diff --check
+
+NO production APPLY.
+NO production writes.
+NO ingestion.
+
+RETURN ONLY
+
+ROOT CAUSE
+FIRST FAILURE POINT
+LEGACY FOUR-SYMBOL DEPENDENCY FOUND: YES/NO
+WHY ONLY THE ORIGINAL FOUR WORKED
+GENERIC FIX
+CANONICAL RUNTIME DATA SOURCE
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER YES/NO
+
+Then return exactly ONE production READ-ONLY verification command that
+checks runtime symbol-resolution coverage across the generic canonical
+population.
+
+The verification should report compactly:
+
+canonicalStockSymbols
+runtimeResolvableStockSymbols
+runtimeUnresolvableCanonicalSymbols
+runtimeResolutionReconciled
+originalRepairSymbolsResolvable
+aggregateBackedSymbols
+signalBackedSymbols
+
+Do not print a giant ticker list.
+Do not execute it.
+Do not provide an APPLY command.

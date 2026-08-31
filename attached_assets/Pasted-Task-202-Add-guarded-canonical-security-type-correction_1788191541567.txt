@@ -1,0 +1,278 @@
+Task #202 — Add guarded canonical security-type correction APPLY and block remediation until corrected
+
+CONTEXT
+
+Task #201 completed canonical provider type normalization and a deterministic
+read-only stale machine-derived asset-type correction planner.
+
+Production read-only analyzer was rerun afterward.
+
+The remediation plan STILL contains non-stock/fund instruments inside stock
+aggregate/signal targets, including examples such as:
+
+PRDGX
+PDGIX
+TRAIX
+TRBCX
+TBCIX
+RPMGX
+PNAIX
+PRNHX
+PRJIX
+
+It also contains questionable canonical symbols such as RPTUSD.
+
+The downstream plan remains:
+
+aggregates:
+  expected: 3066
+  present: 141
+  missing: 2925
+
+signals:
+  expected: 1474
+  present: 4
+  missing: 1470
+
+Current remediation planHash:
+36d974de7484ec25a30f70d3d78abbeaf355a63bb049c8ad5d255805cf751303
+
+DO NOT APPLY THAT REMEDIATION PLAN.
+
+ROOT CAUSE ALREADY ESTABLISHED
+
+Task #197 preserved existing non-null security_master.asset_type values.
+
+Task #201 introduced a stronger deterministic provider normalization contract
+and detects stale non-reviewed machine-derived asset_type values, but its
+correction planner currently has no production APPLY path.
+
+Therefore stale persisted machine classifications remain authoritative to
+Task #196 during the production remediation analyzer.
+
+OBJECTIVE
+
+Complete the existing Task #201 correction mechanism so stale MACHINE-DERIVED
+security_master.asset_type values can be corrected safely and generically
+before institutional remediation.
+
+Do NOT build another classifier.
+Do NOT create manual ticker/CUSIP fixes.
+Do NOT create suffix heuristics.
+Do NOT weaken Task #189 identity trust.
+Do NOT weaken Task #196 eligibility rules.
+Do NOT run anything in production.
+
+IMPLEMENT
+
+Extend the existing Task #201 deterministic security-type correction planner
+with a guarded APPLY path consistent with the safety architecture already used
+by Tasks #191/#197/#198.
+
+Required flow:
+
+production canonical reference evidence
+→ Task #201 deterministic normalization
+→ detect stale machine-derived persisted asset_type
+→ correction dry-run
+→ deterministic plan hash
+→ guarded exact-hash APPLY
+→ update only eligible stale machine-derived asset_type fields/provenance
+→ preserve trusted identity
+→ preserve reviewed classifications
+→ rerun institutional analyzer
+→ stock remediation plan generated only from corrected persisted canonical state
+
+APPLY SAFETY
+
+The correction APPLY must:
+
+- require production Railway identity
+- require NODE_ENV=production
+- require a dedicated explicit correction APPLY environment guard
+- require --apply
+- require exact fresh --plan-hash
+- reject stale hashes
+- reject EXTERNAL_DATABASE_URL
+- use DATABASE_URL only
+- execute transactionally
+- rollback on failure
+- emit aggregate-only completion output
+- use deferred process.exitCode / shared Task #199 CLI lifecycle
+- close PostgreSQL pool cleanly
+- be idempotent
+- never modify reviewed/manual asset types
+- never change trusted identity mappings
+- never change CUSIPs
+- never modify holdings
+- never create aggregates/signals/snapshots
+- never invoke OpenFIGI if persisted sufficient evidence already exists
+- never perform remediation APPLY automatically
+
+CORRECTION ELIGIBILITY
+
+Only correct a persisted type when ALL are true:
+
+1. existing identity is trusted under Task #189
+2. existing asset_type is machine-derived, not reviewed/manual
+3. persisted authoritative provider evidence is sufficient under Task #201
+4. Task #201 normalization deterministically resolves a canonical type
+5. normalized canonical type differs from persisted asset_type
+6. provider evidence is not contradictory or insufficient
+
+Anything ambiguous must fail closed and remain unchanged.
+
+PRIMARY SYMBOL
+
+Also include Task #201 canonical primary-symbol validation in the correction
+precondition.
+
+If an existing machine-derived trusted mapping uses a primary symbol that now
+fails the authoritative canonical-symbol rules:
+
+DO NOT silently replace it.
+DO NOT guess a new ticker.
+
+Report it separately as:
+
+CANONICAL_SYMBOL_REVIEW_REQUIRED
+
+and exclude it from stock remediation until a deterministic authoritative
+symbol can be established through the normal resolver/reference pipeline.
+
+If existing persisted provider evidence contains sufficient authoritative
+ticker evidence to deterministically correct the machine-derived canonical
+symbol, create a SEPARATE hash-bound correction action with provenance.
+
+Reviewed mappings must never be overwritten.
+
+REMEDIATION INTERLOCK
+
+Add a hard fail-closed precondition to institutional remediation planning/APPLY:
+
+If any stock-remediation candidate depends on:
+
+- stale machine-derived asset_type
+- invalid canonical symbol
+- unresolved type contradiction
+- insufficient canonical type evidence
+
+the stock remediation planner must not generate executable operations for that
+security.
+
+Preferably expose:
+
+canonicalCorrectionRequired: true/false
+
+and aggregate blocker counts.
+
+The remediation APPLY itself must refuse execution while unresolved executable
+canonical correction blockers exist.
+
+Do not rely on human inspection of ticker names.
+
+COMPACT PRODUCTION OUTPUT
+
+The current analyzer output is extremely large and terminal capture is losing
+the beginning of the report.
+
+Add a compact summary option to the existing correction/analyzer CLI, e.g.
+--summary-only, without changing default behavior.
+
+The production summary must contain only aggregate information:
+
+trusted CUSIPs
+reviewed asset types
+machine-derived asset types
+stale machine-derived type corrections
+canonical symbol corrections
+canonical symbol review-required count
+insufficient/contradictory count
+
+BEFORE population:
+common_stock
+reit
+fund populations
+ADR/foreign
+other unsupported
+insufficient
+
+PROJECTED population:
+same fields
+
+stockEligibleCusips before/projected
+separateFundCusips before/projected
+unsupportedCusips before/projected
+insufficientCusips before/projected
+
+holding rows and reported USD by population
+
+correction action counts
+correction planHash
+
+institutional remediation blocked: true/false
+blocker reason(s)
+
+No individual security dump in summary-only mode.
+
+TESTS
+
+Prove systemically:
+
+- stale machine common_stock that authoritative evidence says mutual_fund
+  becomes a correction action
+- stale machine common_stock → ETF correction
+- stale machine common_stock → money-market correction
+- stale machine common_stock → debt correction
+- stale machine stock → insufficient provider evidence is NOT modified
+- reviewed stock classification is NOT modified
+- trusted identity remains unchanged after type correction
+- corrected fund becomes excluded from stock analytics
+- corrected stock remains eligible
+- invalid canonical symbol blocks downstream analytics
+- valid authoritative symbol correction is separately hash bound
+- stale plan hash rejected
+- APPLY without dedicated guard rejected
+- correction transaction rolls back on failure
+- rerun is idempotent
+- summary-only output contains no security-level dump
+- remediation refuses stale canonical-state candidates
+- existing four originally repaired stock identities remain protected by
+  generic rules, not ticker special cases
+
+Run:
+focused normalization/correction tests
+Task #196 tests
+Task #197/#198 tests
+Task #199 CLI lifecycle tests
+Task #200 reconciliation tests
+aggregate/signal tests
+full institutional suite
+smoke
+regression
+integration
+security
+production build
+git diff --check
+
+RETURN
+
+ROOT CAUSE
+CORRECTION APPLY DESIGN
+TYPE CORRECTION RULES
+SYMBOL CORRECTION RULES
+REMEDIATION INTERLOCK
+SUMMARY-ONLY OUTPUT CONTRACT
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+
+Then provide EXACTLY:
+
+1. next production correction DRY-RUN command using --summary-only
+2. exact guarded APPLY command TEMPLATE
+3. post-correction production verification command
+
+Do not execute any production command.
+Do not perform any production write.
+Do not run institutional remediation APPLY.

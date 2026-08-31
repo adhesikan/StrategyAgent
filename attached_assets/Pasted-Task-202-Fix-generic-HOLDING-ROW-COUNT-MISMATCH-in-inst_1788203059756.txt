@@ -1,0 +1,205 @@
+Task #202 — Fix generic HOLDING_ROW_COUNT_MISMATCH in institutional remediation APPLY
+
+PRODUCTION CONTEXT
+
+Task #201 canonical/remediation reconciliation passed in production:
+
+canonicalStockEligibleCusips: 1466
+remediationStockEligibleCusips: 1466
+stockEligibilityReconciled: true
+fundCusipsExcludedFromStockRemediation: 1687
+nonStockCusipsInStockRemediation: 0
+aggregateTargets: 2994
+signalTargets: 1465
+canonicalCorrectionActions: 0
+canonicalBlockers: all zero
+remediationBlocked: false
+
+Verified production remediation plan hash:
+
+d89bc4b2d70c32f4cacf54e377853478037d7fa4180f1b9228980f04f91e0524
+
+The guarded production APPLY was attempted with the exact verified hash
+and correct production database identity.
+
+It failed closed with:
+
+HOLDING_ROW_COUNT_MISMATCH:00509G209
+
+DO NOT retry production APPLY.
+DO NOT perform production writes.
+DO NOT special-case CUSIP 00509G209.
+DO NOT create ticker/CUSIP allowlists or exclusions.
+DO NOT weaken or remove the holding-row-count safety invariant.
+DO NOT redesign the institutional architecture.
+
+OBJECTIVE
+
+Find the GENERIC root cause of the discrepancy between the holding-row
+count represented in the remediation plan and the holding-row count
+validated by the production executor.
+
+The dry-run planner and APPLY executor must use exactly the same
+canonical holding population and counting semantics.
+
+TRACE THE TWO PATHS
+
+A. PLAN-TIME HOLDING COUNT
+
+Trace exactly how Task #189/#201 remediation planning determines the
+expected holding rows for each canonical eligible CUSIP.
+
+Document all predicates, including:
+
+- effective filing semantics
+- amendment supersession
+- effective holding semantics
+- CUSIP normalization
+- trusted canonical identity
+- stock eligibility
+- asset type
+- positive-share requirement
+- options exclusion
+- PRN exclusion
+- common-equity eligibility
+- duplicate handling
+- quarter filtering
+- manager/filer filtering
+- any joins that can multiply rows
+- current vs historical quarters
+
+B. APPLY-TIME HOLDING COUNT
+
+Trace exactly how the executor calculates the actual holding-row count
+before applying a mapping/remediation operation.
+
+Compare its SQL/predicates with the planner.
+
+Find the FIRST semantic difference.
+
+Also determine whether the mismatch can affect multiple CUSIPs.
+00509G209 is only the first production record where the invariant caught
+the problem.
+
+REQUIRED FIX
+
+Make the smallest generic correction so planner and executor consume one
+shared canonical effective-holding definition.
+
+Prefer one shared query/loader/predicate rather than maintaining two
+parallel implementations.
+
+The canonical holding population must preserve all existing institutional
+rules:
+
+- is_effective=true / amendment supersession
+- canonical reported_value in USD
+- QoQ by CUSIP
+- put/call separate
+- no options in common-stock totals
+- no PRN instruments
+- positive shares required
+- trusted identity required where appropriate
+- Task #196 stock eligibility
+- Task #201 canonical symbol/identity requirements
+- no holding-level identity authorization
+- no fund leakage
+
+DO NOT make the executor permissive.
+
+The APPLY must continue to fail closed if the persisted production state
+does not match the freshly generated canonical plan.
+
+TRANSACTION SAFETY
+
+Inspect the failed production APPLY path and explicitly confirm:
+
+1. whether HOLDING_ROW_COUNT_MISMATCH occurs before any mutation, OR
+2. whether it occurs inside a transaction that is fully rolled back.
+
+Prove from code/tests that the failed APPLY left no partial remediation
+writes.
+
+If this cannot be proven from existing code, add a systemic rollback test.
+
+PLAN HASH
+
+The existing hash
+
+d89bc4b2d70c32f4cacf54e377853478037d7fa4180f1b9228980f04f91e0524
+
+must be considered STALE after any planner/executor semantic fix.
+
+Do not reuse it.
+
+SYSTEMIC TESTS
+
+Add fixtures covering:
+
+- multiple effective holdings for same CUSIP
+- same CUSIP across managers
+- same CUSIP across quarters
+- superseded amendment/original filing
+- positive and zero/null shares
+- put/call rows
+- PRN rows
+- duplicate-looking holdings that are legitimately distinct
+- joins that could multiply holding rows
+- multi-CUSIP symbol
+- fund CUSIP excluded from stock remediation
+- planner/executor exact holding-count agreement
+- deliberate mismatch still fails closed
+- failed APPLY produces zero partial writes
+
+No test may special-case 00509G209.
+
+VALIDATION
+
+Run:
+
+- focused remediation planner/executor tests
+- Task #189 resolver tests
+- Task #196 eligibility tests
+- Task #201 canonical/remediation tests
+- aggregate/signal tests
+- full institutional suite
+- release suite
+- production build
+- git diff --check
+
+Do NOT run production APPLY.
+Do NOT run production ingestion.
+Do NOT run broad ticker/CUSIP diagnostics.
+
+RETURN ONLY
+
+ROOT CAUSE
+FIRST DIVERGENCE POINT
+GENERIC FIX
+SHARED CANONICAL HOLDING CONTRACT
+FAILED-APPLY TRANSACTION SAFETY
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+
+Then give exactly ONE next production command:
+
+the compact READ-ONLY analyzer command that regenerates a fresh
+production remediation plan/hash and verifies:
+
+canonicalStockEligibleCusips
+remediationStockEligibleCusips
+stockEligibilityReconciled
+fundCusipsExcludedFromStockRemediation
+nonStockCusipsInStockRemediation
+aggregateTargets
+signalTargets
+canonicalCorrectionActions
+canonicalBlockers
+holdingCountReconciled
+holdingCountMismatchCusips
+remediationBlocked
+fresh planHash
+
+Do not execute the command.
+Do not provide an APPLY command.

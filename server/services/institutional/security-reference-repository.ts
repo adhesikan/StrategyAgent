@@ -3,16 +3,24 @@ import { db } from "../../db";
 import { institutional13fFilings, institutional13fHoldings, institutionalSecurityCandidateObservations, institutionalSecurityLookupStates, institutionalSecurityMappings, securityMaster } from "@shared/schema";
 import { resolveInstitutionalSecurity } from "./security-resolver";
 import { isSupported13fIdentityCandidate, normalizeCusip, normalizeReferenceSymbol, type SecurityReferenceCandidate, type SecurityReferenceResolution } from "./security-reference-enrichment";
-import { classifyInstitutionalSecurityType } from "./security-type-eligibility";
+import { classifyInstitutionalSecurityType, type CanonicalInstitutionalSecurityType } from "./security-type-eligibility";
 
-export type LocalSecurityEvidence = { source: string; symbol: string | null; status: string; cusip: string; figi: string | null };
+export type LocalSecurityEvidence = {
+  source: string;
+  symbol: string | null;
+  status: string;
+  cusip: string;
+  figi: string | null;
+  assetType?: string | null;
+};
 export interface InstitutionalSecurityReferenceStore {
   loadEligibleCusips(periodsOfReport?: readonly string[], options?: { systematic?: boolean }): Promise<string[]>;
   getTrustedLocalEvidence(cusip: string): Promise<LocalSecurityEvidence[]>;
   saveLookup(input: { resolution: SecurityReferenceResolution; provider: string; effectiveOutcome: string; effectiveSymbol: string | null }, observedAt: Date): Promise<void>;
   saveCandidates(cusip: string, provider: string, candidates: readonly SecurityReferenceCandidate[], observedAt: Date): Promise<void>;
   markMissingCandidatesNonCurrent(cusip: string, provider: string, fingerprints: readonly string[]): Promise<void>;
-  promoteExact(input: { cusip: string; ticker: string; figi: string | null; name: string | null; exchange: string | null; assetType: string; provenance: string }): Promise<void>;
+  promoteExact(input: { cusip: string; ticker: string; figi: string | null; name: string | null; exchange: string | null; assetType: string | null; provenance: string }): Promise<void>;
+  populateAssetType?(input: { cusip: string; assetType: CanonicalInstitutionalSecurityType; provenance: string }): Promise<void>;
 }
 const safeCode = (code: string | undefined) => code?.replace(/[^A-Z0-9_:-]/gi, "").slice(0, 64) || null;
 export function candidateFingerprint(c: SecurityReferenceCandidate): string {
@@ -22,6 +30,33 @@ export function candidateFingerprint(c: SecurityReferenceCandidate): string {
 }
 export function assetTypeForOpenFigiCandidate(c: SecurityReferenceCandidate): string {
   return classifyInstitutionalSecurityType(c).canonicalType;
+}
+function assetTypeEvidenceForSymbol(
+  candidates: readonly SecurityReferenceCandidate[],
+  symbol: string,
+): { assetType: CanonicalInstitutionalSecurityType; evidence: string[] } | null {
+  const matching = candidates.filter((candidate) =>
+    normalizeReferenceSymbol(candidate.ticker) === symbol,
+  );
+  const classified = matching.map((candidate) => ({
+    classification: classifyInstitutionalSecurityType(candidate),
+    candidate,
+  })).filter(({ classification }) =>
+    classification.analyticsPopulation !== "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+  );
+  const types = Array.from(new Set(classified.map(({ classification }) => classification.canonicalType)));
+  if (types.length !== 1) return null;
+  return {
+    assetType: types[0],
+    evidence: Array.from(new Set(classified.flatMap(({ classification }) => classification.evidence))).sort(),
+  };
+}
+function assetTypeProvenance(
+  provider: string,
+  assetType: CanonicalInstitutionalSecurityType,
+  evidence: readonly string[],
+): string {
+  return `${provider}_asset_type:${assetType};evidence:${[...evidence].sort().join("|") || "provider_classification"}`;
 }
 const providerOf = (r: SecurityReferenceResolution) => r.candidates[0]?.provider?.trim().toLowerCase() || "openfigi";
 const providerEvidence = (r: SecurityReferenceResolution) => r.candidates.filter(c => isSupported13fIdentityCandidate(c) && normalizeReferenceSymbol(c.ticker)).map(c => ({ source: `openfigi:${candidateFingerprint(c)}`, symbol: c.ticker, status: "exact", cusip: r.cusip, figi: c.figi }));
@@ -47,14 +82,33 @@ export async function persistSecurityReferenceResolution(store: InstitutionalSec
   await store.saveCandidates(cusip, provider, resolution.candidates, observedAt);
   if (canRetire(resolution)) await store.markMissingCandidatesNonCurrent(cusip, provider, resolution.candidates.map(candidateFingerprint));
   if (effectiveOutcome !== "AUTHORITATIVELY_RESOLVABLE" || trusted.outcome !== "RESOLVED_TRUSTED" || !trusted.symbol) return { cusip, outcome: effectiveOutcome, symbol: null, promoted: false };
-  if (reviewed.length) return { cusip, outcome: effectiveOutcome, symbol: trusted.symbol, promoted: false };
+  const assetTypeEvidence = assetTypeEvidenceForSymbol(resolution.candidates, trusted.symbol);
+  if (assetTypeEvidence && store.populateAssetType) {
+    await store.populateAssetType({
+      cusip,
+      assetType: assetTypeEvidence.assetType,
+      provenance: assetTypeProvenance(provider, assetTypeEvidence.assetType, assetTypeEvidence.evidence),
+    });
+  }
+  if (reviewed.length) return { cusip, outcome: effectiveOutcome, symbol: trusted.symbol, promoted: !!assetTypeEvidence };
   const matches = resolution.candidates.filter(c => isSupported13fIdentityCandidate(c) && normalizeReferenceSymbol(c.ticker) === trusted.symbol);
   if (!matches.length) return { cusip, outcome: "INSUFFICIENT_EVIDENCE", symbol: null, promoted: false };
   const candidate = [...matches].sort((a, b) => {
     const richness = (c: SecurityReferenceCandidate) => Number(!!c.figi) + Number(!!c.compositeFigi) + Number(!!c.shareClassFigi);
     return richness(b) - richness(a) || candidateFingerprint(a).localeCompare(candidateFingerprint(b));
   })[0];
-  await store.promoteExact({ cusip, ticker: trusted.symbol, figi: candidate.figi?.trim().toUpperCase() ?? null, name: candidate.name?.trim() ?? null, exchange: candidate.exchangeCode?.trim().toUpperCase() ?? null, assetType: assetTypeForOpenFigiCandidate(candidate), provenance: "openfigi_exact" });
+  const assetType = assetTypeEvidence?.assetType ?? null;
+  await store.promoteExact({
+    cusip,
+    ticker: trusted.symbol,
+    figi: candidate.figi?.trim().toUpperCase() ?? null,
+    name: candidate.name?.trim() ?? null,
+    exchange: candidate.exchangeCode?.trim().toUpperCase() ?? null,
+    assetType,
+    provenance: assetTypeEvidence
+      ? assetTypeProvenance(provider, assetType, assetTypeEvidence.evidence)
+      : "openfigi_exact;asset_type:insufficient_evidence",
+  });
   return { cusip, outcome: effectiveOutcome, symbol: trusted.symbol, promoted: true };
 }
 
@@ -75,7 +129,7 @@ export class DrizzleInstitutionalSecurityReferenceRepository implements Institut
     return rows.map(r => normalizeCusip(r.cusip)).filter((x): x is string => !!x);
   }
   async getTrustedLocalEvidence(cusip: string): Promise<LocalSecurityEvidence[]> {
-    const masters = await db.select({ symbol: securityMaster.ticker, status: securityMaster.reviewStatus, figi: securityMaster.figi }).from(securityMaster).where(eq(securityMaster.cusip, cusip)).limit(1);
+    const masters = await db.select({ symbol: securityMaster.ticker, status: securityMaster.reviewStatus, figi: securityMaster.figi, assetType: securityMaster.assetType }).from(securityMaster).where(eq(securityMaster.cusip, cusip)).limit(1);
     const mappings = await db.select({ symbol: institutionalSecurityMappings.mappedSymbol, status: institutionalSecurityMappings.mappingStatus, figi: institutionalSecurityMappings.figi }).from(institutionalSecurityMappings).where(eq(institutionalSecurityMappings.cusip, cusip)).limit(1);
     return [...masters.map(x => ({ ...x, source: "security_master", cusip })), ...mappings.map(x => ({ ...x, source: "institutional_security_mappings", cusip }))];
   }
@@ -85,11 +139,19 @@ export class DrizzleInstitutionalSecurityReferenceRepository implements Institut
   async promoteExact(i: { cusip: string; ticker: string; figi: string | null; name: string | null; exchange: string | null; assetType: string; provenance: string }) {
     await db.transaction(async tx => {
       const sm = await tx.select({ status: securityMaster.reviewStatus }).from(securityMaster).where(eq(securityMaster.cusip, i.cusip)).limit(1);
-      if (!sm[0]) await tx.insert(securityMaster).values({ cusip: i.cusip, ticker: i.ticker, figi: i.figi, issuerName: i.name, exchange: i.exchange, assetType: i.assetType, confidence: 95, mappingMethod: "cusip_exact", reviewStatus: "probable", notes: i.provenance });
-      else if (sm[0].status !== "reviewed" && sm[0].status !== "rejected") await tx.update(securityMaster).set({ ticker: i.ticker, figi: i.figi, issuerName: i.name, exchange: i.exchange, assetType: i.assetType, confidence: 95, mappingMethod: "cusip_exact", reviewStatus: "probable", lastVerified: new Date(), notes: i.provenance }).where(and(eq(securityMaster.cusip, i.cusip), sql`${securityMaster.reviewStatus} NOT IN ('reviewed', 'rejected')`));
+       if (!sm[0]) await tx.insert(securityMaster).values({ cusip: i.cusip, ticker: i.ticker, figi: i.figi, issuerName: i.name, exchange: i.exchange, assetType: i.assetType, confidence: 95, mappingMethod: "cusip_exact", reviewStatus: "probable", notes: i.provenance });
+       else if (sm[0].status !== "reviewed" && sm[0].status !== "rejected") await tx.update(securityMaster).set({ ticker: i.ticker, figi: i.figi, issuerName: i.name, exchange: i.exchange, ...(i.assetType === null ? {} : { assetType: i.assetType }), confidence: 95, mappingMethod: "cusip_exact", reviewStatus: "probable", lastVerified: new Date(), notes: i.provenance }).where(and(eq(securityMaster.cusip, i.cusip), sql`${securityMaster.reviewStatus} NOT IN ('reviewed', 'rejected')`));
       const map = await tx.select({ status: institutionalSecurityMappings.mappingStatus }).from(institutionalSecurityMappings).where(eq(institutionalSecurityMappings.cusip, i.cusip)).limit(1);
       if (!map[0]) await tx.insert(institutionalSecurityMappings).values({ cusip: i.cusip, figi: i.figi, mappedSymbol: i.ticker, mappingStatus: "exact", mappingMethod: "cusip_exact", notes: i.provenance });
       else if (map[0].status !== "reviewed" && map[0].status !== "rejected") await tx.update(institutionalSecurityMappings).set({ figi: i.figi, mappedSymbol: i.ticker, mappingStatus: "exact", mappingMethod: "cusip_exact", lastVerifiedAt: new Date(), notes: i.provenance }).where(and(eq(institutionalSecurityMappings.cusip, i.cusip), sql`${institutionalSecurityMappings.mappingStatus} NOT IN ('reviewed', 'rejected')`));
     });
+  }
+  async populateAssetType(i: { cusip: string; assetType: CanonicalInstitutionalSecurityType; provenance: string }) {
+    await db.update(securityMaster)
+      .set({ assetType: i.assetType, notes: i.provenance, lastVerified: new Date() })
+      .where(and(
+        eq(securityMaster.cusip, i.cusip),
+        sql`${securityMaster.assetType} IS NULL OR ${securityMaster.assetType} IN ('insufficient_evidence', 'ambiguous')`,
+      ));
   }
 }

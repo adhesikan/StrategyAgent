@@ -6,8 +6,14 @@
 import { createHash } from "node:crypto";
 import {
   normalizeCusip, resolveReviewedSecurityReference, type SecurityReferenceEvidence,
-  resolveProviderSecurityReference, type SecurityReferenceOutcome, type SecurityReferenceResolution,
+  resolveProviderSecurityReference, type SecurityReferenceCandidate, type SecurityReferenceOutcome, type SecurityReferenceResolution,
 } from "./security-reference-enrichment";
+import {
+  classifyInstitutionalSecurityType,
+  type CanonicalInstitutionalSecurityType,
+  type InstitutionalSecurityTypeClassification,
+  type SecurityAnalyticsPopulation,
+} from "./security-type-eligibility";
 
 export type ReferencePlanOutcome =
   | "authoritatively_resolvable" | "conflicting" | "ambiguous" | "unsupported"
@@ -22,6 +28,10 @@ export interface EligibleReferencePopulationRow {
   holdingRows: number;
   /** Aggregate reported value in USD text. Null means unavailable, not zero. */
   reportedValueUsd: string | null;
+  /** Trusted symbols associated with this CUSIP, used only for type evidence matching. */
+  trustedSymbols?: readonly string[];
+  /** Current canonical type from security_master, when one is persisted. */
+  currentAssetType?: string | null;
 }
 export interface TrustedReferenceState {
   cusip: string;
@@ -34,6 +44,12 @@ export interface TrustedReferenceState {
   lookupState?: PersistedReferenceLookupState;
   /** Candidate history is supporting evidence that the provider has been queried. */
   candidateHistoryPresent?: boolean;
+  /** Current canonical type from security_master, when one is persisted. */
+  currentAssetType?: string | null;
+  /** Whether the current canonical type was manually reviewed. */
+  assetTypeReviewed?: boolean;
+  /** Current normalized provider candidates, if already persisted. */
+  candidateEvidence?: readonly SecurityReferenceCandidate[];
 }
 export interface PersistedReferenceLookupState {
   providerOutcome?: string | null;
@@ -48,6 +64,10 @@ export interface ReferencePlanAction {
   symbol: string | null;
   promotable: boolean;
   resolution: SecurityReferenceResolution;
+  /** True when this action fills a missing/stale type on a trusted identity. */
+  assetTypeBackfill: boolean;
+  /** Canonical type projected by this action, when authoritative evidence supports it. */
+  assetType: CanonicalInstitutionalSecurityType | null;
 }
 export interface ReferenceCoverage {
   distinctCusips: number;
@@ -92,7 +112,27 @@ export interface InstitutionalSecurityReferencePlan {
     /** Total eligible rows not requested in this run. */
     notProcessed: number;
   };
+  assetTypes: AssetTypeCoverageSummary;
   planHash: string;
+}
+
+export interface AssetTypeCoverageMetric {
+  canonicalSecurityType: CanonicalInstitutionalSecurityType;
+  securityTypePopulation: SecurityAnalyticsPopulation;
+  distinctCusips: number;
+  distinctSymbols: number;
+  holdingRows: number;
+  reportedValueUsd: string;
+}
+
+export interface AssetTypeCoverageSummary {
+  trustedCusips: number;
+  trustedSymbols: number;
+  assetTypePopulated: number;
+  assetTypeMissing: number;
+  projectedAssetTypePopulated: number;
+  projectedAssetTypeInsufficient: number;
+  classifications: AssetTypeCoverageMetric[];
 }
 
 const outcomeOrder: ReferencePlanOutcome[] = [

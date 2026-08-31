@@ -146,8 +146,12 @@ payloads. There is no fuzzy, issuer-name, or ticker inference. Task #189's
 shared resolver remains authoritative: reviewed evidence precedes exact evidence,
 and local/provider disagreement is retained as conflicting rather than promoted.
 
-`OPENFIGI_API_KEY` is optional. Without it OpenFIGI's lower batch limit applies.
-The client honors/reports rate limiting and bounded retry behavior as
+`OPENFIGI_API_KEY` is optional. The client reports only whether it is operating
+in `KEYED` or `UNAUTHENTICATED` mode, never the key. It proactively enforces
+OpenFIGI's documented Mapping API tiers: 25 requests per minute with at most 10
+jobs per request when unauthenticated, or 25 requests per 6 seconds with at
+most 100 jobs per request when keyed. The client honors shared cooldowns,
+`Retry-After`/`ratelimit-reset`, and bounded retry behavior as
 `rate_limited`, `provider_failed`, or `partial`; these states never become an
 identity. The future-ingestion integration is implemented but disabled by
 default with `INSTITUTIONAL_SECURITY_REFERENCE_ENABLED=false`; when enabled it
@@ -167,8 +171,9 @@ The exact Railway production read-only dry-run command is:
 test "$RAILWAY_ENVIRONMENT_NAME" = "production" && npx tsx scripts/enrich-institutional-security-references.ts --dry-run
 ```
 
-The JSON output intentionally contains aggregate counts and the plan hash only;
-it contains neither credentials nor raw provider payloads. Apply is never
+The JSON output intentionally contains aggregate counts, the plan hash, safe
+execution-tier metadata, and dry-run continuation cursors only; it contains
+neither credentials nor raw provider payloads. Apply is never
 automatic. It needs all of the following: a newly generated matching
 `--plan-hash`, an explicit `--max-cusips` bound, environment value
 `INSTITUTIONAL_SECURITY_REFERENCE_APPLY_ENABLED=true`, and, when
@@ -192,12 +197,26 @@ against production without separate operational approval.
 ### Guarded executor boundary
 
 A guarded generic executor is implemented, but it was **not run** during this
-work. This runbook intentionally publishes only the dry-run command; APPLY
-syntax is omitted. Any separately reviewed production execution requires a
+work. The APPLY example above is documentation only. Any separately reviewed
+production execution requires a
 fresh plan artifact generated on Railway, exact expected production database
 and schema identity, the exact confirmation phrase, and the matching supplied
 SHA-256 hash. The executor also acquires its advisory lock and re-reads and
 re-hashes the plan inside a repeatable-read transaction before bounded writes.
+
+For resumable Railway dry-run measurement, `--cursor` is an exclusive
+normalized CUSIP and `--max-cusips` is the provider-call bound:
+
+```bash
+npx tsx scripts/enrich-institutional-security-references.ts --dry-run --cursor 037833100 --max-cusips 100
+```
+
+Dry-run JSON additionally supplies safe OpenFIGI execution metadata and the
+continuation cursor. It reports `not_processed` separately from `partial`, and
+separately counts cursor and limit skips. `attemptedOutcomes` contains requested
+provider work only and its counts reconcile exactly to `plannedLookups`. The
+plan hash binds the full population, exact cursor/chunk, and provider result
+set. Cursor mode is dry-run-only.
 
 SQL rollback protects failures before the source mapping/holding transaction
 commits. Once that transaction commits, its deterministic source repair is

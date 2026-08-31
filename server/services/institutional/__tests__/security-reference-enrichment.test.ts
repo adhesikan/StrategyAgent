@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { OpenFigiClient } from "../openfigi-client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { OpenFigiClient, resetOpenFigiProviderSchedulersForTests } from "../openfigi-client";
 import {
   normalizeCusip,
   resolveReviewedSecurityReference,
@@ -20,7 +20,17 @@ async function lookup(body: unknown, options: ConstructorParameters<typeof OpenF
   return { result: await client.resolveCusips(["67066-g104"]), fetch };
 }
 
+function testClock() {
+  let current = 0;
+  const sleep = vi.fn(async (milliseconds: number) => { current += milliseconds; });
+  return { now: () => current, sleep };
+}
+
 describe("security reference enrichment", () => {
+  beforeEach(() => {
+    resetOpenFigiProviderSchedulersForTests();
+  });
+
   it("normalizes only nine-character CUSIPs", () => {
     expect(normalizeCusip(" 67066-g104 ")).toBe("67066G104");
     expect(normalizeCusip("NVDA")).toBeNull();
@@ -102,23 +112,48 @@ describe("security reference enrichment", () => {
 
   it("honors Retry-After and returns rate-limited after bounded retries", async () => {
     const fetch = vi.fn().mockResolvedValue(response({}, 429, { "retry-after": "3" }));
-    const sleep = vi.fn().mockResolvedValue(undefined);
-    const result = await new OpenFigiClient({ fetch, sleep, maxRetries: 1 }).resolveCusips(["67066G104"]);
+    const { now, sleep } = testClock();
+    const result = await new OpenFigiClient({ fetch, sleep, now, maxRetries: 1 }).resolveCusips(["67066G104"]);
     expect(sleep).toHaveBeenCalledWith(3000);
     expect(result[0]).toMatchObject({ outcome: "RATE_LIMITED", retryAfterMs: 3000 });
+  });
+
+  it("uses ratelimit-reset when Retry-After is absent and retries successfully", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({}, 429, { "ratelimit-reset": "2" }))
+      .mockResolvedValueOnce(response([{ data: [figi("NVDA")] }]));
+    const { now, sleep } = testClock();
+    const result = await new OpenFigiClient({ fetch, sleep, now, maxRetries: 1 }).resolveCusips(["67066G104"]);
+    expect(sleep).toHaveBeenCalledWith(2000);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(result[0]).toMatchObject({ outcome: "AUTHORITATIVELY_RESOLVABLE", symbol: "NVDA" });
+  });
+
+  it("retries transient provider failures with bounded exponential backoff", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({}, 503))
+      .mockResolvedValueOnce(response([{ data: [figi("NVDA")] }]));
+    const { now, sleep } = testClock();
+    const result = await new OpenFigiClient({
+      fetch, sleep, now, maxRetries: 1, backoffMs: 100,
+    }).resolveCusips(["67066G104"]);
+    expect(sleep).toHaveBeenCalledWith(100);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(result[0]).toMatchObject({ outcome: "AUTHORITATIVELY_RESOLVABLE", symbol: "NVDA" });
   });
 
   it.each([
     ["999999", "numeric"],
     [new Date(Date.now() + 86_400_000).toUTCString(), "far-future date"],
-  ])("does not sleep for an over-limit %s Retry-After", async (retryAfter) => {
+  ])("bounds and retries an over-limit %s Retry-After", async (retryAfter) => {
     const fetch = vi.fn().mockResolvedValue(response({}, 429, { "retry-after": retryAfter }));
-    const sleep = vi.fn().mockResolvedValue(undefined);
+    const { now, sleep } = testClock();
     const result = await new OpenFigiClient({
-      fetch, sleep, maxRetries: 2, maxRetryDelayMs: 5_000,
+      fetch, sleep, now, maxRetries: 2, maxRetryDelayMs: 5_000,
     }).resolveCusips(["67066G104"]);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(sleep).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(5_000);
     expect(result[0]).toMatchObject({ outcome: "RATE_LIMITED", errorCode: "HTTP_429", retryAfterMs: 5_000 });
   });
 
@@ -164,11 +199,128 @@ describe("security reference enrichment", () => {
   it("uses unauthenticated batches of 10 and authenticated batches of 100", async () => {
     const ids = Array.from({ length: 11 }, (_, index) => `1234567${String(index).padStart(2, "0")}`);
     const noKeyFetch = vi.fn().mockResolvedValue(response(Array.from({ length: 10 }, () => ({}))));
-    await new OpenFigiClient({ fetch: noKeyFetch, maxRetries: 0 }).resolveCusips(ids);
+    const unauthenticatedClock = testClock();
+    await new OpenFigiClient({ fetch: noKeyFetch, maxRetries: 0, ...unauthenticatedClock }).resolveCusips(ids);
     expect(noKeyFetch).toHaveBeenCalledTimes(2);
 
     const keyFetch = vi.fn().mockResolvedValue(response(Array.from({ length: 11 }, () => ({}))));
     await new OpenFigiClient({ apiKey: "test-key", fetch: keyFetch, maxRetries: 0 }).resolveCusips(ids);
     expect(keyFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports only the safe authentication mode", () => {
+    expect(new OpenFigiClient({ apiKey: "secret-value" }).authMode).toBe("KEYED");
+    expect(new OpenFigiClient({ apiKey: "" }).authMode).toBe("UNAUTHENTICATED");
+  });
+
+  it("proactively paces each official OpenFIGI tier and exposes its safe profile", async () => {
+    const unauthenticatedClock = testClock();
+    const unauthenticated = new OpenFigiClient({ fetch: vi.fn().mockResolvedValue(response([{}])), ...unauthenticatedClock });
+    await unauthenticated.resolveCusips(Array.from({ length: 11 }, (_, index) => `1234567${String(index).padStart(2, "0")}`));
+    expect(unauthenticatedClock.sleep).toHaveBeenCalledWith(2400);
+    expect(unauthenticated.executionProfile).toEqual({
+      authMode: "UNAUTHENTICATED", batchSize: 10, concurrency: 1,
+      requestLimit: 25, windowMs: 60_000, minimumIntervalMs: 2400,
+    });
+
+    const keyedClock = testClock();
+    const keyed = new OpenFigiClient({ apiKey: "secret-value", fetch: vi.fn().mockResolvedValue(response([{}])), ...keyedClock });
+    await keyed.resolveCusips(Array.from({ length: 101 }, (_, index) => `123456${String(index).padStart(3, "0")}`.slice(-9)));
+    expect(keyedClock.sleep).toHaveBeenCalledWith(240);
+    expect(keyed.executionProfile).toMatchObject({
+      authMode: "KEYED", batchSize: 100, requestLimit: 25, windowMs: 6000, minimumIntervalMs: 240,
+    });
+  });
+
+  it("shares proactive pacing across unauthenticated clients but not distinct keys", async () => {
+    const clock = testClock();
+    const firstFetch = vi.fn().mockImplementation(async () => response([{}]));
+    const secondFetch = vi.fn().mockImplementation(async () => response([{}]));
+    await new OpenFigiClient({ fetch: firstFetch, ...clock }).resolveCusips(["111111111"]);
+    await new OpenFigiClient({ fetch: secondFetch, ...clock }).resolveCusips(["222222222"]);
+    expect(clock.sleep).toHaveBeenCalledWith(2400);
+
+    resetOpenFigiProviderSchedulersForTests();
+    const keyedClock = testClock();
+    await new OpenFigiClient({ apiKey: "key-one", fetch: firstFetch, ...keyedClock }).resolveCusips(["111111111"]);
+    await new OpenFigiClient({ apiKey: "key-two", fetch: secondFetch, ...keyedClock }).resolveCusips(["222222222"]);
+    expect(keyedClock.sleep).not.toHaveBeenCalled();
+  });
+
+  it("shares pacing and a single 429 cooldown between clients using one key", async () => {
+    const clock = testClock();
+    const firstFetch = vi.fn()
+      .mockResolvedValueOnce(response({}, 429, { "retry-after": "2" }))
+      .mockResolvedValueOnce(response([{ data: [figi("AAA")] }]));
+    const secondFetch = vi.fn().mockResolvedValue(response([{ data: [figi("BBB")] }]));
+    const first = new OpenFigiClient({
+      apiKey: "same-key", fetch: firstFetch, ...clock, maxRetries: 1, concurrency: 2,
+    });
+    const second = new OpenFigiClient({
+      apiKey: "same-key", fetch: secondFetch, ...clock, maxRetries: 0, concurrency: 2,
+    });
+    const [firstResult, secondResult] = await Promise.all([
+      first.resolveCusips(["111111111"]),
+      second.resolveCusips(["222222222"]),
+    ]);
+    expect(clock.sleep).toHaveBeenCalledWith(240);
+    expect(clock.sleep.mock.calls.filter(([milliseconds]) => milliseconds === 2000)).toHaveLength(1);
+    expect(firstResult[0].symbol).toBe("AAA");
+    expect(secondResult[0].symbol).toBe("BBB");
+  });
+
+  it("honors the active tier's full reset window by default", async () => {
+    const unauthenticatedClock = testClock();
+    const unauthenticatedFetch = vi.fn()
+      .mockResolvedValueOnce(response({}, 429, { "retry-after": "60" }))
+      .mockResolvedValueOnce(response([{}]));
+    const unauthenticated = await new OpenFigiClient({
+      fetch: unauthenticatedFetch, maxRetries: 1, ...unauthenticatedClock,
+    }).resolveCusips(["67066G104"]);
+    expect(unauthenticatedClock.sleep).toHaveBeenCalledWith(60_000);
+    expect(unauthenticated[0].outcome).toBe("NO_REFERENCE_AVAILABLE");
+
+    const keyedClock = testClock();
+    const keyedFetch = vi.fn()
+      .mockResolvedValueOnce(response({}, 429, { "ratelimit-reset": "6" }))
+      .mockResolvedValueOnce(response([{}]));
+    const keyed = await new OpenFigiClient({
+      apiKey: "secret-value", fetch: keyedFetch, maxRetries: 1, ...keyedClock,
+    }).resolveCusips(["67066G104"]);
+    expect(keyedClock.sleep).toHaveBeenCalledWith(6_000);
+    expect(keyed[0].outcome).toBe("NO_REFERENCE_AVAILABLE");
+  });
+
+  it("keeps output order when scheduled batches complete out of order", async () => {
+    const ids = Array.from({ length: 11 }, (_, index) => `1234567${String(index).padStart(2, "0")}`);
+    let releaseFirst!: () => void;
+    const first = new Promise<Response>((resolve) => {
+      releaseFirst = () => resolve(response(Array.from(
+        { length: 10 }, (_, index) => ({ data: [figi(`A${index}`)] }),
+      )));
+    });
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => first)
+      .mockResolvedValueOnce(response([{ data: [figi("LAST")] }]));
+    const clock = testClock();
+    const pending = new OpenFigiClient({ fetch, concurrency: 2, maxRetries: 0, ...clock }).resolveCusips(ids);
+    await Promise.resolve();
+    releaseFirst();
+    const result = await pending;
+    expect(result.map((item) => item.symbol)).toEqual([...Array.from({ length: 10 }, (_, index) => `A${index}`), "LAST"]);
+  });
+
+  it("shares one bounded 429 cooldown across scheduled batches", async () => {
+    const ids = Array.from({ length: 11 }, (_, index) => `1234567${String(index).padStart(2, "0")}`);
+    const { now, sleep } = testClock();
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({}, 429, { "retry-after": "2" }))
+      .mockResolvedValueOnce(response([{ data: [figi("LAST")] }]))
+      .mockResolvedValueOnce(response(Array.from({ length: 10 }, (_, index) => ({ data: [figi(`A${index}`)] }))));
+    const result = await new OpenFigiClient({
+      fetch, sleep, now, concurrency: 2, maxRetries: 1,
+    }).resolveCusips(ids);
+    expect(sleep.mock.calls.filter(([milliseconds]) => milliseconds === 2000)).toHaveLength(1);
+    expect(result.map((item) => item.symbol)).toEqual([...Array.from({ length: 10 }, (_, index) => `A${index}`), "LAST"]);
   });
 });

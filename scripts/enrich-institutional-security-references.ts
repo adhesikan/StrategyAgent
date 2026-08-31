@@ -8,10 +8,10 @@ import { sql } from "drizzle-orm";
 import { OpenFigiClient } from "../server/services/institutional/openfigi-client";
 import { DrizzleInstitutionalSecurityReferenceRepository, persistSecurityReferenceResolution } from "../server/services/institutional/security-reference-repository";
 import {
-  buildInstitutionalSecurityReferencePlan, referenceApplyGuard, referencePlanAggregateSummary,
-  selectInstitutionalReferenceLookupCusips, type EligibleReferencePopulationRow, type TrustedReferenceState,
+  buildInstitutionalSecurityReferencePlan, referenceApplyGuard, referencePlanAggregateSummary, referencePlanChunkSummary,
+  selectInstitutionalReferenceLookupCusips, type EligibleReferencePopulationRow, type InstitutionalSecurityReferencePlan, type TrustedReferenceState,
 } from "../server/services/institutional/security-reference-enrichment-planner";
-import { resolveReviewedSecurityReference } from "../server/services/institutional/security-reference-enrichment";
+import { normalizeCusip, resolveReviewedSecurityReference, type SecurityReferenceResolution } from "../server/services/institutional/security-reference-enrichment";
 
 export const populationQuery = `
 WITH ranked AS (
@@ -34,7 +34,15 @@ FROM (
  UNION ALL SELECT cusip,'security_master',ticker,review_status FROM security_master
 ) x GROUP BY x.cusip`;
 function rowsOf(result: unknown): any[] { return (result as { rows?: any[] }).rows ?? (Array.isArray(result) ? result : []); }
-export interface ReferenceEnrichmentArgs { apply: boolean; dryRun: boolean; maxCusips?: number; planHash?: string; }
+export interface ReferenceEnrichmentArgs {
+  apply: boolean;
+  dryRun: boolean;
+  /** Max provider CUSIP requests in this deterministic cursor chunk. */
+  maxCusips?: number;
+  /** Exclusive normalized CUSIP cursor for resumable read-only runs. */
+  cursor?: string;
+  planHash?: string;
+}
 /** Strict and side-effect free so an operator cannot accidentally weaken guards. */
 export function parseReferenceEnrichmentArgs(args: readonly string[]): ReferenceEnrichmentArgs {
   const parsed: ReferenceEnrichmentArgs = { apply: false, dryRun: false };
@@ -42,11 +50,21 @@ export function parseReferenceEnrichmentArgs(args: readonly string[]): Reference
     const arg = args[index];
     if (arg === "--apply") { if (parsed.apply) throw new Error("ARGUMENT_REJECTED:DUPLICATE_APPLY"); parsed.apply = true; continue; }
     if (arg === "--dry-run") { if (parsed.dryRun) throw new Error("ARGUMENT_REJECTED:DUPLICATE_DRY_RUN"); parsed.dryRun = true; continue; }
-    if (arg === "--max-cusips" || arg === "--plan-hash") {
+    if (arg === "--max-cusips" || arg === "--cursor" || arg === "--plan-hash") {
       const supplied = args[++index];
       if (!supplied || supplied.startsWith("--")) throw new Error(`ARGUMENT_REJECTED:MISSING_VALUE:${arg}`);
-      if (arg === "--plan-hash") parsed.planHash = supplied;
-      else {
+      if (arg === "--plan-hash") {
+        if (parsed.planHash !== undefined) throw new Error("ARGUMENT_REJECTED:DUPLICATE_PLAN_HASH");
+        parsed.planHash = supplied;
+      } else if (arg === "--cursor") {
+        if (parsed.cursor !== undefined) throw new Error("ARGUMENT_REJECTED:DUPLICATE_CURSOR");
+        const cursor = normalizeCusip(supplied);
+        if (!cursor) throw new Error("ARGUMENT_REJECTED:INVALID_CUSIP_CURSOR");
+        parsed.cursor = cursor;
+      } else {
+        if (parsed.maxCusips !== undefined || !/^(0|[1-9]\d*)$/.test(supplied)) {
+          throw new Error("ARGUMENT_REJECTED:INVALID_MAX_CUSIPS");
+        }
         const max = Number(supplied);
         if (!Number.isSafeInteger(max) || max < 0 || max > 10_000) throw new Error("ARGUMENT_REJECTED:INVALID_MAX_CUSIPS");
         parsed.maxCusips = max;
@@ -56,10 +74,16 @@ export function parseReferenceEnrichmentArgs(args: readonly string[]): Reference
     throw new Error(`ARGUMENT_REJECTED:UNKNOWN_FLAG:${arg}`);
   }
   if (parsed.apply && parsed.dryRun) throw new Error("ARGUMENT_REJECTED:APPLY_AND_DRY_RUN");
+  if (parsed.apply && parsed.cursor) throw new Error("ARGUMENT_REJECTED:APPLY_CURSOR_UNSUPPORTED");
   if (parsed.apply && (parsed.maxCusips === undefined || parsed.maxCusips < 1)) throw new Error("ARGUMENT_REJECTED:APPLY_MAX_CUSIPS_REQUIRED");
   return parsed;
 }
-async function loadPlan(maxCusips: number) {
+export interface SafeOpenFigiRuntimeMetadata {
+  authMode: "KEYED" | "UNAUTHENTICATED"; batchSize: number; concurrency: number;
+  requestLimit: number; windowMs: number; minimumIntervalMs: number;
+}
+export interface LoadedReferencePlan { plan: InstitutionalSecurityReferencePlan; runtime: SafeOpenFigiRuntimeMetadata; }
+async function loadPlan(maxCusips: number, cursor?: string): Promise<LoadedReferencePlan> {
   const [populationRows, stateRows] = await db.transaction(async tx => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
     return Promise.all([tx.execute(sql.raw(populationQuery)), tx.execute(sql.raw(evidenceQuery))]);
@@ -75,45 +99,59 @@ async function loadPlan(maxCusips: number) {
   });
   // Population coverage is complete, but network work is bounded before the
   // client is called. Trusted and rejected CUSIPs are never requested.
-  const plannedLookupCusips = selectInstitutionalReferenceLookupCusips({ population, trustedState, maxCusips });
-  const providerResolutions = await new OpenFigiClient().resolveCusips(plannedLookupCusips);
-  return buildInstitutionalSecurityReferencePlan({ population, trustedState, providerResolutions, plannedLookupCusips, maxCusips });
+  const plannedLookupCusips = selectInstitutionalReferenceLookupCusips({ population, trustedState, maxCusips, cursor });
+  const client = new OpenFigiClient();
+  const providerResolutions = await client.resolveCusips(plannedLookupCusips);
+  return { plan: buildInstitutionalSecurityReferencePlan({ population, trustedState, providerResolutions, plannedLookupCusips, maxCusips, cursor }),
+    runtime: client.executionProfile };
 }
-async function main() {
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_RUNTIME_REJECTED:DATABASE_URL_REQUIRED");
-  if (process.env.EXTERNAL_DATABASE_URL) throw new Error("DATABASE_RUNTIME_REJECTED:EXTERNAL_DATABASE_URL_FORBIDDEN");
-  const args = parseReferenceEnrichmentArgs(process.argv.slice(2));
-  const { apply, maxCusips: max } = args;
-  // Dry runs get a conservative bounded action artifact while still assessing
-  // the full eligible population.
-  const plan = await loadPlan(max ?? 100);
-  const issues = referenceApplyGuard({
-    apply, suppliedPlanHash: args.planHash, planHash: plan.planHash, maxCusips: max,
-    applyEnabled: process.env.INSTITUTIONAL_SECURITY_REFERENCE_APPLY_ENABLED,
-    nodeEnv: process.env.NODE_ENV, railwayEnvironment: process.env.RAILWAY_ENVIRONMENT_NAME,
-  });
+export async function executeReferenceEnrichment(input: {
+  args: ReferenceEnrichmentArgs;
+  loadPlan: (maxCusips: number, cursor?: string) => Promise<LoadedReferencePlan>;
+  persistResolution?: (resolution: SecurityReferenceResolution) => Promise<{ promoted: boolean }>;
+  applyEnabled?: string; nodeEnv?: string; railwayEnvironment?: string;
+  error?: (value: string) => void;
+}) {
+  const { args } = input;
+  if (args.apply && args.cursor) throw new Error("ARGUMENT_REJECTED:APPLY_CURSOR_UNSUPPORTED");
+  const loaded = await input.loadPlan(args.maxCusips ?? 100, args.cursor);
+  const plan = loaded.plan;
+  const issues = referenceApplyGuard({ apply: args.apply, suppliedPlanHash: args.planHash, planHash: plan.planHash, maxCusips: args.maxCusips,
+    applyEnabled: input.applyEnabled, nodeEnv: input.nodeEnv, railwayEnvironment: input.railwayEnvironment });
   if (issues.length) throw new Error(`REFERENCE_ENRICHMENT_APPLY_REJECTED:${issues.join(",")}`);
-  if (!apply) { console.log(JSON.stringify(referencePlanAggregateSummary(plan))); return; }
-  // A second full read/re-resolution makes the hash check fresh at the write
-  // boundary. Only its exact, already bounded hashed actions are persisted.
-  const fresh = await loadPlan(max!);
-  if (fresh.planHash !== plan.planHash || args.planHash !== fresh.planHash) {
+  const summary = { ...referencePlanAggregateSummary(plan), runtime: loaded.runtime, chunk: referencePlanChunkSummary(plan) };
+  if (!args.apply) return summary;
+  const fresh = await input.loadPlan(args.maxCusips!);
+  if (fresh.plan.planHash !== plan.planHash || args.planHash !== fresh.plan.planHash) {
     throw new Error("REFERENCE_ENRICHMENT_APPLY_REJECTED:FRESH_PLAN_HASH_REQUIRED");
   }
-  const store = new DrizzleInstitutionalSecurityReferenceRepository();
+  if (!input.persistResolution) throw new Error("REFERENCE_ENRICHMENT_APPLY_REJECTED:PERSISTENCE_REQUIRED");
   let completed = 0; let promoted = 0; let unresolved = 0;
   try {
-    for (const action of fresh.actions) {
-      const persisted = await persistSecurityReferenceResolution(store, action.resolution);
+    for (const action of fresh.plan.actions) {
+      const persisted = await input.persistResolution(action.resolution);
       if (action.promotable && !persisted.promoted) throw new Error("REFERENCE_ENRICHMENT_APPLY_REJECTED:PROMOTABLE_ACTION_DRIFT");
       if (persisted.promoted) promoted++; else unresolved++;
       completed++;
     }
   } catch (error) {
-    // Do not disclose response/provider contents. Upserts make reruns safe.
-    console.error(JSON.stringify({ error: "REFERENCE_ENRICHMENT_PARTIAL_FAILURE", completed, planned: fresh.actions.length }));
+    input.error?.(JSON.stringify({ error: "REFERENCE_ENRICHMENT_PARTIAL_FAILURE", completed, planned: fresh.plan.actions.length }));
     throw error;
   }
-  console.log(JSON.stringify({ ...referencePlanAggregateSummary(fresh), applied: { completed, planned: fresh.actions.length, promoted, unresolved } }));
+  return { ...referencePlanAggregateSummary(fresh.plan), runtime: fresh.runtime,
+    applied: { completed, planned: fresh.plan.actions.length, promoted, unresolved } };
+}
+async function main() {
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_RUNTIME_REJECTED:DATABASE_URL_REQUIRED");
+  if (process.env.EXTERNAL_DATABASE_URL) throw new Error("DATABASE_RUNTIME_REJECTED:EXTERNAL_DATABASE_URL_FORBIDDEN");
+  const args = parseReferenceEnrichmentArgs(process.argv.slice(2));
+  const store = args.apply ? new DrizzleInstitutionalSecurityReferenceRepository() : undefined;
+  const result = await executeReferenceEnrichment({
+    args, loadPlan, persistResolution: resolution => persistSecurityReferenceResolution(store!, resolution),
+    applyEnabled: process.env.INSTITUTIONAL_SECURITY_REFERENCE_APPLY_ENABLED,
+    nodeEnv: process.env.NODE_ENV, railwayEnvironment: process.env.RAILWAY_ENVIRONMENT_NAME,
+    error: message => console.error(message),
+  });
+  console.log(JSON.stringify(result));
 }
 if (!process.env.VITEST) main().catch(error => { console.error(`[reference-enrichment] ERROR: ${String(error.message ?? error).slice(0, 200)}`); process.exit(1); });

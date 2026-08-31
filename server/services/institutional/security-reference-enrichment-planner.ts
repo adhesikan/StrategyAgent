@@ -11,7 +11,9 @@ import {
 
 export type ReferencePlanOutcome =
   | "authoritatively_resolvable" | "conflicting" | "ambiguous" | "unsupported"
-  | "no_reference" | "provider_failed" | "rate_limited" | "partial";
+  | "no_reference" | "provider_failed" | "rate_limited" | "partial"
+  /** No provider result was requested for this row in this cursor chunk. */
+  | "not_processed";
 
 export interface EligibleReferencePopulationRow {
   cusip: string;
@@ -42,21 +44,36 @@ export interface ReferenceCoverage {
   knownValueCusips: number;
 }
 export interface ReferenceOutcomeCount extends ReferenceCoverage { outcome: ReferencePlanOutcome; }
+export interface ReferenceAttemptedOutcomeCount { outcome: Exclude<ReferencePlanOutcome, "not_processed">; count: number; }
 export interface InstitutionalSecurityReferencePlan {
   version: 1;
   maxCusips: number;
+  /** The exclusive, normalized CUSIP cursor used to select this chunk. */
+  cursor: string | null;
+  /** Final requested CUSIP; use as the exclusive continuation cursor. */
+  nextCursor: string | null;
   before: ReferenceCoverage;
   projected: ReferenceCoverage;
   outcomes: ReferenceOutcomeCount[];
+  /** Requested provider outcomes only; counts must sum exactly to plannedLookups. */
+  attemptedOutcomes: ReferenceAttemptedOutcomeCount[];
   /** Bounded, sorted persistence action set. This is exactly what is hashed. */
   actions: ReferencePlanAction[];
-  actionCounts: { requestedCusipLimit: number; plannedLookups: number; plannedWrites: number; promotable: number; skippedByLimit: number };
+  actionCounts: {
+    requestedCusipLimit: number; plannedLookups: number; plannedWrites: number; promotable: number;
+    /** Eligible rows after the cursor which did not fit in this chunk. */
+    skippedByLimit: number;
+    /** Eligible rows at or before the exclusive cursor. */
+    skippedByCursor: number;
+    /** Total eligible rows not requested in this run. */
+    notProcessed: number;
+  };
   planHash: string;
 }
 
 const outcomeOrder: ReferencePlanOutcome[] = [
   "authoritatively_resolvable", "conflicting", "ambiguous", "unsupported",
-  "no_reference", "provider_failed", "rate_limited", "partial",
+  "no_reference", "provider_failed", "rate_limited", "partial", "not_processed",
 ];
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -84,11 +101,14 @@ function stateIsTrusted(state: TrustedReferenceState): boolean {
   return state.evidence.length === 0 ? state.trusted === true :
     resolveReviewedSecurityReference(state.cusip, state.evidence).outcome === "AUTHORITATIVELY_RESOLVABLE";
 }
-function planOutcome(resolution: SecurityReferenceResolution | undefined, state: TrustedReferenceState): { outcome: ReferencePlanOutcome; resolution?: SecurityReferenceResolution } {
+function planOutcome(resolution: SecurityReferenceResolution | undefined, state: TrustedReferenceState, requested: boolean): { outcome: ReferencePlanOutcome; resolution?: SecurityReferenceResolution } {
   if (state.blocked) return { outcome: "unsupported" };
   // Never trust a SQL status flag alone: Task #189 resolves conflicting
   // reviewed/exact evidence before it can count toward current coverage.
   if (stateIsTrusted(state)) return { outcome: "authoritatively_resolvable" };
+  // PARTIAL_RESPONSE describes a requested, incomplete provider response. It
+  // must never be used to conceal work deliberately excluded by a chunk bound.
+  if (!requested) return { outcome: "not_processed" };
   if (!resolution) return { outcome: "partial" };
   if (["PROVIDER_FAILED", "RATE_LIMITED", "PARTIAL_RESPONSE"].includes(resolution.outcome)) {
     return { outcome: resolution.outcome === "PARTIAL_RESPONSE" ? "partial" : resolution.outcome.toLowerCase() as ReferencePlanOutcome, resolution };
@@ -110,10 +130,13 @@ export function buildInstitutionalSecurityReferencePlan(input: {
   trustedState: readonly TrustedReferenceState[];
   providerResolutions: readonly SecurityReferenceResolution[];
   maxCusips: number;
+  cursor?: string | null;
   /** Exact provider request set. Omitted only for pure callers with supplied resolutions. */
   plannedLookupCusips?: readonly string[];
 }): InstitutionalSecurityReferencePlan {
   const maxCusips = Math.max(0, Math.floor(input.maxCusips));
+  const cursor = input.cursor == null ? null : normalizeCusip(input.cursor);
+  if (input.cursor != null && !cursor) throw new Error("INVALID_CUSIP_CURSOR");
   const states = new Map(input.trustedState.map(row => [normalizeCusip(row.cusip), row]));
   const resolutions = new Map(input.providerResolutions.map(row => [normalizeCusip(row.cusip), row]));
   const population = input.population.map(row => ({ ...row, cusip: normalizeCusip(row.cusip) ?? row.cusip.trim().toUpperCase() }))
@@ -122,9 +145,12 @@ export function buildInstitutionalSecurityReferencePlan(input: {
     const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [] };
     return !state.blocked && !stateIsTrusted(state);
   });
-  const requested = Array.from(new Set((input.plannedLookupCusips ?? input.providerResolutions.map(row => row.cusip))
+  const selected = selectInstitutionalReferenceLookupCusips({
+    population, trustedState: input.trustedState, maxCusips, cursor,
+  });
+  const requested = Array.from(new Set((input.plannedLookupCusips ?? selected)
     .map(normalizeCusip).filter((cusip): cusip is string => !!cusip)))
-    .filter(cusip => lookupEligible.some(row => row.cusip === cusip)).sort().slice(0, maxCusips);
+    .filter(cusip => selected.includes(cusip)).sort();
   // A malformed/truncated provider response remains a persisted partial
   // observation for every requested CUSIP, rather than disappearing silently.
   for (const cusip of requested) if (!resolutions.has(cusip)) {
@@ -132,7 +158,7 @@ export function buildInstitutionalSecurityReferencePlan(input: {
   }
   const assessed = population.map(row => {
     const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [], trusted: false };
-    return { row, ...planOutcome(resolutions.get(row.cusip), state) };
+    return { row, ...planOutcome(resolutions.get(row.cusip), state, requested.includes(row.cusip)) };
   });
   // Every observed provider resolution is persisted, including negative and
   // transport outcomes. Existing trusted state is already durable, so is not
@@ -157,29 +183,57 @@ export function buildInstitutionalSecurityReferencePlan(input: {
     const rows = assessed.filter(item => item.outcome === outcome).map(item => item.row);
     return { outcome, ...percentValue(rows, () => true) };
   });
+  const attemptedOutcomes = outcomeOrder.filter(
+    (outcome): outcome is Exclude<ReferencePlanOutcome, "not_processed"> => outcome !== "not_processed",
+  ).map(outcome => ({
+    outcome,
+    count: assessed.filter(item => requested.includes(item.row.cusip) && item.outcome === outcome).length,
+  }));
   const canonical = {
-    version: 1 as const, maxCusips, before, projected, outcomes, actions,
+    // Include the complete normalized population plus the exact requested
+    // CUSIPs and provider observations. Thus a hash cannot be reused for a
+    // different population, cursor/chunk, or provider result set.
+    version: 1 as const, maxCusips, cursor, nextCursor: requested.at(-1) ?? null, before, projected, outcomes, attemptedOutcomes, actions,
+    population,
+    requestedLookupCusips: requested,
+    providerResults: requested.map(cusip => resolutions.get(cusip)!),
     actionCounts: { requestedCusipLimit: maxCusips, plannedLookups: actions.length, plannedWrites: actions.length,
-      promotable: actions.filter(action => action.promotable).length, skippedByLimit: lookupEligible.length - requested.length },
+      promotable: actions.filter(action => action.promotable).length,
+      skippedByLimit: lookupEligible.filter(row => (!cursor || row.cusip > cursor) && !requested.includes(row.cusip)).length,
+      skippedByCursor: lookupEligible.filter(row => !!cursor && row.cusip <= cursor).length,
+      notProcessed: lookupEligible.length - requested.length },
   };
-  return { ...canonical, planHash: createHash("sha256").update(stableJson(canonical)).digest("hex") };
+  const { population: _population, requestedLookupCusips: _requested, providerResults: _providerResults, ...plan } = canonical;
+  return { ...plan, planHash: createHash("sha256").update(stableJson(canonical)).digest("hex") };
 }
 
 /** Deterministic, read-only provider request selector used before any network call. */
 export function selectInstitutionalReferenceLookupCusips(input: {
   population: readonly EligibleReferencePopulationRow[]; trustedState: readonly TrustedReferenceState[]; maxCusips: number;
+  /** Exclusive cursor: a continuation starts strictly after this CUSIP. */
+  cursor?: string | null;
 }): string[] {
+  const cursor = input.cursor == null ? null : normalizeCusip(input.cursor);
+  if (input.cursor != null && !cursor) throw new Error("INVALID_CUSIP_CURSOR");
   const states = new Map(input.trustedState.map(row => [normalizeCusip(row.cusip), row]));
   return Array.from(new Set(input.population.map(row => normalizeCusip(row.cusip)).filter((x): x is string => !!x)))
     .filter(cusip => {
       const state = states.get(cusip) ?? { cusip, evidence: [] };
       return !state.blocked && !stateIsTrusted(state);
-    }).sort().slice(0, Math.max(0, Math.floor(input.maxCusips)));
+    }).filter(cusip => !cursor || cusip > cursor).sort().slice(0, Math.max(0, Math.floor(input.maxCusips)));
 }
 
 /** Public CLI output intentionally excludes candidates, evidence, and errors. */
 export function referencePlanAggregateSummary(plan: InstitutionalSecurityReferencePlan) {
   return { planHash: plan.planHash, before: plan.before, projected: plan.projected, outcomes: plan.outcomes, actionCounts: plan.actionCounts };
+}
+/** Safe dry-run continuation metadata; nextCursor is the only disclosed CUSIP. */
+export function referencePlanChunkSummary(plan: InstitutionalSecurityReferencePlan) {
+  return {
+    cursor: plan.cursor, nextCursor: plan.nextCursor, requested: plan.actionCounts.plannedLookups,
+    hasMore: plan.actionCounts.skippedByLimit > 0, skippedByLimit: plan.actionCounts.skippedByLimit,
+    skippedByCursor: plan.actionCounts.skippedByCursor,
+  };
 }
 
 export function referenceApplyGuard(input: {

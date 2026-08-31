@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveReviewedSecurityReference } from "../security-reference-enrichment";
 import {
-  buildInstitutionalSecurityReferencePlan, referenceApplyGuard, referencePlanAggregateSummary,
+  buildInstitutionalSecurityReferencePlan, referenceApplyGuard, referencePlanAggregateSummary, referencePlanChunkSummary,
   selectInstitutionalReferenceLookupCusips,
 } from "../security-reference-enrichment-planner";
 
@@ -41,7 +41,7 @@ describe("institutional security reference enrichment planner", () => {
     expect(empty.projected).toEqual(empty.before);
   });
 
-  it("requires every apply guard and exposes only safe aggregate output", () => {
+  it("preserves every guarded apply precondition and exposes only safe aggregate output", () => {
     const plan = buildInstitutionalSecurityReferencePlan(input());
     expect(referenceApplyGuard({ apply: true, planHash: plan.planHash, suppliedPlanHash: plan.planHash, maxCusips: 5, applyEnabled: "true", nodeEnv: "production", railwayEnvironment: "production" })).toEqual([]);
     expect(referenceApplyGuard({ apply: true, planHash: plan.planHash, maxCusips: undefined, applyEnabled: "false", nodeEnv: "production", railwayEnvironment: "staging" }))
@@ -109,7 +109,7 @@ describe("institutional security reference enrichment planner", () => {
     expect(JSON.stringify(referencePlanAggregateSummary(plan))).not.toContain("023135106");
   });
 
-  it("accounts for unassessed bounded remainder only as aggregate partial coverage", () => {
+  it("classifies unrequested bounded remainder as not processed, never partial", () => {
     const plan = buildInstitutionalSecurityReferencePlan({
       population: [
         { cusip: "037833100", holdingRows: 2, reportedValueUsd: "3" },
@@ -117,9 +117,53 @@ describe("institutional security reference enrichment planner", () => {
       ], trustedState: [], plannedLookupCusips: ["037833100"], providerResolutions: [resolution], maxCusips: 1,
     });
     expect(plan.actionCounts.skippedByLimit).toBe(1);
-    expect(plan.outcomes.find(x => x.outcome === "partial")).toMatchObject({ distinctCusips: 1, holdingRows: 5, knownReportedValueUsd: "7" });
+    expect(plan.actionCounts.notProcessed).toBe(1);
+    expect(plan.outcomes.find(x => x.outcome === "not_processed")).toMatchObject({ distinctCusips: 1, holdingRows: 5, knownReportedValueUsd: "7" });
+    expect(plan.outcomes.find(x => x.outcome === "partial")?.distinctCusips).toBe(0);
+    expect(plan.attemptedOutcomes.reduce((total, item) => total + item.count, 0))
+      .toBe(plan.actionCounts.plannedLookups);
+    expect(plan.attemptedOutcomes.find(item => item.outcome === "authoritatively_resolvable")?.count).toBe(1);
     const output = JSON.stringify(referencePlanAggregateSummary(plan));
-    expect(output).not.toContain("037833100");
+    // The sole identifier permitted in safe output is the continuation cursor.
+    expect(referencePlanChunkSummary(plan).nextCursor).toBe("037833100");
     expect(output).not.toContain("594918104");
+  });
+
+  it("selects a deterministic exclusive CUSIP cursor chunk and reports cursor skips separately", () => {
+    const base = {
+      population: [
+        { cusip: "594918104", holdingRows: 1, reportedValueUsd: "1" },
+        { cusip: "037833100", holdingRows: 1, reportedValueUsd: "1" },
+        { cusip: "023135106", holdingRows: 1, reportedValueUsd: "1" },
+      ], trustedState: [], maxCusips: 1,
+    };
+    expect(selectInstitutionalReferenceLookupCusips(base)).toEqual(["023135106"]);
+    expect(selectInstitutionalReferenceLookupCusips({ ...base, cursor: "023135106" })).toEqual(["037833100"]);
+    expect(selectInstitutionalReferenceLookupCusips({ ...base, cursor: "037833100" })).toEqual(["594918104"]);
+    const plan = buildInstitutionalSecurityReferencePlan({
+      ...base, cursor: "023135106", plannedLookupCusips: ["037833100"], providerResolutions: [resolution],
+    });
+    expect(plan.actionCounts).toMatchObject({ skippedByCursor: 1, skippedByLimit: 1, notProcessed: 2 });
+    expect(plan.nextCursor).toBe("037833100");
+    expect(referencePlanChunkSummary(plan)).toMatchObject({
+      cursor: "023135106", nextCursor: "037833100", requested: 1, hasMore: true,
+    });
+    const empty = buildInstitutionalSecurityReferencePlan({ ...base, cursor: "594918104", plannedLookupCusips: [], providerResolutions: [] });
+    expect(empty.nextCursor).toBeNull();
+    expect(referencePlanChunkSummary(empty)).toMatchObject({ nextCursor: null, requested: 0, hasMore: false });
+  });
+
+  it("hashes the complete population, cursor chunk, and exact provider results", () => {
+    const first = buildInstitutionalSecurityReferencePlan({ ...input(1), plannedLookupCusips: ["037833100"] });
+    const changedPopulation = buildInstitutionalSecurityReferencePlan({
+      ...input(1), plannedLookupCusips: ["037833100"],
+      population: [...input().population, { cusip: "023135106", holdingRows: 1, reportedValueUsd: "1" }],
+    });
+    const changedProvider = buildInstitutionalSecurityReferencePlan({
+      ...input(1), plannedLookupCusips: ["037833100"],
+      providerResolutions: [{ ...resolution, outcome: "NO_REFERENCE_AVAILABLE", symbol: null, candidates: [] }],
+    });
+    expect(changedPopulation.planHash).not.toBe(first.planHash);
+    expect(changedProvider.planHash).not.toBe(first.planHash);
   });
 });

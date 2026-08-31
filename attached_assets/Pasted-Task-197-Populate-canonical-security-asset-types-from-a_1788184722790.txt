@@ -1,0 +1,272 @@
+Task #197 — Populate canonical security asset types from authoritative reference evidence
+
+DO NOT perform any production write, remediation APPLY, ingestion run,
+migration execution, feature-flag activation, or manual ticker repair.
+
+CONTEXT
+
+Task #196 added the correct fail-closed security-type eligibility gate.
+
+Production-wide read-only analysis now shows that the gate is excluding
+essentially the entire trusted-reference universe because persisted
+security_master.asset_type is missing/null.
+
+The analyzer currently produces:
+
+- zero eligible stock aggregate targets
+- zero eligible stock signal targets
+- no remediation operations
+
+and many records show:
+
+canonicalSecurityType = insufficient_evidence
+securityTypePopulation = INSUFFICIENT_SECURITY_TYPE_EVIDENCE
+
+with security_master.assetType = null.
+
+This is NOT a reason to weaken Task #196.
+
+The missing layer is:
+
+trusted external security identity
+→ authoritative instrument/security classification
+→ canonical security_master.asset_type
+→ Task #196 eligibility classifier
+
+OBJECTIVE
+
+Implement the smallest generic systemic fix that populates canonical
+security_master.asset_type from authoritative security-reference
+evidence already retrieved or retrievable through the approved
+reference pipeline.
+
+Do not infer asset type from ticker format or issuer name.
+
+Do not manually classify securities.
+
+Do not use allowlists/blocklists.
+
+Do not weaken the Task #196 classifier.
+
+ARCHITECTURE REQUIREMENTS
+
+1. Inspect the existing OpenFIGI/reference enrichment implementation.
+
+Determine what authoritative instrument/security-type fields are
+available from OpenFIGI responses and what metadata is currently
+persisted.
+
+Examples may include provider fields such as:
+- securityType
+- securityType2
+- marketSector
+- securityDescription
+- composite/exchange metadata
+
+Use actual provider response semantics from the existing implementation.
+Do not invent fields.
+
+2. Define a deterministic provider → canonical asset-type normalization.
+
+Canonical asset types must be sufficient for Task #196 to distinguish:
+
+- common_stock
+- reit
+- etf_etp
+- mutual_open_end_fund
+- closed_end_fund
+- money_market_fund
+- adr
+- foreign_listing
+- preferred
+- debt
+- warrant
+- right
+- unsupported_other
+- insufficient_evidence
+
+Use the project's existing canonical names if they already differ.
+Do not create duplicate competing vocabularies.
+
+3. Classification must be conservative and fail closed.
+
+If authoritative provider evidence does not clearly support a canonical
+type:
+
+asset_type must remain insufficient/null as appropriate.
+
+Never classify as common stock merely because:
+- a ticker exists
+- OpenFIGI returned an exact CUSIP match
+- shares are positive
+- the security appears in a 13F
+- the security name resembles a company
+
+4. Preserve provenance.
+
+Persist enough normalized provider evidence/provenance to explain why
+the canonical asset_type was assigned.
+
+Do not persist prohibited/raw third-party payloads if existing
+OpenFIGI licensing rules prohibit that.
+
+Continue to comply with the previously approved OpenFIGI persistence
+rules.
+
+5. Integrate with the existing security-reference enrichment path.
+
+The same generic enrichment process used for CUSIP → trusted identity
+must also populate authoritative asset type when evidence supports it.
+
+Do not create a separate manual asset-type repair system.
+
+Future new identities should receive both:
+- trusted identity/reference state
+- canonical asset-type classification
+
+within the same generic pipeline.
+
+6. Existing trusted-reference backfill
+
+Add a deterministic READ-ONLY default planner for the currently trusted
+security-reference population whose asset_type is missing or stale.
+
+The planner should report:
+
+before:
+- trusted CUSIPs
+- trusted symbols
+- asset_type populated
+- asset_type missing
+
+projected:
+- asset_type populated
+- asset_type remaining insufficient
+
+classification breakdown:
+- common stock
+- REIT
+- ETF/ETP
+- mutual/open-end fund
+- closed-end fund
+- money-market fund
+- ADR
+- foreign listing
+- preferred
+- debt
+- warrant
+- right
+- unsupported
+- insufficient
+
+For each category report aggregate-only:
+- distinct CUSIPs
+- distinct symbols
+- holding rows
+- reported USD value
+
+No ticker-by-ticker output is required.
+
+7. Reuse existing provider throughput/safety infrastructure from Tasks
+#191/#192/#194.
+
+Preserve:
+- keyed OpenFIGI batching
+- exact ID_CUSIP semantics
+- deterministic ordering
+- provider pacing
+- Retry-After handling
+- bounded retries
+- terminal/retryable lookup-state semantics
+- resumability where applicable
+- zero-write default/dry-run
+- deterministic SHA-256 plan hash
+- fresh-plan-hash requirement for APPLY
+- production environment guards
+- explicit APPLY feature guard
+
+Do not recreate a second OpenFIGI client.
+
+8. IMPORTANT: Existing trusted identity must remain trusted even when
+asset type is insufficient.
+
+Identity trust and analytics eligibility are separate concepts.
+
+Do NOT revoke trusted mappings solely because asset_type cannot be
+classified.
+
+Task #196 remains the sole downstream stock-analytics eligibility gate.
+
+9. After projected asset-type population, run the Task #196 classifier
+against the projected state and report:
+
+ELIGIBLE_STOCK_ANALYTICS
+ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS
+UNSUPPORTED_FOR_STOCK_ANALYTICS
+INSUFFICIENT_SECURITY_TYPE_EVIDENCE
+
+Include projected:
+- CUSIPs
+- symbols
+- holding rows
+- reported USD value
+
+This allows us to know how much of the 3,206 trusted identity universe
+can safely become stock institutional analytics.
+
+10. No production execution.
+
+Implement code, tests and CLI only.
+
+VALIDATION
+
+Run:
+
+- focused asset-type normalization tests
+- Task #196 eligibility tests
+- security-reference enrichment tests
+- full canonical institutional regression suite
+- smoke
+- integration
+- security
+- production build
+- git diff --check
+- architecture/safety review if available
+
+Include tests for:
+- exact common stock evidence
+- REIT
+- ETF
+- mutual fund
+- closed-end fund
+- ADR
+- foreign listing
+- preferred
+- debt
+- warrant/right
+- contradictory provider classifications
+- incomplete provider metadata
+- unknown provider types
+- multiple CUSIPs for same security identity
+- already reviewed asset types
+- existing trusted mapping with missing type
+- identity remains trusted when type is insufficient
+- funds remain reference-valid but stock-analytics-ineligible
+- dry-run zero-write behavior
+- deterministic hash stability
+
+RETURN
+
+ROOT CAUSE
+AUTHORITATIVE PROVIDER FIELDS FOUND
+CANONICAL NORMALIZATION RULES
+PIPELINE INTEGRATION
+BACKFILL PLANNER
+FAIL-CLOSED BEHAVIOR
+PROJECTED ELIGIBILITY REPORTING
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+EXACT NEXT PRODUCTION READ-ONLY COMMAND
+
+Do not execute the production command yourself.

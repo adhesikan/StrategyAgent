@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
+import { applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, buildCoveragePlan, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, GLOBAL_COVERAGE_ADVISORY_LOCK, providerNormalizationAudit, securityTypeCoverageMetrics, validateCoverageApplyRequest } from "../institutional-coverage-analyzer";
 import { reconcileCanonicalStockEligibility } from "../canonical-security-state";
 import { classifyInstitutionalSecurityType } from "../security-type-eligibility";
 
@@ -327,5 +327,35 @@ describe("institutional coverage analyzer", () => {
         before: coverageTotals([separateFund, trusted]),
       }).operations,
     ).toEqual([]);
+  });
+
+  it("groups provider tuples and counts type provenance and downstream targets", () => {
+    const row = classifyCusipEvidence({
+      ...base,
+      reliableReferenceSymbols: ["ACME"],
+      providerCandidates: [{
+        provider: "openfigi", ticker: "ACME", figi: "BBGACME",
+        securityType: "ETF", marketSector: "Equity",
+      }],
+      persistedAssetType: "common_stock",
+      assetTypeProvenance: "figi_exact",
+      assetTypeReviewed: false,
+    });
+    const audit = providerNormalizationAudit(
+      [{ ...row, canonicalSecurityType: "common_stock", securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS" }],
+      new Set(["ACME:2025-09-30"]),
+      new Set(["ACME"]),
+    );
+    expect(audit.groups).toContainEqual(expect.objectContaining({
+      provider: "openfigi",
+      securityType: "ETF",
+      persistedAssetType: "common_stock",
+      persistedTypeProvenance: "figi_exact",
+      providerCanonicalSecurityType: "etf",
+      aggregateTargets: 1,
+      signalTargets: 1,
+    }));
+    expect(audit.providerClassificationContradictoryToPersistedCusips).toBe(1);
+    expect(audit.staleMachineDerivedTypeCusips).toBe(1);
   });
 });

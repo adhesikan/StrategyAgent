@@ -108,3 +108,4 @@
 - [Institutional enrichment selection](institutional-enrichment-selection.md) — prioritize never-processed/retryable CUSIPs; terminal unresolved outcomes require explicit refresh.
 - [Institutional security-type gate](institutional-security-type-gate.md) — stock analytics require persisted eligible classification; preserve fund/reference identity separately and fail closed for ambiguity.
 - [Institutional CLI lifecycle](institutional-cli-lifecycle.md) — one-shot commands must close the shared pool and set exitCode after output/error handling, never hard-exit.
+- [Institutional type normalization](security-type-normalization-audit.md) — provider type fields are authoritative; descriptions and ticker heuristics never create stock eligibility.

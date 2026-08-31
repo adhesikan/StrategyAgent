@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveReviewedSecurityReference } from "../security-reference-enrichment";
 import {
   assetTypeCoverageSummary, buildInstitutionalSecurityReferencePlan, referenceApplyGuard, referencePlanAggregateSummary, referencePlanChunkSummary,
+  buildInstitutionalAssetTypeCorrectionPlan,
   selectInstitutionalReferenceLookupCusips,
 } from "../security-reference-enrichment-planner";
 
@@ -396,5 +397,50 @@ describe("institutional security reference enrichment planner", () => {
       expect.objectContaining({ canonicalSecurityType: "etf", securityTypePopulation: "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS" }),
       expect.objectContaining({ canonicalSecurityType: "insufficient_evidence", securityTypePopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE" }),
     ]));
+  });
+
+  it("plans only proven machine-derived type corrections and preserves reviewed identity", () => {
+    const population = [
+      { cusip: "000000001", holdingRows: 2, reportedValueUsd: "10", trustedSymbols: ["FUND"], currentAssetType: "common_stock" },
+      { cusip: "000000002", holdingRows: 1, reportedValueUsd: "20", trustedSymbols: ["KEEP"], currentAssetType: "common_stock" },
+      { cusip: "000000003", holdingRows: 1, reportedValueUsd: "30", trustedSymbols: ["AMBIG"], currentAssetType: "common_stock" },
+    ];
+    const candidate = (ticker: string, securityType: string) => ({
+      provider: "openfigi", ticker, figi: `BBG${ticker}`, securityType,
+    });
+    const plan = buildInstitutionalAssetTypeCorrectionPlan({
+      population,
+      trustedState: [
+        {
+          cusip: "000000001", trusted: true, currentAssetType: "common_stock",
+          evidence: [{ source: "mapping", cusip: "000000001", symbol: "FUND", status: "exact" }],
+          candidateEvidence: [candidate("FUND", "ETF")],
+        },
+        {
+          cusip: "000000002", trusted: true, currentAssetType: "common_stock", assetTypeReviewed: true,
+          evidence: [{ source: "mapping", cusip: "000000002", symbol: "KEEP", status: "reviewed" }],
+          candidateEvidence: [candidate("KEEP", "ETF")],
+        },
+        {
+          cusip: "000000003", trusted: true, currentAssetType: "common_stock",
+          evidence: [{ source: "mapping", cusip: "000000003", symbol: "AMBIG", status: "exact" }],
+          candidateEvidence: [
+            candidate("AMBIG", "ETF"),
+            candidate("AMBIG", "Common Stock"),
+          ],
+        },
+      ],
+    });
+    expect(plan.actions).toMatchObject([{
+      cusip: "000000001",
+      currentAssetType: "common_stock",
+      projectedAssetType: "etf",
+      symbol: "FUND",
+      preservesTrustedIdentity: true,
+    }]);
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.before.stockEligibleCusips).toBe(3);
+    expect(plan.projected.separateFundCusips).toBe(1);
+    expect(plan.planHash).toMatch(/^[a-f0-9]{64}$/);
   });
 });

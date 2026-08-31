@@ -37,6 +37,8 @@ export interface SecurityReferenceCandidate {
   securityType?: string | null;
   marketSector?: string | null;
   securityType2?: string | null;
+  /** Optional descriptive provider field; it is not type evidence. */
+  securityDescription?: string | null;
   exchangeCode?: string | null;
   /** Explicit provider signal that this identifier has more than one meaning. */
   ambiguous?: boolean;
@@ -68,6 +70,36 @@ export function normalizeReferenceSymbol(value: string | null | undefined): stri
   return normalized || null;
 }
 
+export type CanonicalPrimarySymbolStatus =
+  | "ACCEPTED_PROVIDER_TICKER"
+  | "MISSING_PRIMARY_TICKER"
+  | "INVALID_PRIMARY_TICKER_FORMAT"
+  | "SHARE_CLASS_EVIDENCE_REQUIRED";
+
+export interface CanonicalPrimarySymbolAssessment {
+  symbol: string | null;
+  status: CanonicalPrimarySymbolStatus;
+}
+
+/**
+ * Only the provider's ticker field can become a canonical symbol. FIGIs,
+ * exchange codes, names, and descriptions are never substituted. This is a
+ * structural check, not a ticker allowlist or suffix heuristic.
+ */
+export function assessCanonicalPrimarySymbol(
+  candidate: Pick<SecurityReferenceCandidate, "ticker" | "shareClassFigi">,
+): CanonicalPrimarySymbolAssessment {
+  const symbol = normalizeReferenceSymbol(candidate.ticker);
+  if (!symbol) return { symbol: null, status: "MISSING_PRIMARY_TICKER" };
+  if (!/^[A-Z0-9]+(?:\.[A-Z0-9]+)?$/.test(symbol) || symbol.length > 12) {
+    return { symbol: null, status: "INVALID_PRIMARY_TICKER_FORMAT" };
+  }
+  if (symbol.includes(".") && !candidate.shareClassFigi?.trim()) {
+    return { symbol: null, status: "SHARE_CLASS_EVIDENCE_REQUIRED" };
+  }
+  return { symbol, status: "ACCEPTED_PROVIDER_TICKER" };
+}
+
 function stableCandidateCompare(a: SecurityReferenceCandidate, b: SecurityReferenceCandidate): number {
   return [
     a.ticker ?? "", a.figi ?? "", a.compositeFigi ?? "", a.shareClassFigi ?? "",
@@ -90,6 +122,7 @@ function normalizedCandidate(candidate: SecurityReferenceCandidate): SecurityRef
     securityType: clean(candidate.securityType),
     marketSector: clean(candidate.marketSector),
     securityType2: clean(candidate.securityType2),
+    securityDescription: clean(candidate.securityDescription),
     exchangeCode: clean(candidate.exchangeCode)?.toUpperCase() ?? null,
     ambiguous: candidate.ambiguous === true,
   };
@@ -154,7 +187,14 @@ export function resolveReviewedSecurityReference(
 
   const matching = evidence.filter((item) => normalizeCusip(item.cusip) === cusip);
   const reviewed = matching.filter((item) => item.status === "reviewed");
-  const supportedCandidates = candidates.filter(isSupported13fIdentityCandidate);
+  // A supported security type is not enough to create a canonical symbol.
+  // Provider candidates with an exchange-qualified or otherwise unverified
+  // ticker remain in the raw resolution for auditability, but cannot become
+  // identity evidence or downstream analytics input.
+  const supportedCandidates = candidates.filter((candidate) =>
+    isSupported13fIdentityCandidate(candidate)
+    && assessCanonicalPrimarySymbol(candidate).symbol !== null,
+  );
   if (candidates.length > 0 && supportedCandidates.length === 0) {
     // A reviewed decision is authoritative even when the provider's current
     // classification is not 13F-eligible.

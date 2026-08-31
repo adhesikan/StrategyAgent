@@ -9,10 +9,16 @@ import {
   type SecurityResolutionEvidence,
   type SecurityResolverOutcome,
 } from "./security-resolver";
+import {
+  assessCanonicalPrimarySymbol,
+  type SecurityReferenceCandidate,
+} from "./security-reference-enrichment";
 import type {
   CanonicalInstitutionalSecurityType,
   SecurityAnalyticsPopulation,
 } from "./security-type-eligibility";
+import { classifyInstitutionalSecurityType } from "./security-type-eligibility";
+import { INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION } from "./security-type-eligibility";
 
 export type CoverageCategory =
   | "TRUSTED" | "AMBIGUOUS" | "CONFLICTING" | "UNSUPPORTED" | "INSUFFICIENT_NO_REFERENCE";
@@ -35,6 +41,12 @@ export interface CusipEvidence {
   hasUnreliableReference?: boolean;
   /** Bound source/symbol/status records passed unchanged to the shared resolver. */
   sourceEvidence?: SecurityResolutionEvidence[];
+  /** Current provider observations used only for aggregate normalization audit. */
+  providerCandidates?: SecurityReferenceCandidate[];
+  /** Raw persisted value, kept separate from its normalized classification. */
+  persistedAssetType?: string | null;
+  assetTypeProvenance?: string | null;
+  assetTypeReviewed?: boolean;
 }
 
 export interface CusipClassification extends CusipEvidence {
@@ -126,6 +138,39 @@ export interface SecurityTypeCoverageMetric {
   signalTargets: number;
 }
 
+export interface ProviderNormalizationAuditMetric {
+  provider: string;
+  securityType: string | null;
+  securityType2: string | null;
+  marketSector: string | null;
+  persistedAssetType: string | null;
+  persistedTypeProvenance: string | null;
+  persistedTypeReviewed: boolean;
+  canonicalSecurityType: CanonicalInstitutionalSecurityType;
+  securityTypePopulation: SecurityAnalyticsPopulation;
+  providerCanonicalSecurityType: CanonicalInstitutionalSecurityType;
+  providerSecurityTypePopulation: SecurityAnalyticsPopulation;
+  distinctCusips: number;
+  distinctSymbols: number;
+  holdingRows: number;
+  reportedValueUsd: string;
+  aggregateTargets: number;
+  signalTargets: number;
+}
+
+export interface ProviderNormalizationAuditSummary {
+  normalizationVersion: typeof INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION;
+  groups: ProviderNormalizationAuditMetric[];
+  canonicalIdentityInvalidPrimarySymbolCusips: number;
+  canonicalIdentityNonCanonicalSymbolCusips: number;
+  canonicalIdentityNonUsOrExchangeSpecificCusips: number;
+  providerClassificationContradictoryToPersistedCusips: number;
+  providerClassificationInsufficientForPersistedCusips: number;
+  reviewedAssetTypeCusips: number;
+  machineDerivedAssetTypeCusips: number;
+  staleMachineDerivedTypeCusips: number;
+}
+
 export function securityTypeCoverageMetrics(
   rows: CusipClassification[],
   aggregateTargets: ReadonlySet<string> = new Set(),
@@ -196,6 +241,148 @@ export function countCanonicalStockEligibleInputs(rows: readonly CusipClassifica
       && row.securityTypePopulation === "ELIGIBLE_STOCK_ANALYTICS",
     )
     .map((row) => row.cusip)).size;
+}
+
+function candidateTuple(candidate: SecurityReferenceCandidate | undefined): {
+  provider: string;
+  securityType: string | null;
+  securityType2: string | null;
+  marketSector: string | null;
+} {
+  return {
+    provider: candidate?.provider?.trim().toLowerCase() || "unknown",
+    securityType: candidate?.securityType?.trim().toUpperCase() || null,
+    securityType2: candidate?.securityType2?.trim().toUpperCase() || null,
+    marketSector: candidate?.marketSector?.trim().toUpperCase() || null,
+  };
+}
+
+export function providerNormalizationAudit(
+  rows: readonly CusipClassification[],
+  aggregateTargets: ReadonlySet<string> = new Set(),
+  signalTargets: ReadonlySet<string> = new Set(),
+): ProviderNormalizationAuditSummary {
+  const groups = new Map<string, {
+    tuple: ReturnType<typeof candidateTuple>;
+    persistedAssetType: string | null;
+    persistedTypeProvenance: string | null;
+    persistedTypeReviewed: boolean;
+    canonicalSecurityType: CanonicalInstitutionalSecurityType;
+    securityTypePopulation: SecurityAnalyticsPopulation;
+    providerCanonicalSecurityType: CanonicalInstitutionalSecurityType;
+    providerSecurityTypePopulation: SecurityAnalyticsPopulation;
+    cusips: Set<string>;
+    symbols: Set<string>;
+    holdingRows: number;
+    reportedValueUsd: bigint;
+    aggregateTargets: Set<string>;
+    signalTargets: Set<string>;
+  }>();
+  const contradictionCusips = new Set<string>();
+  const insufficientCusips = new Set<string>();
+  const invalidSymbolCusips = new Set<string>();
+  const nonCanonicalSymbolCusips = new Set<string>();
+  const nonUsOrExchangeSpecificCusips = new Set<string>();
+  const staleCusips = new Set<string>();
+  let reviewedAssetTypeCusips = 0;
+  let machineDerivedAssetTypeCusips = 0;
+
+  for (const row of rows) {
+    if (row.category !== "TRUSTED") continue;
+    if (row.assetTypeReviewed) reviewedAssetTypeCusips++;
+    else if (row.canonicalSecurityType) machineDerivedAssetTypeCusips++;
+    const candidates: Array<SecurityReferenceCandidate | undefined> =
+      row.providerCandidates?.length ? [...row.providerCandidates] : [undefined];
+    const matchingCandidates = row.projectedSymbol
+      ? candidates.filter((candidate) => !candidate || assessCanonicalPrimarySymbol(candidate).symbol === row.projectedSymbol)
+      : candidates;
+    const candidatesToReport = matchingCandidates.length > 0 ? matchingCandidates : candidates;
+    if (!row.projectedSymbol) invalidSymbolCusips.add(row.cusip);
+    for (const candidate of candidatesToReport) {
+        const symbolAssessment = candidate
+          ? assessCanonicalPrimarySymbol(candidate)
+          : assessCanonicalPrimarySymbol({ ticker: row.projectedSymbol });
+        if (symbolAssessment.status !== "ACCEPTED_PROVIDER_TICKER") {
+          nonCanonicalSymbolCusips.add(row.cusip);
+        }
+        const providerClassification = classifyInstitutionalSecurityType(candidate ?? {});
+        if (providerClassification.canonicalType === "foreign_listing") {
+          nonUsOrExchangeSpecificCusips.add(row.cusip);
+        }
+        if (providerClassification.analyticsPopulation === "INSUFFICIENT_SECURITY_TYPE_EVIDENCE") {
+          if (row.canonicalSecurityType && row.canonicalSecurityType !== "insufficient_evidence") {
+            insufficientCusips.add(row.cusip);
+          }
+        } else if (providerClassification.canonicalType !== row.canonicalSecurityType) {
+          contradictionCusips.add(row.cusip);
+          if (!row.assetTypeReviewed) staleCusips.add(row.cusip);
+        }
+        const tuple = candidateTuple(candidate);
+        const key = JSON.stringify([
+          tuple, row.persistedAssetType ?? row.canonicalSecurityType ?? "insufficient_evidence",
+          row.securityTypePopulation ?? "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+          providerClassification.canonicalType,
+          providerClassification.analyticsPopulation,
+          row.assetTypeProvenance ?? null,
+          row.assetTypeReviewed === true,
+        ]);
+        const group = groups.get(key) ?? {
+          tuple,
+          persistedAssetType: row.persistedAssetType ?? row.canonicalSecurityType ?? null,
+          persistedTypeProvenance: row.assetTypeProvenance ?? null,
+          persistedTypeReviewed: row.assetTypeReviewed === true,
+          canonicalSecurityType: row.canonicalSecurityType ?? "insufficient_evidence",
+          securityTypePopulation: row.securityTypePopulation ?? "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+          providerCanonicalSecurityType: providerClassification.canonicalType,
+          providerSecurityTypePopulation: providerClassification.analyticsPopulation,
+          cusips: new Set<string>(), symbols: new Set<string>(), holdingRows: 0,
+          reportedValueUsd: BigInt(0), aggregateTargets: new Set<string>(), signalTargets: new Set<string>(),
+        };
+        group.cusips.add(row.cusip);
+        if (row.projectedSymbol) group.symbols.add(row.projectedSymbol);
+        group.holdingRows += Number(row.holdingRows || 0);
+        if (row.reportedValueUsd !== null) group.reportedValueUsd += BigInt(String(row.reportedValueUsd));
+        for (const target of Array.from(aggregateTargets)) {
+          if (target.split(":")[0] === row.projectedSymbol) group.aggregateTargets.add(target);
+        }
+        if (row.projectedSymbol && signalTargets.has(row.projectedSymbol)) {
+          group.signalTargets.add(row.projectedSymbol);
+        }
+        groups.set(key, group);
+    }
+  }
+  return {
+    normalizationVersion: INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION,
+    groups: Array.from(groups.values())
+      .sort((a, b) => JSON.stringify(a.tuple).localeCompare(JSON.stringify(b.tuple)))
+      .map((group) => ({
+        provider: group.tuple.provider,
+        securityType: group.tuple.securityType,
+        securityType2: group.tuple.securityType2,
+        marketSector: group.tuple.marketSector,
+        persistedAssetType: group.persistedAssetType,
+        persistedTypeProvenance: group.persistedTypeProvenance,
+        persistedTypeReviewed: group.persistedTypeReviewed,
+        canonicalSecurityType: group.canonicalSecurityType,
+        securityTypePopulation: group.securityTypePopulation,
+        providerCanonicalSecurityType: group.providerCanonicalSecurityType,
+        providerSecurityTypePopulation: group.providerSecurityTypePopulation,
+        distinctCusips: group.cusips.size,
+        distinctSymbols: group.symbols.size,
+        holdingRows: group.holdingRows,
+        reportedValueUsd: group.reportedValueUsd.toString(),
+        aggregateTargets: group.aggregateTargets.size,
+        signalTargets: group.signalTargets.size,
+      })),
+    canonicalIdentityInvalidPrimarySymbolCusips: invalidSymbolCusips.size,
+    canonicalIdentityNonCanonicalSymbolCusips: nonCanonicalSymbolCusips.size,
+    canonicalIdentityNonUsOrExchangeSpecificCusips: nonUsOrExchangeSpecificCusips.size,
+    providerClassificationContradictoryToPersistedCusips: contradictionCusips.size,
+    providerClassificationInsufficientForPersistedCusips: insufficientCusips.size,
+    reviewedAssetTypeCusips,
+    machineDerivedAssetTypeCusips,
+    staleMachineDerivedTypeCusips: staleCusips.size,
+  };
 }
 
 function percent(numerator: bigint, denominator: bigint): number | null {

@@ -77,6 +77,7 @@ function candidate(record: Record<string, unknown>): SecurityReferenceCandidate 
     securityType: asString(record.securityType),
     marketSector: asString(record.marketSector),
     securityType2: asString(record.securityType2),
+    securityDescription: asString(record.securityDescription),
     exchangeCode: asString(record.exchCode),
   };
 }

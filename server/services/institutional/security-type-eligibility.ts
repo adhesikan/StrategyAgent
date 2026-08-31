@@ -15,6 +15,7 @@ export const CANONICAL_INSTITUTIONAL_SECURITY_TYPES = [
   "mutual_fund",
   "closed_end_fund",
   "money_market_fund",
+  "other_pooled_fund",
   "adr",
   "foreign_listing",
   "preferred",
@@ -29,11 +30,16 @@ export const CANONICAL_INSTITUTIONAL_SECURITY_TYPES = [
 export type CanonicalInstitutionalSecurityType =
   (typeof CANONICAL_INSTITUTIONAL_SECURITY_TYPES)[number];
 
+/** Bump only when the deterministic provider/persisted normalization rules change. */
+export const INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION = 1 as const;
+
 export interface InstitutionalSecurityTypeEvidence {
   assetType?: string | null;
   securityType?: string | null;
   securityType2?: string | null;
   marketSector?: string | null;
+  /** Descriptive provider metadata; never used as a type signal. */
+  securityDescription?: string | null;
 }
 
 export interface InstitutionalSecurityTypeClassification {
@@ -51,6 +57,7 @@ const FUND_TYPES = new Set<CanonicalInstitutionalSecurityType>([
   "mutual_fund",
   "closed_end_fund",
   "money_market_fund",
+  "other_pooled_fund",
 ]);
 const UNSUPPORTED_TYPES = new Set<CanonicalInstitutionalSecurityType>([
   "adr",
@@ -96,6 +103,7 @@ const PERSISTED_ASSET_TYPES: Record<
   OPEN_END_FUND: "mutual_fund",
   CLOSED_END_FUND: "closed_end_fund",
   MONEY_MARKET_FUND: "money_market_fund",
+  OTHER_POOLED_FUND: "other_pooled_fund",
   ADR: "adr",
   FOREIGN_LISTING: "foreign_listing",
   PREFERRED: "preferred",
@@ -114,6 +122,10 @@ const CLASSIFICATION_RULES: Array<{
   {
     type: "money_market_fund",
     pattern: /\b(MONEY MARKET|LIQUIDITY FUND|CASH MANAGEMENT FUND)\b/,
+  },
+  {
+    type: "other_pooled_fund",
+    pattern: /\b(COLLECTIVE INVESTMENT TRUST|POOLED INVESTMENT VEHICLE|POOLED FUND)\b/,
   },
   {
     type: "closed_end_fund",
@@ -153,6 +165,10 @@ const CLASSIFICATION_RULES: Array<{
     pattern: /\b(RIGHT|RIGHTS)\b/,
   },
   {
+    type: "other",
+    pattern: /\b(DERIVATIVE|OPTION|FUTURE|FORWARD|SWAP|UNIT)\b/,
+  },
+  {
     type: "reit",
     pattern: /\b(REIT|REAL ESTATE INVESTMENT TRUST)\b/,
   },
@@ -161,6 +177,80 @@ const CLASSIFICATION_RULES: Array<{
     pattern: /\b(COMMON STOCK|COMMON SHARE|COMMON EQUITY|ORDINARY SHARE)\b/,
   },
 ];
+
+function providerClassification(
+  input: InstitutionalSecurityTypeEvidence,
+): InstitutionalSecurityTypeClassification {
+  // OpenFIGI's securityType/securityType2 are the type-bearing fields. A
+  // market sector can corroborate an equity/fund result, but "Equity" alone
+  // is intentionally not specific enough to become common stock.
+  const typeFields = [input.securityType, input.securityType2]
+    .map(normalize)
+    .filter(Boolean);
+  const evidence = [
+    ...typeFields.map((value, index) => `${index === 0 ? "securityType" : "securityType2"}:${value}`),
+    ...(normalize(input.marketSector) ? [`marketSector:${normalize(input.marketSector)}`] : []),
+  ];
+  const joinedTypeFields = typeFields.join(" | ");
+  const matches = Array.from(new Set(
+    CLASSIFICATION_RULES
+      .filter((rule) => rule.pattern.test(joinedTypeFields))
+      .map((rule) => rule.type),
+  ));
+  const marketSector = normalize(input.marketSector);
+  const hasBroadEquityType = typeFields.some((value) => value === "EQUITY" || value === "EQUITY LINKED");
+  const fixedIncomeSector = /\b(FIXED INCOME|MUNICIPAL|GOVERNMENT|CORPORATE DEBT)\b/.test(marketSector);
+  const moneyMarketSector = /\bMONEY MARKET\b/.test(marketSector);
+  const currencySector = /\bCURRENCY\b/.test(marketSector);
+  const hasContradictorySector = (
+    fixedIncomeSector && (hasBroadEquityType || matches.some((type) =>
+      type !== "debt" && type !== "other"
+    ))
+  ) || (
+    moneyMarketSector && matches.some((type) =>
+      type !== "money_market_fund" && type !== "other_pooled_fund"
+    )
+  ) || (
+    currencySector && (hasBroadEquityType || matches.some((type) => type !== "other"))
+  );
+  if (hasContradictorySector || matches.length > 1) {
+    return {
+      canonicalType: "ambiguous",
+      analyticsPopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+      evidence,
+    };
+  }
+  if (matches.length === 0) {
+    // A fixed-income market sector is an authoritative debt population only
+    // when it is not contradicted by a concrete equity-like type. A broad
+    // "Equity" label alone remains insufficient and never becomes stock.
+    if (/\bFIXED INCOME\b/.test(marketSector)) {
+      return {
+        canonicalType: "debt",
+        analyticsPopulation: "UNSUPPORTED_FOR_STOCK_ANALYTICS",
+        evidence,
+      };
+    }
+    if (/\b(CURRENCY|MONEY MARKET)\b/.test(marketSector)) {
+      return {
+        canonicalType: "other",
+        analyticsPopulation: "UNSUPPORTED_FOR_STOCK_ANALYTICS",
+        evidence,
+      };
+    }
+    return {
+      canonicalType: "insufficient_evidence",
+      analyticsPopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+      evidence,
+    };
+  }
+  const canonicalType = matches[0];
+  return {
+    canonicalType,
+    analyticsPopulation: populationForType(canonicalType),
+    evidence,
+  };
+}
 
 export function classifyInstitutionalSecurityType(
   input: InstitutionalSecurityTypeEvidence,
@@ -181,45 +271,7 @@ export function classifyInstitutionalSecurityType(
       evidence: [`assetType:${normalizedAssetType}`],
     };
   }
-
-  const evidence = [
-    input.securityType,
-    input.securityType2,
-    input.marketSector,
-  ]
-    .map(normalize)
-    .filter(Boolean);
-  const joined = evidence.join(" | ");
-  if (!joined) {
-    return {
-      canonicalType: "insufficient_evidence",
-      analyticsPopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
-      evidence: [],
-    };
-  }
-
-  const matches = Array.from(
-    new Set(
-      CLASSIFICATION_RULES.filter((rule) => rule.pattern.test(joined)).map(
-        (rule) => rule.type,
-      ),
-    ),
-  );
-  const distinct = Array.from(new Set(matches));
-  if (distinct.length !== 1) {
-    return {
-      canonicalType:
-        distinct.length > 1 ? "ambiguous" : "insufficient_evidence",
-      analyticsPopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
-      evidence,
-    };
-  }
-  const canonicalType = distinct[0];
-  return {
-    canonicalType,
-    analyticsPopulation: populationForType(canonicalType),
-    evidence,
-  };
+  return providerClassification(input);
 }
 
 export function isEligibleForStockInstitutionalAnalytics(

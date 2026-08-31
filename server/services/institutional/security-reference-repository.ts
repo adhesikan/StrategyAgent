@@ -2,7 +2,7 @@ import { and, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { institutional13fFilings, institutional13fHoldings, institutionalSecurityCandidateObservations, institutionalSecurityLookupStates, institutionalSecurityMappings, securityMaster } from "@shared/schema";
 import { resolveInstitutionalSecurity } from "./security-resolver";
-import { isSupported13fIdentityCandidate, normalizeCusip, normalizeReferenceSymbol, type SecurityReferenceCandidate, type SecurityReferenceResolution } from "./security-reference-enrichment";
+import { assessCanonicalPrimarySymbol, isSupported13fIdentityCandidate, normalizeCusip, normalizeReferenceSymbol, type SecurityReferenceCandidate, type SecurityReferenceResolution } from "./security-reference-enrichment";
 import { classifyInstitutionalSecurityType, type CanonicalInstitutionalSecurityType } from "./security-type-eligibility";
 
 export type LocalSecurityEvidence = {
@@ -59,7 +59,9 @@ function assetTypeProvenance(
   return `${provider}_asset_type:${assetType};evidence:${[...evidence].sort().join("|") || "provider_classification"}`;
 }
 const providerOf = (r: SecurityReferenceResolution) => r.candidates[0]?.provider?.trim().toLowerCase() || "openfigi";
-const providerEvidence = (r: SecurityReferenceResolution) => r.candidates.filter(c => isSupported13fIdentityCandidate(c) && normalizeReferenceSymbol(c.ticker)).map(c => ({ source: `openfigi:${candidateFingerprint(c)}`, symbol: c.ticker, status: "exact", cusip: r.cusip, figi: c.figi }));
+const providerEvidence = (r: SecurityReferenceResolution) => r.candidates
+  .filter(c => isSupported13fIdentityCandidate(c) && assessCanonicalPrimarySymbol(c).symbol)
+  .map(c => ({ source: `openfigi:${candidateFingerprint(c)}`, symbol: assessCanonicalPrimarySymbol(c).symbol, status: "exact", cusip: r.cusip, figi: c.figi }));
 const canRetire = (r: SecurityReferenceResolution) => r.outcome === "AUTHORITATIVELY_RESOLVABLE" || r.outcome === "NO_REFERENCE_AVAILABLE" || r.outcome === "AMBIGUOUS" || (r.outcome === "UNSUPPORTED" && r.candidates.length > 0);
 
 export async function persistSecurityReferenceResolution(store: InstitutionalSecurityReferenceStore, input: SecurityReferenceResolution, observedAt = new Date()): Promise<{ cusip: string | null; outcome: string; symbol: string | null; promoted: boolean }> {
@@ -91,7 +93,10 @@ export async function persistSecurityReferenceResolution(store: InstitutionalSec
     });
   }
   if (reviewed.length) return { cusip, outcome: effectiveOutcome, symbol: trusted.symbol, promoted: !!assetTypeEvidence };
-  const matches = resolution.candidates.filter(c => isSupported13fIdentityCandidate(c) && normalizeReferenceSymbol(c.ticker) === trusted.symbol);
+   const matches = resolution.candidates.filter(c =>
+     isSupported13fIdentityCandidate(c)
+     && assessCanonicalPrimarySymbol(c).symbol === trusted.symbol,
+   );
   if (!matches.length) return { cusip, outcome: "INSUFFICIENT_EVIDENCE", symbol: null, promoted: false };
   const candidate = [...matches].sort((a, b) => {
     const richness = (c: SecurityReferenceCandidate) => Number(!!c.figi) + Number(!!c.compositeFigi) + Number(!!c.shareClassFigi);

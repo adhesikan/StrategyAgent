@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenFigiClient, resetOpenFigiProviderSchedulersForTests } from "../openfigi-client";
 import {
   normalizeCusip,
+  assessCanonicalPrimarySymbol,
   resolveReviewedSecurityReference,
   sortSecurityReferenceCandidates,
   type SecurityReferenceCandidate,
@@ -34,6 +35,16 @@ describe("security reference enrichment", () => {
   it("normalizes only nine-character CUSIPs", () => {
     expect(normalizeCusip(" 67066-g104 ")).toBe("67066G104");
     expect(normalizeCusip("NVDA")).toBeNull();
+  });
+
+  it.each([
+    ["AAPL", undefined, "ACCEPTED_PROVIDER_TICKER"],
+    ["BRK.B", "BBGCLASSB", "ACCEPTED_PROVIDER_TICKER"],
+    ["BRK.B", undefined, "SHARE_CLASS_EVIDENCE_REQUIRED"],
+    ["NYSE:AAPL", undefined, "INVALID_PRIMARY_TICKER_FORMAT"],
+    ["", undefined, "MISSING_PRIMARY_TICKER"],
+  ] as const)("assesses %s without ticker heuristics", (ticker, shareClassFigi, status) => {
+    expect(assessCanonicalPrimarySymbol({ ticker, shareClassFigi })).toMatchObject({ status });
   });
 
   it("submits exact ID_CUSIP jobs and resolves a standard common stock", async () => {
@@ -71,6 +82,20 @@ describe("security reference enrichment", () => {
     const { result } = await lookup([{ data: [figi("AAA"), figi("BBB")] }]);
     expect(result[0]).toMatchObject({ outcome: "AMBIGUOUS", symbol: null });
     expect(result[0].candidates).toHaveLength(2);
+  });
+
+  it("keeps an exchange-qualified provider ticker out of canonical identity evidence", () => {
+    const result = resolveReviewedSecurityReference("67066G104", [], [{
+      provider: "openfigi",
+      ticker: "NYSE:AAPL",
+      figi: "BBGAAPL",
+      securityType: "Common Stock",
+    }]);
+    expect(result).toMatchObject({
+      outcome: "UNSUPPORTED",
+      symbol: null,
+    });
+    expect(result.candidates).toHaveLength(1);
   });
 
   it("keeps provider-only symbol ambiguity distinct from an exact-evidence conflict", () => {

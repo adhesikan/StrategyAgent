@@ -14,6 +14,7 @@ import {
   type InstitutionalSecurityTypeClassification,
   type SecurityAnalyticsPopulation,
 } from "./security-type-eligibility";
+import { INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION } from "./security-type-eligibility";
 
 export type ReferencePlanOutcome =
   | "authoritatively_resolvable" | "conflicting" | "ambiguous" | "unsupported"
@@ -134,6 +135,33 @@ export interface AssetTypeCoverageSummary {
   projectedAssetTypePopulated: number;
   projectedAssetTypeInsufficient: number;
   classifications: AssetTypeCoverageMetric[];
+}
+
+export interface AssetTypeCorrectionCoverage {
+  trustedCusips: number;
+  assetTypePopulated: number;
+  stockEligibleCusips: number;
+  separateFundCusips: number;
+  unsupportedCusips: number;
+  insufficientCusips: number;
+}
+
+export interface AssetTypeCorrectionAction {
+  cusip: string;
+  currentAssetType: string;
+  projectedAssetType: CanonicalInstitutionalSecurityType;
+  providerEvidence: string[];
+  symbol: string | null;
+  preservesTrustedIdentity: true;
+}
+
+export interface InstitutionalAssetTypeCorrectionPlan {
+  version: 1;
+  normalizationVersion: typeof INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION;
+  before: AssetTypeCorrectionCoverage;
+  projected: AssetTypeCorrectionCoverage;
+  actions: AssetTypeCorrectionAction[];
+  planHash: string;
 }
 
 const outcomeOrder: ReferencePlanOutcome[] = [
@@ -316,6 +344,89 @@ export function assetTypeCoverageSummary(
         holdingRows: group.holdingRows,
         reportedValueUsd: group.reportedValueUsd.toString(),
       })),
+  };
+}
+
+function correctionCoverage(
+  rows: readonly EligibleReferencePopulationRow[],
+  states: ReadonlyMap<string | null, TrustedReferenceState>,
+  resolutions: ReadonlyMap<string | null, SecurityReferenceResolution>,
+  projected: boolean,
+): AssetTypeCorrectionCoverage {
+  const result: AssetTypeCorrectionCoverage = {
+    trustedCusips: 0, assetTypePopulated: 0, stockEligibleCusips: 0,
+    separateFundCusips: 0, unsupportedCusips: 0, insufficientCusips: 0,
+  };
+  for (const row of rows) {
+    const state = states.get(normalizeCusip(row.cusip)) ?? { cusip: row.cusip, evidence: [] };
+    if (!stateIsTrusted(state)) continue;
+    result.trustedCusips++;
+    const current = currentAssetTypeClassification(row, state);
+    const provider = providerAssetTypeClassification(row, state, resolutions.get(normalizeCusip(row.cusip)));
+    const classification = projected && !state.assetTypeReviewed && isPopulatedAssetType(provider)
+      ? provider
+      : current;
+    if (isPopulatedAssetType(classification)) result.assetTypePopulated++;
+    if (classification.analyticsPopulation === "ELIGIBLE_STOCK_ANALYTICS") result.stockEligibleCusips++;
+    else if (classification.analyticsPopulation === "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS") result.separateFundCusips++;
+    else if (classification.analyticsPopulation === "UNSUPPORTED_FOR_STOCK_ANALYTICS") result.unsupportedCusips++;
+    else result.insufficientCusips++;
+  }
+  return result;
+}
+
+/**
+ * Builds a read-only correction artifact for machine-derived persisted types.
+ * It never changes identity mappings and intentionally has no APPLY companion.
+ */
+export function buildInstitutionalAssetTypeCorrectionPlan(input: {
+  population: readonly EligibleReferencePopulationRow[];
+  trustedState: readonly TrustedReferenceState[];
+  providerResolutions?: readonly SecurityReferenceResolution[];
+}): InstitutionalAssetTypeCorrectionPlan {
+  const states = new Map(input.trustedState.map((state) => [normalizeCusip(state.cusip), state]));
+  const resolutions = new Map((input.providerResolutions ?? []).map((resolution) => [normalizeCusip(resolution.cusip), resolution]));
+  const actions = input.population
+    .map((row) => {
+      const state = states.get(normalizeCusip(row.cusip)) ?? { cusip: row.cusip, evidence: [] };
+      if (!stateIsTrusted(state) || state.assetTypeReviewed) return null;
+      const currentValue = state.currentAssetType ?? row.currentAssetType;
+      if (!currentValue?.trim()) return null;
+      const current = currentAssetTypeClassification(row, state);
+      const provider = providerAssetTypeClassification(row, state, resolutions.get(normalizeCusip(row.cusip)));
+      if (!isPopulatedAssetType(provider) || current.canonicalType === provider.canonicalType) return null;
+      const providerEvidence = provider.evidence.length > 0
+        ? [...provider.evidence].sort()
+        : ["provider_classification"];
+      const symbol = [...(row.trustedSymbols ?? []), ...state.evidence.map((item) => item.symbol ?? "")]
+        .map((value) => value.trim().toUpperCase()).find(Boolean) ?? null;
+      return {
+        cusip: row.cusip,
+        currentAssetType: currentValue.trim(),
+        projectedAssetType: provider.canonicalType,
+        providerEvidence,
+        symbol,
+        preservesTrustedIdentity: true as const,
+      };
+    })
+    .filter((action): action is AssetTypeCorrectionAction => action !== null)
+    .sort((a, b) => a.cusip.localeCompare(b.cusip));
+  const before = correctionCoverage(input.population, states, resolutions, false);
+  const projected = correctionCoverage(input.population, states, resolutions, true);
+  const canonical = {
+    version: 1 as const,
+    normalizationVersion: INSTITUTIONAL_SECURITY_TYPE_NORMALIZATION_VERSION,
+    before,
+    projected,
+    actions,
+    population: input.population.map((row) => ({
+      cusip: normalizeCusip(row.cusip) ?? row.cusip.trim().toUpperCase(),
+      currentAssetType: row.currentAssetType ?? null,
+    })).sort((a, b) => a.cusip.localeCompare(b.cusip)),
+  };
+  return {
+    ...canonical,
+    planHash: createHash("sha256").update(stableJson(canonical)).digest("hex"),
   };
 }
 

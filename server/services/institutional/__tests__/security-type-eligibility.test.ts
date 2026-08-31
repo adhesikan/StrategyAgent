@@ -21,6 +21,7 @@ describe("institutional security type eligibility", () => {
     ["Open-End Fund", "mutual_fund"],
     ["Closed-End Fund", "closed_end_fund"],
     ["Money Market Fund", "money_market_fund"],
+    ["Collective Investment Trust", "other_pooled_fund"],
   ])("keeps %s in separate fund analytics", (securityType, canonicalType) => {
     const result = classifyInstitutionalSecurityType({ securityType });
     expect(result.canonicalType).toBe(canonicalType);
@@ -39,6 +40,7 @@ describe("institutional security type eligibility", () => {
     ["Corporate Bond", "debt"],
     ["Warrant", "warrant"],
     ["Rights", "rights"],
+    ["Derivative", "other"],
   ])("excludes %s from stock analytics", (securityType, canonicalType) => {
     const result = classifyInstitutionalSecurityType({ securityType });
     expect(result.canonicalType).toBe(canonicalType);
@@ -68,5 +70,46 @@ describe("institutional security type eligibility", () => {
       canonicalType: "common_stock",
       analyticsPopulation: "ELIGIBLE_STOCK_ANALYTICS",
     });
+  });
+
+  it("does not use descriptive text or a broad market sector as type evidence", () => {
+    expect(classifyInstitutionalSecurityType({
+      marketSector: "Equity",
+      securityDescription: "Common shares of a technology company",
+    }).canonicalType).toBe("insufficient_evidence");
+    expect(classifyInstitutionalSecurityType({
+      securityType: "Common Stock",
+      marketSector: "Fixed Income",
+      securityDescription: "Common stock",
+    }).analyticsPopulation).toBe("INSUFFICIENT_SECURITY_TYPE_EVIDENCE");
+  });
+
+  it("requires provider fields to agree when they carry different concrete types", () => {
+    expect(classifyInstitutionalSecurityType({
+      securityType: "ETF",
+      securityType2: "Common Stock",
+      marketSector: "Equity",
+    })).toMatchObject({
+      canonicalType: "ambiguous",
+      analyticsPopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+    });
+  });
+
+  it("classifies a market-sector-only debt observation as unsupported", () => {
+    expect(classifyInstitutionalSecurityType({ marketSector: "Fixed Income" })).toMatchObject({
+      canonicalType: "debt",
+      analyticsPopulation: "UNSUPPORTED_FOR_STOCK_ANALYTICS",
+    });
+  });
+
+  it("keeps agreeing debt and money-market tuples deterministic", () => {
+    expect(classifyInstitutionalSecurityType({
+      securityType: "Corporate Bond",
+      marketSector: "Fixed Income",
+    }).canonicalType).toBe("debt");
+    expect(classifyInstitutionalSecurityType({
+      securityType: "Money Market Fund",
+      marketSector: "Money Market",
+    }).canonicalType).toBe("money_market_fund");
   });
 });

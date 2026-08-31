@@ -4,13 +4,14 @@ import { db, pool } from "../server/db";
 import { sql } from "drizzle-orm";
 import { runCli } from "../server/cli-runtime";
 import {
-  applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, categoryCoverageMetrics, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, rankCoverageRootCauses,
+  applyInstitutionalCoveragePlan, assertReadOnlySql, buildActionableCoveragePlan, categoryCoverageMetrics, classifyCusipEvidence, countCanonicalStockEligibleInputs, coverageTotals, providerNormalizationAudit, rankCoverageRootCauses,
   securityTypeCoverageMetrics,
   type CoveragePlan,
 } from "../server/services/institutional/institutional-coverage-analyzer";
 import { classifyInstitutionalSecurityType } from "../server/services/institutional/security-type-eligibility";
 import { createCoveragePostgresAdapter } from "../server/services/institutional/institutional-coverage-postgres-adapter";
 import { canonicalSecurityTypeStateQuery, reconcileCanonicalStockEligibility } from "../server/services/institutional/canonical-security-state";
+import { buildInstitutionalAssetTypeCorrectionPlan } from "../server/services/institutional/security-reference-enrichment-planner";
 import { recomputeAggregateForSymbol } from "../server/services/institutional/ingestion-service";
 import { rebuildInstitutionalSignalForSymbol } from "../server/services/institutional/signal-engine";
 import { runIntelligencePrecomputation } from "../server/services/intelligence-orchestrator";
@@ -49,13 +50,25 @@ all_history AS (
  FROM institutional_security_mappings GROUP BY cusip
 ), master_evidence AS (
  SELECT cusip,MAX(asset_type) asset_type,
-   JSONB_AGG(JSONB_BUILD_OBJECT('source','security_master','symbol',ticker,'status',review_status,'assetType',asset_type)) master_evidence
+    BOOL_OR(review_status='reviewed' AND asset_type IS NOT NULL) asset_type_reviewed,
+    MAX(mapping_method) mapping_method,
+    JSONB_AGG(JSONB_BUILD_OBJECT('source','security_master','symbol',ticker,'status',review_status,'assetType',asset_type,'mappingMethod',mapping_method)) master_evidence
  FROM security_master GROUP BY cusip
-) SELECT a.*,l.latest_holding_rows,l.latest_null_value_rows,l.latest_reported_value_usd,m.mapping_evidence,s.asset_type,s.master_evidence
+ ), provider_evidence AS (
+  SELECT cusip,JSONB_AGG(JSONB_BUILD_OBJECT(
+    'provider',provider,'ticker',ticker,'figi',figi,'compositeFigi',composite_figi,
+    'shareClassFigi',share_class_figi,'securityType',security_type,'securityType2',security_type2,
+    'marketSector',market_sector,'securityDescription',name,'exchangeCode',exchange_code
+  ) ORDER BY candidate_fingerprint) provider_candidates
+  FROM institutional_security_candidate_observations
+  WHERE is_current=TRUE GROUP BY cusip
+ ) SELECT a.*,l.latest_holding_rows,l.latest_null_value_rows,l.latest_reported_value_usd,
+   m.mapping_evidence,s.asset_type,s.asset_type_reviewed,s.mapping_method,s.master_evidence,p.provider_candidates
  FROM all_history a
  LEFT JOIN latest_history l USING(cusip)
  LEFT JOIN mapping_evidence m USING(cusip)
  LEFT JOIN master_evidence s USING(cusip)
+  LEFT JOIN provider_evidence p USING(cusip)
  ORDER BY a.cusip`;
 
 /** Kept separate so an empty eligible universe still reports the newest filing period. */
@@ -118,6 +131,10 @@ async function loadCoverage(executor: Executor) {
     nullValueRows: Number(r.null_value_rows ?? 0), latestQuarter: r.latest_quarter ? String(r.latest_quarter) : null,
     periods: Array.isArray(r.periods) ? r.periods.map(String) : [],
     sourceEvidence: [...(r.holding_evidence ?? []), ...(r.mapping_evidence ?? []), ...(r.master_evidence ?? [])],
+     providerCandidates: Array.isArray(r.provider_candidates) ? r.provider_candidates : [],
+     persistedAssetType: r.asset_type === null || r.asset_type === undefined ? null : String(r.asset_type),
+     assetTypeProvenance: r.mapping_method ? String(r.mapping_method) : null,
+     assetTypeReviewed: r.asset_type_reviewed === true,
     }),
     canonicalSecurityType: classifyInstitutionalSecurityType({ assetType: r.asset_type }).canonicalType,
     securityTypePopulation: classifyInstitutionalSecurityType({ assetType: r.asset_type }).analyticsPopulation,
@@ -139,7 +156,29 @@ async function loadCoverage(executor: Executor) {
   if (!canonicalReconciliation.reconciled) {
     throw new Error(`CANONICAL_ELIGIBILITY_RECONCILIATION_FAILED:${JSON.stringify(canonicalReconciliation)}`);
   }
-  return { rows, classifications, before, plan, canonicalReconciliation };
+  const normalizationAudit = providerNormalizationAudit(
+    classifications,
+    new Set(rows.aggregateTargets.map(row => `${row.symbol}:${row.period}`)),
+    new Set(rows.signalTargets.map(row => String(row.symbol))),
+  );
+  const correctionPlan = buildInstitutionalAssetTypeCorrectionPlan({
+    population: classifications.map((row) => ({
+      cusip: row.cusip,
+      holdingRows: row.holdingRows,
+      reportedValueUsd: row.reportedValueUsd === null ? null : String(row.reportedValueUsd),
+      trustedSymbols: row.projectedSymbol ? [row.projectedSymbol] : [],
+      currentAssetType: row.persistedAssetType ?? null,
+    })),
+    trustedState: classifications.map((row) => ({
+      cusip: row.cusip,
+      trusted: row.category === "TRUSTED",
+      evidence: row.sourceEvidence,
+      currentAssetType: row.persistedAssetType ?? null,
+      assetTypeReviewed: row.assetTypeReviewed,
+      candidateEvidence: row.providerCandidates ?? [],
+    })),
+  });
+  return { rows, classifications, before, plan, canonicalReconciliation, normalizationAudit, correctionPlan };
 }
 export async function loadInstitutionalCoveragePlan(executor: Executor): Promise<CoveragePlan> {
   return (await loadCoverage(executor)).plan;
@@ -163,7 +202,7 @@ async function main() {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
     return loadCoverage(tx as unknown as Executor);
   });
-  const { rows: data, classifications, before, plan, canonicalReconciliation } = rows;
+   const { rows: data, classifications, before, plan, canonicalReconciliation, normalizationAudit, correctionPlan } = rows;
   const latestClassifications = data.evidence
     .filter((r) => Number(r.latest_holding_rows ?? 0) > 0)
      .map((r) => ({
@@ -233,7 +272,22 @@ async function main() {
       latestTrustedCusips: latestQuarter.reliablyMappedCusips,
       latestNullValueCusips: latestQuarter.nullValueCusips,
     },
-    categories: categoryMetrics, securityTypes: securityTypeMetrics, rootCauseRanking: rankCoverageRootCauses(categoryMetrics),
+    categories: categoryMetrics, securityTypes: securityTypeMetrics,
+    providerNormalization: normalizationAudit,
+    assetTypeCorrectionPlan: {
+      planHash: correctionPlan.planHash,
+      actionCount: correctionPlan.actions.length,
+      before: correctionPlan.before,
+      projected: correctionPlan.projected,
+      actions: correctionPlan.actions.map((action) => ({
+        cusip: action.cusip,
+        currentAssetType: action.currentAssetType,
+        projectedAssetType: action.projectedAssetType,
+        symbol: action.symbol,
+        preservesTrustedIdentity: action.preservesTrustedIdentity,
+      })),
+    },
+    rootCauseRanking: rankCoverageRootCauses(categoryMetrics),
     materialization: plan.affected, plan }, null, 2));
 }
 if (!process.env.VITEST) {

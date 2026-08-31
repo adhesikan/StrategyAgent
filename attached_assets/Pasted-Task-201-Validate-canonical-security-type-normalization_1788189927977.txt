@@ -1,0 +1,341 @@
+Task #201 — Validate canonical security-type normalization before institutional remediation APPLY
+
+DO NOT perform production writes.
+DO NOT run remediation APPLY.
+DO NOT run ingestion.
+DO NOT run migrations in production.
+DO NOT change feature flags.
+DO NOT manually repair tickers or CUSIPs.
+DO NOT create ticker allowlists/blocklists.
+
+CONTEXT
+
+Task #200 successfully fixed the analyzer's missing asset_type projection.
+
+The production analyzer now generates:
+
+aggregates:
+  expected: 3066
+  present: 141
+  missing: 2925
+  inserts: 2925
+  updates: 141
+
+signals:
+  expected: 1474
+  present: 4
+  missing: 1470
+  inserts: 1470
+  updates: 4
+
+snapshot refresh:
+  sector_intelligence_snapshots
+  theme_intelligence_snapshots
+
+planHash:
+140fa7cfe321f575e2e556e870993043c5f471b631c9e6220df1e19e3298ff26
+
+DO NOT APPLY THAT PLAN.
+
+SYSTEMIC CONCERN
+
+The remediation output contains instruments that strongly indicate the
+canonical asset-type normalization may be over-classifying non-stock
+instruments as stock eligible.
+
+Examples observed in the analyzer output include symbols such as:
+
+PRDGX
+PDGIX
+TRAIX
+TRBCX
+TBCIX
+RPMGX
+PNAIX
+PRNHX
+PRJIX
+TIDDX
+PRGSX
+TRBUX
+PRTXX
+TRMIX
+PRDMX
+RPSIX
+TQGIX
+TRREX
+RYPFX
+RYOTX
+RETSX
+RYOIX
+RYTHX
+RYFNX
+
+There are also canonical symbols such as:
+
+RPTUSD
+2RM
+87M
+WORXGBP
+
+These examples are evidence of a possible systemic taxonomy or primary-symbol
+problem only.
+
+DO NOT special-case them.
+DO NOT manually classify them.
+DO NOT build a ticker suffix rule.
+DO NOT infer type from symbols ending in X.
+DO NOT repair individual securities.
+
+OBJECTIVE
+
+Audit the complete authoritative provider → persisted security_master →
+Task #196 canonical security type → stock eligibility pipeline.
+
+Determine whether OpenFIGI/reference evidence is being normalized
+incorrectly or whether another field is being mistaken for asset type.
+
+TRACE
+
+For the entire trusted 3,206-CUSIP population, inspect:
+
+provider response fields actually used
+→ persisted normalized reference evidence
+→ security_master.asset_type
+→ canonical security-type normalization
+→ Task #196 population
+→ analyzer eligibility
+→ aggregate/signal target generation
+
+Review the exact authoritative provider fields used by Task #197.
+
+Specifically determine whether:
+
+- OpenFIGI securityType is confused with marketSector
+- securityType2 is ignored or incorrectly prioritized
+- securityDescription is being treated as type
+- mutual funds/open-end funds are being normalized to common_stock
+- ETFs/ETPs are misclassified
+- closed-end funds are misclassified
+- money-market funds are misclassified
+- preferreds are misclassified
+- ADRs/foreign listings are misclassified
+- exchange-specific symbols are accepted as canonical StockMetrics symbols
+- composite/global/primary ticker semantics are not distinguished
+- currency/exchange suffixes are being incorporated into canonical symbols
+- FIGI share-class identities are being mistaken for operating-company common equity
+- provider-null or contradictory classification is defaulting to stock
+- previously persisted incorrect asset_type values survived Task #197 because
+  non-null values were intentionally preserved
+
+IMPORTANT
+
+Task #197 intentionally preserved existing non-null asset_type values.
+Therefore inspect whether historical values populated before the canonical
+normalization logic are stale or incorrectly classified.
+
+Do not overwrite reviewed human classifications.
+
+POPULATION-WIDE READ-ONLY AUDIT
+
+Create/reuse one aggregate-only analyzer that reports the complete trusted
+population grouped by:
+
+1. raw provider classification tuple used for normalization
+2. persisted security_master.asset_type
+3. Task #196 canonical security type
+4. Task #196 analytics population
+
+For each group report only:
+
+- distinct CUSIPs
+- distinct canonical symbols
+- effective holding rows
+- reported USD value
+- downstream aggregate targets
+- downstream signal targets
+
+Also report:
+
+canonical identity but invalid/missing primary symbol
+canonical identity with non-US/exchange-specific symbol form
+provider classification contradictory to persisted asset_type
+provider classification insufficient for existing persisted asset_type
+persisted type provenance/source/version
+reviewed asset types separately from machine-derived asset types
+
+Do not dump thousands of individual securities.
+
+NORMALIZATION REQUIREMENT
+
+Build or correct ONE deterministic authoritative normalization layer.
+
+It must distinguish at minimum:
+
+ELIGIBLE_STOCK_ANALYTICS:
+- operating-company common stock
+- REIT common equity where supported by authoritative evidence
+
+ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS:
+- ETF / ETP
+- mutual/open-end fund
+- closed-end fund
+- money-market fund
+- other pooled investment vehicle
+
+UNSUPPORTED_FOR_STOCK_ANALYTICS:
+- ADR if Task #196 policy remains unsupported
+- preferred
+- debt/bond/note
+- warrant
+- right
+- unit where common-equity identity cannot be isolated
+- derivative
+- other unsupported instrument
+
+INSUFFICIENT_SECURITY_TYPE_EVIDENCE:
+- unknown
+- contradictory
+- incomplete
+- provider classification that cannot deterministically map
+
+Fail closed.
+
+Never infer common_stock merely from:
+- presence of ticker
+- exact CUSIP identity
+- security name
+- positive shares
+- being reported on 13F
+- exchange
+- symbol format
+
+PRIMARY SYMBOL REQUIREMENT
+
+Separately validate canonical ticker selection.
+
+A trusted security identity is not sufficient to make every provider ticker
+a StockMetrics canonical stock symbol.
+
+Define deterministic canonical symbol semantics using authoritative provider
+fields already licensed/persistable by the system.
+
+Do not create ticker heuristics.
+
+If authoritative evidence cannot establish the canonical StockMetrics symbol,
+fail closed rather than create stock analytics under a questionable symbol.
+
+STALE TYPE CORRECTION
+
+If machine-derived persisted asset_type values are proven inconsistent with
+the authoritative normalization:
+
+- produce a deterministic correction planner
+- preserve reviewed/manual asset_type values
+- preserve provenance
+- calculate before/projected counts
+- hash the plan
+- read-only by default
+- guarded APPLY architecture consistent with Tasks #191/#197/#198
+- DO NOT execute it in production
+
+Do not re-query OpenFIGI if sufficient persisted reference evidence exists.
+
+If provider lookup is genuinely required for a subset, quantify that subset
+first and reuse existing provider infrastructure.
+
+INVARIANTS
+
+Task #189 remains identity trust authority.
+
+Task #196 remains analytics eligibility authority.
+
+Identity validity and analytics eligibility remain independent.
+
+Funds may remain valid trusted identities while being excluded from stock
+analytics.
+
+A type correction must not destroy trusted identity.
+
+Canonical safeguards remain:
+
+- is_effective=true filings
+- positive shares
+- non-PRN
+- non-put/call
+- reported_value canonical USD
+- QoQ by CUSIP
+- multiple CUSIPs may map to one canonical symbol
+- rejected/reviewed protections
+- no guessed mappings
+
+TESTS
+
+Add systemic fixtures for:
+
+common stock
+REIT
+ETF
+mutual/open-end fund
+closed-end fund
+money-market fund
+ADR
+preferred
+debt
+warrant/right
+foreign listing
+contradictory provider classification
+missing provider classification
+reviewed asset type
+machine-derived stale asset type
+trusted identity with no acceptable canonical primary symbol
+
+Prove:
+
+- fund identities remain trusted but never create stock aggregates/signals
+- common stocks and eligible REITs do
+- unsupported/insufficient fail closed
+- stale machine classifications can be corrected
+- reviewed classifications cannot be silently overwritten
+- canonical symbol selection fails closed when primary-symbol evidence is
+  insufficient
+- dry-run is zero-write
+- plan hash deterministic
+
+Run:
+
+- focused security-type tests
+- provider normalization tests
+- Task #196 tests
+- Task #197/#198 tests
+- Task #200 analyzer reconciliation tests
+- aggregate/signal tests
+- full institutional suite
+- smoke
+- regression
+- integration
+- security
+- production build
+- git diff --check
+
+RETURN
+
+ROOT CAUSE
+AUTHORITATIVE PROVIDER FIELDS
+CURRENT NORMALIZATION TABLE
+CORRECTED NORMALIZATION TABLE IF REQUIRED
+PRIMARY SYMBOL ROOT CAUSE
+POPULATION-WIDE IMPACT
+BEFORE/PROJECTED STOCK-ELIGIBLE COUNTS
+FUND/UNSUPPORTED/INSUFFICIENT COUNTS
+STALE MACHINE-DERIVED TYPE COUNT
+REVIEWED TYPE COUNT
+FIX
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+EXACT NEXT PRODUCTION READ-ONLY COMMAND
+
+No production writes.
+No remediation APPLY.
+No enrichment APPLY.
+No ingestion.

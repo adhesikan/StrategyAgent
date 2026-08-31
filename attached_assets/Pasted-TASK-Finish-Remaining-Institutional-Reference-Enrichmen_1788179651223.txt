@@ -1,0 +1,103 @@
+TASK — Finish Remaining Institutional Reference Enrichment Without Reprocessing Terminal Outcomes
+
+Current production state after successful guarded APPLY cycles:
+
+trusted CUSIPs: 3206
+holding rows: 30058
+known reported value USD: 1185320174491
+
+Latest APPLY:
+promoted: 100
+unresolved: 9900
+rate_limited: 0
+conflicting: 0
+
+Latest dry-run before that APPLY showed:
+ambiguous: 7054
+unsupported: 740
+no_reference: 1074
+provider_failed: 1032
+not_processed: 1607
+
+The current uncursored APPLY model repeatedly re-queries thousands of already-known terminal unresolved CUSIPs, causing long 10,000-CUSIP runs just to reach a shrinking tail of not_processed identities.
+
+OBJECTIVE
+
+Modify the population planner so already-classified terminal unresolved identities are not repeatedly placed ahead of never-processed CUSIPs during subsequent enrichment backfill runs.
+
+Do NOT weaken resolver trust semantics.
+Do NOT auto-promote ambiguous/unsupported/no-reference/provider-failed identities.
+Do NOT add fuzzy matching.
+Do NOT APPLY anything in this task.
+
+Required behavior:
+
+1. Reuse persisted lookup-state / candidate-history from Task #191 where safe.
+
+2. Define retryability:
+   - ambiguous: terminal unless reference evidence changes
+   - unsupported: terminal unless provider/reference version changes
+   - no_reference: terminal for this backfill unless explicitly refreshed
+   - provider_failed: retryable
+   - rate_limited: retryable
+   - not_processed: highest priority
+   - reviewed/rejected protections remain unchanged
+
+3. Backfill selection priority:
+   a. never processed / not_processed
+   b. retryable provider_failed/rate_limited
+   c. terminal unresolved only when explicit refresh is requested
+
+4. Default uncursored dry-run/APPLY must not repeatedly query terminal unresolved identities merely because they sort before the remaining population.
+
+5. Preserve:
+   - deterministic population ordering
+   - fresh plan hash
+   - exact ID_CUSIP
+   - zero-write dry run
+   - guarded APPLY
+   - production environment guards
+   - Task #189 resolver as sole trust authority
+
+6. Add aggregate reporting:
+   - skipped_terminal_ambiguous
+   - skipped_terminal_unsupported
+   - skipped_terminal_no_reference
+   - retryable_provider_failed
+   - retryable_rate_limited
+   - never_processed
+   - plannedLookups
+   - promotable
+
+7. Add an explicit refresh-terminal flag only if needed. Default must NOT refresh terminal unresolved identities.
+
+8. Tests:
+   - not_processed prioritized over ambiguous
+   - terminal ambiguous skipped
+   - terminal unsupported skipped
+   - terminal no_reference skipped
+   - provider_failed retried
+   - rate_limited retried
+   - reviewed/rejected protected
+   - deterministic plan hash
+   - dry run zero writes
+   - apply guard preserved
+   - future newly arriving CUSIPs enter not_processed/high-priority path
+
+9. Run focused tests, full institutional regression, build, architecture review.
+
+10. No production writes. No APPLY. No feature-flag activation.
+
+Return:
+ROOT CAUSE
+SELECTION CHANGE
+RETRYABILITY RULES
+TERMINAL-SKIP RULES
+PLAN-HASH IMPACT
+TEST RESULTS
+BUILD RESULT
+ARCH REVIEW
+COMMIT SHA
+EXACT NEXT PRODUCTION DRY-RUN COMMAND
+
+STOP.

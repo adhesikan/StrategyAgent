@@ -1,0 +1,167 @@
+Task #199 — Diagnose silent production CLI termination after Task #197/#198
+
+DO NOT perform any production write.
+DO NOT run remediation APPLY.
+DO NOT run ingestion.
+DO NOT modify production data.
+DO NOT request or print DATABASE_URL, API keys, tokens, or secrets.
+
+PROBLEM
+
+After deploying Tasks #197/#198, Railway production shell commands that
+previously produced JSON now terminate silently.
+
+Examples:
+
+1. Asset-type APPLY:
+
+npx tsx scripts/enrich-institutional-security-references.ts \
+  --apply \
+  --max-cusips 4 \
+  --plan-hash 214f90792ffd7c964abd04d3a99d2271f84ddce90baf695e22ac0881f7cc6a0b
+
+Output:
+npm warn config production Use `--omit=dev` instead.
+then immediate return to Railway shell.
+
+2. Asset-type dry run:
+
+npx tsx scripts/enrich-institutional-security-references.ts \
+  --dry-run \
+  --max-cusips 4
+
+Same behavior.
+
+3. Institutional analyzer:
+
+npx tsx scripts/analyze-institutional-coverage.ts
+
+Same behavior.
+
+Even this:
+
+set +e
+npx tsx scripts/analyze-institutional-coverage.ts 2>&1
+RC=$?
+printf '\nANALYZER_EXIT_CODE=%s\n' "$RC"
+
+returns directly to the Railway shell without printing ANALYZER_EXIT_CODE.
+
+IMPORTANT
+
+Before the latest deployment these scripts executed normally and emitted
+large JSON reports in Railway production.
+
+The last successful Task #198 production dry run showed:
+
+planHash:
+214f90792ffd7c964abd04d3a99d2271f84ddce90baf695e22ac0881f7cc6a0b
+
+assetTypePopulated: 3202
+assetTypeMissing: 4
+projectedAssetTypePopulated: 3206
+projectedAssetTypeInsufficient: 0
+plannedLookups: 4
+plannedWrites: 4
+promotable: 4
+
+The subsequent APPLY produced no completion output.
+
+Therefore production state is UNKNOWN:
+the four asset-type writes may or may not have committed.
+
+OBJECTIVE
+
+Find the systemic reason these CLI scripts terminate the Railway shell
+without emitting their normal output.
+
+FIRST inspect code only.
+
+Review:
+
+- scripts/enrich-institutional-security-references.ts
+- scripts/analyze-institutional-coverage.ts
+- shared modules changed by Tasks #197/#198
+- CLI main()/entrypoint invocation
+- process.exit / process.exitCode usage
+- uncaughtException/unhandledRejection handlers
+- stdout/stderr handling
+- logger behavior
+- database initialization/cleanup
+- connection pool shutdown
+- signal handlers
+- any code capable of terminating the parent/process group
+- package scripts / tsx invocation changes
+- module import side effects
+- production-environment branching
+- Task #197/#198 diffs
+
+Determine why BOTH independent CLI scripts now exhibit the same behavior.
+
+Do not assume the APPLY succeeded.
+
+PRODUCTION STATE VERIFICATION
+
+Create/use the smallest possible READ-ONLY verification path that directly
+queries canonical security_master state and reports aggregate counts only:
+
+trusted CUSIPs
+asset_type populated
+asset_type missing
+
+Also report the Task #196 eligibility population counts if available.
+
+No ticker-by-ticker output.
+No CUSIP-by-CUSIP output.
+No writes.
+
+If an existing repository function can do this safely, reuse it rather than
+building unnecessary diagnostics.
+
+FIX
+
+If this is a code regression, make the smallest systemic correction so:
+
+- CLI scripts execute normally under Railway shell
+- stdout JSON is emitted
+- errors reach stderr
+- exit status is observable
+- database resources close normally
+- dry-run remains zero-write
+- APPLY safeguards remain unchanged
+- plan hashing remains unchanged
+- Task #189/#196/#197/#198 semantics remain unchanged
+
+TEST
+
+Add regression coverage proving CLI entrypoints execute and emit output
+instead of terminating silently.
+
+Run:
+- focused CLI tests
+- security-reference tests
+- institutional analyzer tests
+- Task #196/#197/#198 tests
+- full institutional suite
+- smoke
+- regression
+- integration
+- security
+- production build
+- git diff --check
+
+RETURN
+
+ROOT CAUSE
+WHY BOTH CLI SCRIPTS WERE AFFECTED
+WHETHER TASK #198 CAUSED THE REGRESSION
+FIX
+PRODUCTION DATA STATE: VERIFIED / UNKNOWN
+READ-ONLY VERIFICATION METHOD
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER: YES/NO
+EXACT NEXT RAILWAY PRODUCTION READ-ONLY COMMAND
+
+Do not execute production commands.
+Do not perform any production write.

@@ -48,7 +48,7 @@ describe("reference enrichment CLI arguments", () => {
   });
   it("has valid evidence select syntax and aggregates rejection blocks from both local tables", () => {
     expect(evidenceQuery).not.toMatch(/evidence\s*,\s*FROM/i);
-    expect(evidenceQuery).toMatch(/blocked\s+FROM/i);
+    expect(evidenceQuery).toMatch(/blocked\s*,/i);
     expect(evidenceQuery).toContain("mapping_status");
     expect(evidenceQuery).toContain("review_status");
     expect(evidenceQuery).toContain("= 'rejected'");

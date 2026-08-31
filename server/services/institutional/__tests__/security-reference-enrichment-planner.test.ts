@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveReviewedSecurityReference } from "../security-reference-enrichment";
 import {
-  buildInstitutionalSecurityReferencePlan, referenceApplyGuard, referencePlanAggregateSummary, referencePlanChunkSummary,
+  assetTypeCoverageSummary, buildInstitutionalSecurityReferencePlan, referenceApplyGuard, referencePlanAggregateSummary, referencePlanChunkSummary,
   selectInstitutionalReferenceLookupCusips,
 } from "../security-reference-enrichment-planner";
 
@@ -233,5 +233,114 @@ describe("institutional security reference enrichment planner", () => {
     });
     expect(changedPopulation.planHash).not.toBe(first.planHash);
     expect(changedProvider.planHash).not.toBe(first.planHash);
+  });
+
+  it("backfills trusted missing asset types and reports projected coverage", () => {
+    const providerCandidate = {
+      provider: "openfigi",
+      ticker: "ACME",
+      figi: "BBGACME",
+      securityType: "Common Stock",
+      marketSector: "Equity",
+    };
+    const population = [{
+      cusip: "000000001",
+      holdingRows: 3,
+      reportedValueUsd: "900",
+      trustedSymbols: ["ACME"],
+      currentAssetType: null,
+    }];
+    const trustedState = [{
+      cusip: "000000001",
+      evidence: [{ source: "institutional_mapping", cusip: "000000001", symbol: "ACME", status: "exact" as const }],
+      trusted: true,
+      currentAssetType: null,
+      candidateEvidence: [providerCandidate],
+    }];
+    const selected = selectInstitutionalReferenceLookupCusips({
+      population,
+      trustedState,
+      maxCusips: 1,
+      includeAssetTypeBackfill: true,
+    });
+    expect(selected).toEqual(["000000001"]);
+    const plan = buildInstitutionalSecurityReferencePlan({
+      population,
+      trustedState,
+      providerResolutions: [],
+      plannedLookupCusips: selected,
+      maxCusips: 1,
+      includeAssetTypeBackfill: true,
+    });
+    expect(plan.actions[0]).toMatchObject({
+      assetTypeBackfill: true,
+      assetType: "common_stock",
+      promotable: true,
+    });
+    expect(plan.assetTypes).toMatchObject({
+      trustedCusips: 1,
+      trustedSymbols: 1,
+      assetTypePopulated: 0,
+      assetTypeMissing: 1,
+      projectedAssetTypePopulated: 1,
+      projectedAssetTypeInsufficient: 0,
+    });
+    expect(plan.assetTypes.classifications).toContainEqual(expect.objectContaining({
+      canonicalSecurityType: "common_stock",
+      securityTypePopulation: "ELIGIBLE_STOCK_ANALYTICS",
+      distinctCusips: 1,
+      distinctSymbols: 1,
+      holdingRows: 3,
+      reportedValueUsd: "900",
+    }));
+    expect(plan.selection.asset_type_backfill).toBe(1);
+  });
+
+  it("does not select a reviewed non-null asset type for automated backfill", () => {
+    expect(selectInstitutionalReferenceLookupCusips({
+      population: [{
+        cusip: "000000001",
+        holdingRows: 1,
+        reportedValueUsd: "1",
+        currentAssetType: "common_stock",
+      }],
+      trustedState: [{
+        cusip: "000000001",
+        evidence: [{ source: "master", cusip: "000000001", symbol: "ACME", status: "reviewed" }],
+        trusted: true,
+        currentAssetType: "common_stock",
+        assetTypeReviewed: true,
+      }],
+      maxCusips: 1,
+      includeAssetTypeBackfill: true,
+    })).toEqual([]);
+  });
+
+  it("counts insufficient and fund projections without making them stock-eligible", () => {
+    const population = [
+      { cusip: "000000001", holdingRows: 1, reportedValueUsd: "10", trustedSymbols: ["FUND"], currentAssetType: null },
+      { cusip: "000000002", holdingRows: 2, reportedValueUsd: "20", trustedSymbols: ["UNKNOWN"], currentAssetType: null },
+    ];
+    const trustedState = [
+      {
+        cusip: "000000001",
+        evidence: [{ source: "mapping", cusip: "000000001", symbol: "FUND", status: "exact" as const }],
+        trusted: true,
+        candidateEvidence: [{ provider: "openfigi", ticker: "FUND", securityType: "ETF" }],
+      },
+      {
+        cusip: "000000002",
+        evidence: [{ source: "mapping", cusip: "000000002", symbol: "UNKNOWN", status: "exact" as const }],
+        trusted: true,
+        candidateEvidence: [{ provider: "openfigi", ticker: "UNKNOWN", securityType: "Equity" }],
+      },
+    ];
+    const summary = assetTypeCoverageSummary(population, trustedState);
+    expect(summary.projectedAssetTypePopulated).toBe(1);
+    expect(summary.projectedAssetTypeInsufficient).toBe(1);
+    expect(summary.classifications).toEqual(expect.arrayContaining([
+      expect.objectContaining({ canonicalSecurityType: "etf", securityTypePopulation: "ELIGIBLE_BUT_SEPARATE_FUND_ANALYTICS" }),
+      expect.objectContaining({ canonicalSecurityType: "insufficient_evidence", securityTypePopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE" }),
+    ]));
   });
 });

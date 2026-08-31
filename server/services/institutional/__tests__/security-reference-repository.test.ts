@@ -7,9 +7,10 @@ import {
 import type { SecurityReferenceResolution } from "../security-reference-enrichment";
 
 const candidate = { provider: "openfigi", ticker: "ACME", figi: "BBG000ACME", securityType: "Common Stock", marketSector: "Equity" };
-function store(reviewStatus = "unmapped"): InstitutionalSecurityReferenceStore & { deactivated: number; promoted: number; lookupOutcome: string | null; providerOutcome: string | null; effectiveSymbol: string | null; writes: number } {
-  const memory: InstitutionalSecurityReferenceStore & { deactivated: number; promoted: number; lookupOutcome: string | null; providerOutcome: string | null; effectiveSymbol: string | null; writes: number } = {
+function store(reviewStatus = "unmapped"): InstitutionalSecurityReferenceStore & { deactivated: number; promoted: number; lookupOutcome: string | null; providerOutcome: string | null; effectiveSymbol: string | null; writes: number; assetTypes: Array<{ cusip: string; assetType: string }> } {
+  const memory: InstitutionalSecurityReferenceStore & { deactivated: number; promoted: number; lookupOutcome: string | null; providerOutcome: string | null; effectiveSymbol: string | null; writes: number; assetTypes: Array<{ cusip: string; assetType: string }> } = {
     deactivated: 0, promoted: 0, lookupOutcome: null, providerOutcome: null, effectiveSymbol: null, writes: 0,
+    assetTypes: [],
     loadEligibleCusips: async () => ["000000001"],
     getTrustedLocalEvidence: async (cusip) => reviewStatus === "unmapped" ? [] : [{
       source: "security_master", symbol: reviewStatus === "reviewed" ? "KEEP" : null,
@@ -18,6 +19,7 @@ function store(reviewStatus = "unmapped"): InstitutionalSecurityReferenceStore &
     saveLookup: async (input) => { memory.writes++; memory.lookupOutcome = input.effectiveOutcome; memory.providerOutcome = input.resolution.outcome; memory.effectiveSymbol = input.effectiveSymbol; }, saveCandidates: async () => { memory.writes++; },
     markMissingCandidatesNonCurrent: async () => { memory.writes++; memory.deactivated++; },
     promoteExact: async () => { memory.promoted++; },
+    populateAssetType: async ({ cusip, assetType }) => { memory.assetTypes.push({ cusip, assetType }); },
   };
   return memory;
 }
@@ -95,6 +97,28 @@ describe("security reference repository", () => {
     const missing = { ...resolution(), outcome: "PARTIAL_RESPONSE" as const, candidates: [] };
     expect(await persistSecurityReferenceResolution(memory, missing)).toMatchObject({ outcome: "AUTHORITATIVELY_RESOLVABLE", symbol: "KEEP" });
     expect(memory).toMatchObject({ providerOutcome: "PARTIAL_RESPONSE", lookupOutcome: "AUTHORITATIVELY_RESOLVABLE", effectiveSymbol: "KEEP" });
+  });
+
+  it("backfills a missing reviewed asset type without changing the trusted identity", async () => {
+    const memory = store("reviewed");
+    const result = await persistSecurityReferenceResolution(memory, {
+      ...resolution(),
+      candidates: [{ ...candidate, ticker: "KEEP" }],
+    });
+    expect(result).toMatchObject({ outcome: "AUTHORITATIVELY_RESOLVABLE", symbol: "KEEP", promoted: true });
+    expect(memory.assetTypes).toEqual([{ cusip: "000000001", assetType: "common_stock" }]);
+    expect(memory.promoted).toBe(0);
+  });
+
+  it("retains a trusted identity when provider classification is insufficient", async () => {
+    const memory = store();
+    const insufficient = {
+      ...resolution(),
+      candidates: [{ ...candidate, securityType: "Equity", marketSector: null }],
+    };
+    await persistSecurityReferenceResolution(memory, insufficient);
+    expect(memory.promoted).toBe(1);
+    expect(memory.assetTypes).toEqual([]);
   });
 
   it("persists rejected local ownership as unsupported without promotion", async () => {

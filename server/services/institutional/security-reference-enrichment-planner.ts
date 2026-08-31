@@ -78,6 +78,7 @@ export interface ReferenceCoverage {
 export interface ReferenceOutcomeCount extends ReferenceCoverage { outcome: ReferencePlanOutcome; }
 export interface ReferenceAttemptedOutcomeCount { outcome: Exclude<ReferencePlanOutcome, "not_processed">; count: number; }
 export interface ReferenceSelectionCounts {
+  asset_type_backfill: number;
   skipped_terminal_ambiguous: number;
   skipped_terminal_unsupported: number;
   skipped_terminal_no_reference: number;
@@ -159,6 +160,76 @@ function percentValue(rows: EligibleReferencePopulationRow[], include: (row: Eli
     knownValueCusips: known.length,
   };
 }
+
+function isPopulatedAssetType(classification: InstitutionalSecurityTypeClassification): boolean {
+  return classification.analyticsPopulation !== "INSUFFICIENT_SECURITY_TYPE_EVIDENCE";
+}
+
+function currentAssetTypeClassification(
+  row: EligibleReferencePopulationRow,
+  state: TrustedReferenceState,
+): InstitutionalSecurityTypeClassification {
+  return classifyInstitutionalSecurityType({
+    assetType: state.currentAssetType ?? row.currentAssetType,
+  });
+}
+
+function providerAssetTypeClassification(
+  row: EligibleReferencePopulationRow,
+  state: TrustedReferenceState,
+  resolution?: SecurityReferenceResolution,
+): InstitutionalSecurityTypeClassification {
+  const symbols = new Set([
+    ...(row.trustedSymbols ?? []),
+    ...state.evidence.map((item) => item.symbol ?? ""),
+    ...(resolution?.symbol ? [resolution.symbol] : []),
+  ].map((symbol) => symbol.trim().toUpperCase()).filter(Boolean));
+  const candidates = (resolution?.candidates?.length ? resolution.candidates : state.candidateEvidence ?? [])
+    .filter((candidate) =>
+      symbols.size === 0 || symbols.has((candidate.ticker ?? "").trim().toUpperCase()),
+    );
+  const classifications = candidates
+    .map((candidate) => classifyInstitutionalSecurityType(candidate))
+    .filter(isPopulatedAssetType);
+  const types = Array.from(new Set(classifications.map((classification) => classification.canonicalType)));
+  if (types.length === 1) {
+    return classifications.find((classification) => classification.canonicalType === types[0])!;
+  }
+  return {
+    canonicalType: types.length > 1 ? "ambiguous" : "insufficient_evidence",
+    analyticsPopulation: "INSUFFICIENT_SECURITY_TYPE_EVIDENCE",
+    evidence: candidates.flatMap((candidate) =>
+      classifyInstitutionalSecurityType(candidate).evidence,
+    ),
+  };
+}
+
+function assetTypeNeedsBackfill(
+  row: EligibleReferencePopulationRow,
+  state: TrustedReferenceState,
+): boolean {
+  // A reviewed identity with a non-null type is protected. A reviewed identity
+  // with no type is intentionally still eligible: Task #197 closes that
+  // coverage gap without replacing a human's existing type decision.
+  if (state.assetTypeReviewed && (state.currentAssetType ?? row.currentAssetType) != null) return false;
+  return !isPopulatedAssetType(currentAssetTypeClassification(row, state));
+}
+
+function projectedAssetTypeClassification(
+  row: EligibleReferencePopulationRow,
+  state: TrustedReferenceState,
+  resolution?: SecurityReferenceResolution,
+): InstitutionalSecurityTypeClassification {
+  const current = currentAssetTypeClassification(row, state);
+  return isPopulatedAssetType(current)
+    ? current
+    : providerAssetTypeClassification(row, state, resolution);
+}
+
+function normalizedSymbols(values: readonly string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim().toUpperCase()).filter(Boolean))).sort();
+}
+
 function stateIsTrusted(state: TrustedReferenceState): boolean {
   // A repository may provide an already-resolved trusted-state bit, but any
   // supplied evidence takes precedence so contradictory exact/reviewed records
@@ -167,6 +238,87 @@ function stateIsTrusted(state: TrustedReferenceState): boolean {
   return state.evidence.length === 0 ? state.trusted === true :
     resolveReviewedSecurityReference(state.cusip, state.evidence).outcome === "AUTHORITATIVELY_RESOLVABLE";
 }
+
+export function assetTypeCoverageSummary(
+  population: readonly EligibleReferencePopulationRow[],
+  trustedState: readonly TrustedReferenceState[],
+  providerResolutions: readonly SecurityReferenceResolution[] = [],
+): AssetTypeCoverageSummary {
+  const states = new Map(trustedState.map((state) => [normalizeCusip(state.cusip), state]));
+  const resolutions = new Map(providerResolutions.map((resolution) => [normalizeCusip(resolution.cusip), resolution]));
+  const groups = new Map<string, {
+    type: CanonicalInstitutionalSecurityType;
+    population: SecurityAnalyticsPopulation;
+    cusips: Set<string>;
+    symbols: Set<string>;
+    holdingRows: number;
+    reportedValueUsd: bigint;
+  }>();
+  let trustedCusips = 0;
+  const trustedSymbols = new Set<string>();
+  let assetTypePopulated = 0;
+  let assetTypeMissing = 0;
+  let projectedAssetTypePopulated = 0;
+  let projectedAssetTypeInsufficient = 0;
+
+  for (const row of population) {
+    const normalizedCusip = normalizeCusip(row.cusip);
+    const state = states.get(normalizedCusip) ?? { cusip: row.cusip, evidence: [] };
+    if (!stateIsTrusted(state)) continue;
+    trustedCusips++;
+    const symbols = normalizedSymbols([
+      ...(row.trustedSymbols ?? []),
+      ...state.evidence.map((item) => item.symbol ?? ""),
+    ]);
+    symbols.forEach((symbol) => trustedSymbols.add(symbol));
+    const current = currentAssetTypeClassification(row, state);
+    const projected = projectedAssetTypeClassification(
+      row,
+      state,
+      resolutions.get(normalizedCusip),
+    );
+    if (isPopulatedAssetType(current)) assetTypePopulated++;
+    else assetTypeMissing++;
+    if (isPopulatedAssetType(projected)) projectedAssetTypePopulated++;
+    else projectedAssetTypeInsufficient++;
+    const key = `${projected.canonicalType}:${projected.analyticsPopulation}`;
+    const group = groups.get(key) ?? {
+      type: projected.canonicalType,
+      population: projected.analyticsPopulation,
+      cusips: new Set<string>(),
+      symbols: new Set<string>(),
+      holdingRows: 0,
+      reportedValueUsd: BigInt(0),
+    };
+    group.cusips.add(row.cusip);
+    symbols.forEach((symbol) => group.symbols.add(symbol));
+    group.holdingRows += row.holdingRows;
+    if (row.reportedValueUsd !== null) {
+      group.reportedValueUsd += BigInt(String(row.reportedValueUsd));
+    }
+    groups.set(key, group);
+  }
+
+  return {
+    trustedCusips,
+    trustedSymbols: trustedSymbols.size,
+    assetTypePopulated,
+    assetTypeMissing,
+    projectedAssetTypePopulated,
+    projectedAssetTypeInsufficient,
+    classifications: Array.from(groups.values())
+      .sort((a, b) => a.type.localeCompare(b.type) || a.population.localeCompare(b.population))
+      .map((group) => ({
+        canonicalSecurityType: group.type,
+        securityTypePopulation: group.population,
+        distinctCusips: group.cusips.size,
+        distinctSymbols: group.symbols.size,
+        holdingRows: group.holdingRows,
+        reportedValueUsd: group.reportedValueUsd.toString(),
+      })),
+  };
+}
+
 type ReferenceSelectionKind = "protected" | "never_processed" | "retryable_provider_failed"
   | "retryable_rate_limited" | "retryable_other" | "terminal_ambiguous"
   | "terminal_unsupported" | "terminal_no_reference" | "terminal_conflicting";
@@ -209,7 +361,14 @@ function planOutcome(
   if (state.blocked) return { outcome: "unsupported" };
   // Never trust a SQL status flag alone: Task #189 resolves conflicting
   // reviewed/exact evidence before it can count toward current coverage.
-  if (stateIsTrusted(state)) return { outcome: "authoritatively_resolvable" };
+  if (stateIsTrusted(state)) {
+    return {
+      outcome: "authoritatively_resolvable",
+      resolution: resolution ?? (state.candidateEvidence?.length
+        ? resolveReviewedSecurityReference(state.cusip, state.evidence, state.candidateEvidence)
+        : undefined),
+    };
+  }
   const terminal = terminalPlanOutcome(state);
   if (!requested && terminal && !refreshTerminal) return { outcome: terminal };
   // PARTIAL_RESPONSE describes a requested, incomplete provider response. It
@@ -241,6 +400,8 @@ export function buildInstitutionalSecurityReferencePlan(input: {
   plannedLookupCusips?: readonly string[];
   /** Explicitly re-query terminal unresolved outcomes. Defaults to false. */
   refreshTerminal?: boolean;
+  /** Include trusted identities whose canonical asset type is missing/stale. */
+  includeAssetTypeBackfill?: boolean;
 }): InstitutionalSecurityReferencePlan {
   const maxCusips = Math.max(0, Math.floor(input.maxCusips));
   const refreshTerminal = input.refreshTerminal === true;
@@ -254,8 +415,15 @@ export function buildInstitutionalSecurityReferencePlan(input: {
     const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [] };
     return !state.blocked && !stateIsTrusted(state);
   });
+  const assetTypeLookupEligible = input.includeAssetTypeBackfill
+    ? population.filter((row) => {
+      const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [] };
+      return !state.blocked && stateIsTrusted(state) && assetTypeNeedsBackfill(row, state);
+    })
+    : [];
   const selected = selectInstitutionalReferenceLookupCusips({
     population, trustedState: input.trustedState, maxCusips, cursor, refreshTerminal,
+    includeAssetTypeBackfill: input.includeAssetTypeBackfill,
   });
   const requested = Array.from(new Set((input.plannedLookupCusips ?? selected)
     .map(normalizeCusip).filter((cusip): cusip is string => !!cusip)))
@@ -263,7 +431,16 @@ export function buildInstitutionalSecurityReferencePlan(input: {
   // A malformed/truncated provider response remains a persisted partial
   // observation for every requested CUSIP, rather than disappearing silently.
   for (const cusip of requested) if (!resolutions.has(cusip)) {
-    resolutions.set(cusip, resolveProviderSecurityReference(cusip, "PARTIAL_RESPONSE", [], { errorCode: "MISSING_PROVIDER_RESULT" }));
+    const state = states.get(cusip);
+    if (state?.candidateEvidence?.length) {
+      resolutions.set(cusip, resolveReviewedSecurityReference(
+        cusip,
+        state.evidence,
+        state.candidateEvidence,
+      ));
+    } else {
+      resolutions.set(cusip, resolveProviderSecurityReference(cusip, "PARTIAL_RESPONSE", [], { errorCode: "MISSING_PROVIDER_RESULT" }));
+    }
   }
   const assessed = population.map(row => {
     const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [], trusted: false };
@@ -274,13 +451,28 @@ export function buildInstitutionalSecurityReferencePlan(input: {
   // emitted as an action.
   const eligibleActions = assessed.filter(item => {
     const state = states.get(item.row.cusip) ?? { cusip: item.row.cusip, evidence: [] };
-    return !state.blocked && !stateIsTrusted(state) &&
+    const trustedAssetTypeBackfill = stateIsTrusted(state) &&
+      assetTypeNeedsBackfill(item.row, state);
+    return !state.blocked && (!stateIsTrusted(state) || trustedAssetTypeBackfill) &&
       requested.includes(item.row.cusip);
   }).sort((a, b) => a.row.cusip.localeCompare(b.row.cusip));
-  const actions: ReferencePlanAction[] = eligibleActions.slice(0, maxCusips).map(item => ({
-    cusip: item.row.cusip, effectiveOutcome: item.resolution!.outcome, symbol: item.resolution!.symbol,
-    promotable: item.outcome === "authoritatively_resolvable", resolution: item.resolution!,
-  }));
+  const actions: ReferencePlanAction[] = eligibleActions.slice(0, maxCusips).map(item => {
+    const state = states.get(item.row.cusip) ?? { cusip: item.row.cusip, evidence: [] };
+    const assetTypeBackfill = stateIsTrusted(state) && assetTypeNeedsBackfill(item.row, state);
+    const projectedAssetType = projectedAssetTypeClassification(item.row, state, item.resolution);
+    const assetType = isPopulatedAssetType(projectedAssetType)
+      ? projectedAssetType.canonicalType
+      : null;
+    return {
+      cusip: item.row.cusip,
+      effectiveOutcome: item.resolution!.outcome,
+      symbol: item.resolution!.symbol,
+      promotable: assetTypeBackfill ? assetType !== null : item.outcome === "authoritatively_resolvable",
+      resolution: item.resolution!,
+      assetTypeBackfill,
+      assetType,
+    };
+  });
   const alreadyTrusted = (row: EligibleReferencePopulationRow) => {
     const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [] };
     return stateIsTrusted(state);
@@ -311,6 +503,7 @@ export function buildInstitutionalSecurityReferencePlan(input: {
     if (kind === "never_processed") counts.never_processed++;
     return counts;
   }, {
+    asset_type_backfill: assetTypeLookupEligible.length,
     skipped_terminal_ambiguous: 0,
     skipped_terminal_unsupported: 0,
     skipped_terminal_no_reference: 0,
@@ -320,24 +513,30 @@ export function buildInstitutionalSecurityReferencePlan(input: {
     retryable_other: 0,
     never_processed: 0,
   });
-  const policyEligible = lookupEligible.filter(row => {
+  const policyEligible = [...lookupEligible, ...assetTypeLookupEligible].filter(row => {
     const state = states.get(row.cusip) ?? { cusip: row.cusip, evidence: [] };
     return refreshTerminal || !terminalPlanOutcome(state);
   });
+  const assetTypes = assetTypeCoverageSummary(
+    population,
+    input.trustedState,
+    Array.from(resolutions.values()),
+  );
   const canonical = {
     // Include the complete normalized population plus the exact requested
     // CUSIPs and provider observations. Thus a hash cannot be reused for a
     // different population, cursor/chunk, or provider result set.
     version: 1 as const, maxCusips, cursor, refreshTerminal,
-    nextCursor: requested.at(-1) ?? null, before, projected, outcomes, attemptedOutcomes, selection, actions,
+    includeAssetTypeBackfill: input.includeAssetTypeBackfill === true,
+    nextCursor: requested.at(-1) ?? null, before, projected, outcomes, attemptedOutcomes, selection, actions, assetTypes,
     population,
     requestedLookupCusips: requested,
     providerResults: requested.map(cusip => resolutions.get(cusip)!),
     actionCounts: { requestedCusipLimit: maxCusips, plannedLookups: actions.length, plannedWrites: actions.length,
       promotable: actions.filter(action => action.promotable).length,
       skippedByLimit: policyEligible.filter(row => (!cursor || row.cusip > cursor) && !requested.includes(row.cusip)).length,
-      skippedByCursor: lookupEligible.filter(row => !!cursor && row.cusip <= cursor).length,
-      notProcessed: lookupEligible.length - requested.length },
+      skippedByCursor: [...lookupEligible, ...assetTypeLookupEligible].filter(row => !!cursor && row.cusip <= cursor).length,
+      notProcessed: [...lookupEligible, ...assetTypeLookupEligible].length - requested.length },
   };
   const { population: _population, requestedLookupCusips: _requested, providerResults: _providerResults, ...plan } = canonical;
   return { ...plan, planHash: createHash("sha256").update(stableJson(canonical)).digest("hex") };
@@ -350,24 +549,36 @@ export function selectInstitutionalReferenceLookupCusips(input: {
   cursor?: string | null;
   /** Explicitly include terminal unresolved outcomes. */
   refreshTerminal?: boolean;
+  /** Include trusted identities whose canonical asset type is missing/stale. */
+  includeAssetTypeBackfill?: boolean;
 }): string[] {
   const cursor = input.cursor == null ? null : normalizeCusip(input.cursor);
   if (input.cursor != null && !cursor) throw new Error("INVALID_CUSIP_CURSOR");
   const states = new Map(input.trustedState.map(row => [normalizeCusip(row.cusip), row]));
+  const population = new Map(input.population.map((row) => [normalizeCusip(row.cusip), row]));
   const refreshTerminal = input.refreshTerminal === true;
   return Array.from(new Set(input.population.map(row => normalizeCusip(row.cusip)).filter((x): x is string => !!x)))
     .filter(cusip => {
       const state = states.get(cusip) ?? { cusip, evidence: [] };
-      return !state.blocked && !stateIsTrusted(state);
+      const row = population.get(cusip)!;
+      return !state.blocked && (
+        !stateIsTrusted(state) ||
+        (input.includeAssetTypeBackfill === true && assetTypeNeedsBackfill(row, state))
+      );
     }).filter(cusip => !cursor || cusip > cursor)
-    .filter(cusip => refreshTerminal || !terminalPlanOutcome(states.get(cusip) ?? { cusip, evidence: [] }))
+    .filter(cusip => {
+      const state = states.get(cusip) ?? { cusip, evidence: [] };
+      return stateIsTrusted(state) || refreshTerminal || !terminalPlanOutcome(state);
+    })
     .sort((a, b) => {
       const aState = states.get(a) ?? { cusip: a, evidence: [] };
       const bState = states.get(b) ?? { cusip: b, evidence: [] };
       const priority = (kind: ReferenceSelectionKind) =>
         kind === "never_processed" ? 0 : kind === "retryable_provider_failed"
           || kind === "retryable_rate_limited" || kind === "retryable_other" ? 1 : 2;
-      return priority(referenceSelectionKind(aState)) - priority(referenceSelectionKind(bState))
+      const aPriority = stateIsTrusted(aState) ? (aState.candidateEvidence?.length ? 0 : 1) : priority(referenceSelectionKind(aState));
+      const bPriority = stateIsTrusted(bState) ? (bState.candidateEvidence?.length ? 0 : 1) : priority(referenceSelectionKind(bState));
+      return aPriority - bPriority
         || a.localeCompare(b);
     }).slice(0, Math.max(0, Math.floor(input.maxCusips)));
 }
@@ -381,6 +592,7 @@ export function referencePlanAggregateSummary(plan: InstitutionalSecurityReferen
     outcomes: plan.outcomes,
     selection: plan.selection,
     actionCounts: plan.actionCounts,
+    assetTypes: plan.assetTypes,
   };
 }
 /** Safe dry-run continuation metadata; nextCursor is the only disclosed CUSIP. */

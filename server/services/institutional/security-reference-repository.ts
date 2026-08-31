@@ -106,7 +106,7 @@ export async function persistSecurityReferenceResolution(store: InstitutionalSec
     exchange: candidate.exchangeCode?.trim().toUpperCase() ?? null,
     assetType,
     provenance: assetTypeEvidence
-      ? assetTypeProvenance(provider, assetType, assetTypeEvidence.evidence)
+      ? assetTypeProvenance(provider, assetTypeEvidence.assetType, assetTypeEvidence.evidence)
       : "openfigi_exact;asset_type:insufficient_evidence",
   });
   return { cusip, outcome: effectiveOutcome, symbol: trusted.symbol, promoted: true };
@@ -125,7 +125,32 @@ export class DrizzleInstitutionalSecurityReferenceRepository implements Institut
   async loadEligibleCusips(periodsOfReport?: readonly string[], options: { systematic?: boolean } = {}): Promise<string[]> {
     // Mapping state, not lookup state, is authoritative: retry lookup/promote
     // failures but never waste provider capacity on trusted local mappings.
-    const rows = await db.selectDistinct({ cusip: institutional13fHoldings.cusip }).from(institutional13fHoldings).innerJoin(institutional13fFilings, eq(institutional13fHoldings.accessionNumber, institutional13fFilings.accessionNumber)).leftJoin(institutionalSecurityMappings, eq(institutionalSecurityMappings.cusip, institutional13fHoldings.cusip)).leftJoin(securityMaster, eq(securityMaster.cusip, institutional13fHoldings.cusip)).where(and(eq(institutional13fFilings.isEffective, true), sql`${institutional13fHoldings.putCall} IS NULL`, sql`COALESCE(UPPER(${institutional13fHoldings.sharesPrnType}), 'SH') <> 'PRN'`, sql`${institutional13fHoldings.reportedShares} > 0`, periodsOfReport?.length ? inArray(institutional13fHoldings.periodOfReport, [...periodsOfReport]) : undefined, or(sql`${securityMaster.reviewStatus} IS NULL`, sql`${securityMaster.reviewStatus} NOT IN ('reviewed', 'rejected')`), or(sql`${institutionalSecurityMappings.mappingStatus} IS NULL`, sql`${institutionalSecurityMappings.mappingStatus} <> 'rejected'`), options.systematic ? undefined : or(sql`${institutionalSecurityMappings.mappingStatus} IS NULL`, sql`${institutionalSecurityMappings.mappingStatus} NOT IN ('exact', 'reviewed')`)));
+    const rows = await db.selectDistinct({ cusip: institutional13fHoldings.cusip }).from(institutional13fHoldings).innerJoin(institutional13fFilings, eq(institutional13fHoldings.accessionNumber, institutional13fFilings.accessionNumber)).leftJoin(institutionalSecurityMappings, eq(institutionalSecurityMappings.cusip, institutional13fHoldings.cusip)).leftJoin(securityMaster, eq(securityMaster.cusip, institutional13fHoldings.cusip)).where(and(
+      eq(institutional13fFilings.isEffective, true),
+      sql`${institutional13fHoldings.putCall} IS NULL`,
+      sql`COALESCE(UPPER(${institutional13fHoldings.sharesPrnType}), 'SH') <> 'PRN'`,
+      sql`${institutional13fHoldings.reportedShares} > 0`,
+      periodsOfReport?.length ? inArray(institutional13fHoldings.periodOfReport, [...periodsOfReport]) : undefined,
+      // Normal identity enrichment excludes trusted mappings. The second
+      // branch is the deliberate Task #197 exception for a missing/stale
+      // canonical type; it never selects a reviewed non-null type.
+      sql`(
+        (
+          (${securityMaster.reviewStatus} IS NULL OR ${securityMaster.reviewStatus} NOT IN ('reviewed', 'rejected'))
+          AND (${institutionalSecurityMappings.mappingStatus} IS NULL OR ${institutionalSecurityMappings.mappingStatus} <> 'rejected')
+          AND (${options.systematic ? sql`TRUE` : sql`${institutionalSecurityMappings.mappingStatus} IS NULL OR ${institutionalSecurityMappings.mappingStatus} NOT IN ('exact', 'reviewed')`})
+        )
+        OR
+        (
+          (${institutionalSecurityMappings.mappingStatus} IN ('exact', 'reviewed') OR ${securityMaster.reviewStatus} = 'reviewed')
+          AND (
+            ${securityMaster.assetType} IS NULL
+            OR (${securityMaster.assetType} IN ('insufficient_evidence', 'ambiguous')
+              AND ${securityMaster.reviewStatus} NOT IN ('reviewed', 'rejected'))
+          )
+        )
+      )`,
+    ));
     return rows.map(r => normalizeCusip(r.cusip)).filter((x): x is string => !!x);
   }
   async getTrustedLocalEvidence(cusip: string): Promise<LocalSecurityEvidence[]> {
@@ -136,7 +161,7 @@ export class DrizzleInstitutionalSecurityReferenceRepository implements Institut
   async saveLookup(input: { resolution: SecurityReferenceResolution; provider: string; effectiveOutcome: string; effectiveSymbol: string | null }, at: Date) { const r = input.resolution; const retryAfterAt = r.retryAfterMs == null ? null : new Date(at.getTime() + r.retryAfterMs); await db.insert(institutionalSecurityLookupStates).values({ provider: input.provider, cusip: r.cusip!, providerOutcome: r.outcome, outcome: input.effectiveOutcome, resolvedSymbol: input.effectiveSymbol, candidateCount: r.candidates.length, fingerprint: r.fingerprint, errorCode: safeCode(r.errorCode), retryAfterAt, lastObservedAt: at, provenance: "openfigi" }).onConflictDoUpdate({ target: [institutionalSecurityLookupStates.provider, institutionalSecurityLookupStates.cusip], set: { providerOutcome: r.outcome, outcome: input.effectiveOutcome, resolvedSymbol: input.effectiveSymbol, candidateCount: r.candidates.length, fingerprint: r.fingerprint, errorCode: safeCode(r.errorCode), retryAfterAt, lastObservedAt: at, provenance: "openfigi" } }); }
   async saveCandidates(cusip: string, provider: string, cs: readonly SecurityReferenceCandidate[], at: Date) { for (const c of cs) await db.insert(institutionalSecurityCandidateObservations).values({ provider, cusip, figi: c.figi ?? null, compositeFigi: c.compositeFigi ?? null, shareClassFigi: c.shareClassFigi ?? null, ticker: normalizeReferenceSymbol(c.ticker), name: c.name ?? null, exchangeCode: c.exchangeCode ?? null, marketSector: c.marketSector ?? null, securityType: c.securityType ?? null, securityType2: c.securityType2 ?? null, supported: isSupported13fIdentityCandidate(c), candidateFingerprint: candidateFingerprint(c), lastObservedAt: at, isCurrent: true }).onConflictDoUpdate({ target: [institutionalSecurityCandidateObservations.provider, institutionalSecurityCandidateObservations.cusip, institutionalSecurityCandidateObservations.candidateFingerprint], set: { lastObservedAt: at, isCurrent: true } }); }
   async markMissingCandidatesNonCurrent(cusip: string, provider: string, fps: readonly string[]) { const where = [eq(institutionalSecurityCandidateObservations.cusip, cusip), eq(institutionalSecurityCandidateObservations.provider, provider), eq(institutionalSecurityCandidateObservations.isCurrent, true)]; if (fps.length) where.push(notInArray(institutionalSecurityCandidateObservations.candidateFingerprint, [...fps])); await db.update(institutionalSecurityCandidateObservations).set({ isCurrent: false }).where(and(...where)); }
-  async promoteExact(i: { cusip: string; ticker: string; figi: string | null; name: string | null; exchange: string | null; assetType: string; provenance: string }) {
+  async promoteExact(i: { cusip: string; ticker: string; figi: string | null; name: string | null; exchange: string | null; assetType: string | null; provenance: string }) {
     await db.transaction(async tx => {
       const sm = await tx.select({ status: securityMaster.reviewStatus }).from(securityMaster).where(eq(securityMaster.cusip, i.cusip)).limit(1);
        if (!sm[0]) await tx.insert(securityMaster).values({ cusip: i.cusip, ticker: i.ticker, figi: i.figi, issuerName: i.name, exchange: i.exchange, assetType: i.assetType, confidence: 95, mappingMethod: "cusip_exact", reviewStatus: "probable", notes: i.provenance });
@@ -147,11 +172,53 @@ export class DrizzleInstitutionalSecurityReferenceRepository implements Institut
     });
   }
   async populateAssetType(i: { cusip: string; assetType: CanonicalInstitutionalSecurityType; provenance: string }) {
-    await db.update(securityMaster)
-      .set({ assetType: i.assetType, notes: i.provenance, lastVerified: new Date() })
-      .where(and(
-        eq(securityMaster.cusip, i.cusip),
-        sql`${securityMaster.assetType} IS NULL OR ${securityMaster.assetType} IN ('insufficient_evidence', 'ambiguous')`,
-      ));
+    await db.transaction(async (tx) => {
+      const existing = await tx.select({
+        reviewStatus: securityMaster.reviewStatus,
+        assetType: securityMaster.assetType,
+      }).from(securityMaster).where(eq(securityMaster.cusip, i.cusip)).limit(1);
+      const current = existing[0];
+      if (current) {
+        if (
+          current.assetType !== null &&
+          current.assetType !== "insufficient_evidence" &&
+          current.assetType !== "ambiguous"
+        ) return;
+        if (
+          current.reviewStatus === "reviewed" &&
+          current.assetType !== null
+        ) return;
+        if (current.reviewStatus === "rejected") return;
+        await tx.update(securityMaster)
+          .set({ assetType: i.assetType, notes: i.provenance, lastVerified: new Date() })
+          .where(and(
+            eq(securityMaster.cusip, i.cusip),
+            sql`${securityMaster.assetType} IS NULL OR (
+              ${securityMaster.assetType} IN ('insufficient_evidence', 'ambiguous')
+              AND ${securityMaster.reviewStatus} <> 'reviewed'
+            )`,
+          ));
+        return;
+      }
+      const mapping = await tx.select({
+        mappedSymbol: institutionalSecurityMappings.mappedSymbol,
+        figi: institutionalSecurityMappings.figi,
+        mappingStatus: institutionalSecurityMappings.mappingStatus,
+      }).from(institutionalSecurityMappings)
+        .where(eq(institutionalSecurityMappings.cusip, i.cusip))
+        .limit(1);
+      const trustedMapping = mapping[0];
+      if (!trustedMapping || !["exact", "reviewed"].includes(trustedMapping.mappingStatus)) return;
+      await tx.insert(securityMaster).values({
+        cusip: i.cusip,
+        ticker: trustedMapping.mappedSymbol,
+        figi: trustedMapping.figi,
+        assetType: i.assetType,
+        confidence: trustedMapping.mappingStatus === "reviewed" ? 100 : 95,
+        mappingMethod: "cusip_exact",
+        reviewStatus: trustedMapping.mappingStatus === "reviewed" ? "reviewed" : "probable",
+        notes: i.provenance,
+      });
+    });
   }
 }

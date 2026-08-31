@@ -12,7 +12,8 @@ import {
   selectInstitutionalReferenceLookupCusips, type EligibleReferencePopulationRow, type InstitutionalSecurityReferencePlan,
   type PersistedReferenceLookupState, type TrustedReferenceState,
 } from "../server/services/institutional/security-reference-enrichment-planner";
-import { normalizeCusip, resolveReviewedSecurityReference, type SecurityReferenceResolution } from "../server/services/institutional/security-reference-enrichment";
+import { normalizeCusip, resolveReviewedSecurityReference, type SecurityReferenceCandidate, type SecurityReferenceResolution } from "../server/services/institutional/security-reference-enrichment";
+import { classifyInstitutionalSecurityType } from "../server/services/institutional/security-type-eligibility";
 
 export const populationQuery = `
 WITH ranked AS (
@@ -27,12 +28,14 @@ WITH ranked AS (
 SELECT cusip,COUNT(*)::int holding_rows,SUM(reported_value) FILTER (WHERE reported_value IS NOT NULL)::text reported_value_usd
 FROM eligible GROUP BY cusip ORDER BY cusip`;
 export const evidenceQuery = `
-SELECT x.cusip,COALESCE(JSONB_AGG(JSONB_BUILD_OBJECT('source',x.source,'cusip',x.cusip,'symbol',x.symbol,'status',x.status))
+SELECT x.cusip,COALESCE(JSONB_AGG(JSONB_BUILD_OBJECT('source',x.source,'cusip',x.cusip,'symbol',x.symbol,'status',x.status,'assetType',x.asset_type))
  FILTER (WHERE x.status IN ('reviewed','exact','unreviewed')), '[]'::jsonb) evidence,
- BOOL_OR(LOWER(COALESCE(x.status,'')) = 'rejected') blocked
+ BOOL_OR(LOWER(COALESCE(x.status,'')) = 'rejected') blocked,
+ MAX(x.asset_type) FILTER (WHERE x.source='security_master') current_asset_type,
+ BOOL_OR(x.source='security_master' AND LOWER(COALESCE(x.status,''))='reviewed') asset_type_reviewed
 FROM (
- SELECT cusip,'institutional_mapping' source,mapped_symbol symbol,mapping_status status FROM institutional_security_mappings
- UNION ALL SELECT cusip,'security_master',ticker,review_status FROM security_master
+ SELECT cusip,'institutional_mapping' source,mapped_symbol symbol,mapping_status status,NULL::text asset_type FROM institutional_security_mappings
+ UNION ALL SELECT cusip,'security_master',ticker,review_status,asset_type FROM security_master
 ) x GROUP BY x.cusip`;
 export const lookupStateQuery = `
  SELECT s.cusip,s.provider_outcome,s.outcome,s.fingerprint,
@@ -47,6 +50,12 @@ export const candidateHistoryQuery = `
  FROM institutional_security_candidate_observations
  WHERE provider='openfigi' AND is_current=TRUE
  GROUP BY cusip`;
+export const candidateEvidenceQuery = `
+ SELECT cusip,figi,composite_figi,share_class_figi,ticker,name,exchange_code,
+  market_sector,security_type,security_type2
+ FROM institutional_security_candidate_observations
+ WHERE provider='openfigi' AND is_current=TRUE
+ ORDER BY cusip,candidate_fingerprint`;
 function rowsOf(result: unknown): any[] { return (result as { rows?: any[] }).rows ?? (Array.isArray(result) ? result : []); }
 export interface ReferenceEnrichmentArgs {
   apply: boolean;
@@ -105,23 +114,31 @@ export interface SafeOpenFigiRuntimeMetadata {
 }
 export interface LoadedReferencePlan { plan: InstitutionalSecurityReferencePlan; runtime: SafeOpenFigiRuntimeMetadata; }
 async function loadPlan(maxCusips: number, cursor?: string, refreshTerminal = false): Promise<LoadedReferencePlan> {
-  const [populationRows, evidenceRows, lookupRows, candidateRows] = await db.transaction(async tx => {
+  const [populationRows, evidenceRows, lookupRows, candidateRows, candidateEvidenceRows] = await db.transaction(async tx => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
     return Promise.all([
       tx.execute(sql.raw(populationQuery)),
       tx.execute(sql.raw(evidenceQuery)),
       tx.execute(sql.raw(lookupStateQuery)),
       tx.execute(sql.raw(candidateHistoryQuery)),
+      tx.execute(sql.raw(candidateEvidenceQuery)),
     ]);
   });
-  const population: EligibleReferencePopulationRow[] = rowsOf(populationRows).map(row => ({
-    cusip: String(row.cusip), holdingRows: Number(row.holding_rows), reportedValueUsd: row.reported_value_usd == null ? null : String(row.reported_value_usd),
-  }));
-  const evidenceByCusip = new Map<string, { evidence: any[]; blocked: boolean }>();
+  const evidenceByCusip = new Map<string, {
+    evidence: any[];
+    blocked: boolean;
+    currentAssetType: string | null;
+    assetTypeReviewed: boolean;
+  }>();
   for (const row of rowsOf(evidenceRows)) {
     const evidence = Array.isArray(row.evidence) ? row.evidence : [];
     const cusip = normalizeCusip(String(row.cusip));
-    if (cusip) evidenceByCusip.set(cusip, { evidence, blocked: row.blocked === true });
+    if (cusip) evidenceByCusip.set(cusip, {
+      evidence,
+      blocked: row.blocked === true,
+      currentAssetType: row.current_asset_type == null ? null : String(row.current_asset_type),
+      assetTypeReviewed: row.asset_type_reviewed === true,
+    });
   }
   const lookupByCusip = new Map<string, PersistedReferenceLookupState>();
   for (const row of rowsOf(lookupRows)) {
@@ -138,6 +155,37 @@ async function loadPlan(maxCusips: number, cursor?: string, refreshTerminal = fa
     const cusip = normalizeCusip(String(row.cusip));
     if (cusip && Number(row.current_candidate_count ?? 0) > 0) candidateHistoryCusips.add(cusip);
   }
+  const candidatesByCusip = new Map<string, SecurityReferenceCandidate[]>();
+  for (const row of rowsOf(candidateEvidenceRows)) {
+    const cusip = normalizeCusip(String(row.cusip));
+    if (!cusip) continue;
+    const candidate: SecurityReferenceCandidate = {
+      provider: "openfigi",
+      figi: row.figi == null ? null : String(row.figi),
+      compositeFigi: row.composite_figi == null ? null : String(row.composite_figi),
+      shareClassFigi: row.share_class_figi == null ? null : String(row.share_class_figi),
+      ticker: row.ticker == null ? null : String(row.ticker),
+      name: row.name == null ? null : String(row.name),
+      exchangeCode: row.exchange_code == null ? null : String(row.exchange_code),
+      marketSector: row.market_sector == null ? null : String(row.market_sector),
+      securityType: row.security_type == null ? null : String(row.security_type),
+      securityType2: row.security_type2 == null ? null : String(row.security_type2),
+    };
+    candidatesByCusip.set(cusip, [...(candidatesByCusip.get(cusip) ?? []), candidate]);
+  }
+  const population: EligibleReferencePopulationRow[] = rowsOf(populationRows).map(row => {
+    const cusip = String(row.cusip);
+    const evidenceState = evidenceByCusip.get(normalizeCusip(cusip) ?? cusip);
+    return {
+      cusip,
+      holdingRows: Number(row.holding_rows),
+      reportedValueUsd: row.reported_value_usd == null ? null : String(row.reported_value_usd),
+      trustedSymbols: (evidenceState?.evidence ?? [])
+        .filter((item) => ["reviewed", "exact"].includes(String(item.status).toLowerCase()))
+        .map((item) => String(item.symbol ?? "")),
+      currentAssetType: evidenceState?.currentAssetType ?? null,
+    };
+  });
   const trustedState: TrustedReferenceState[] = [...new Set([
     ...evidenceByCusip.keys(), ...lookupByCusip.keys(), ...candidateHistoryCusips,
   ])].map(cusip => {
@@ -147,17 +195,34 @@ async function loadPlan(maxCusips: number, cursor?: string, refreshTerminal = fa
     return { cusip, evidence, blocked: evidenceState?.blocked === true,
       lookupState: lookupByCusip.get(cusip),
       candidateHistoryPresent: candidateHistoryCusips.has(cusip),
+      candidateEvidence: candidatesByCusip.get(cusip) ?? [],
+      currentAssetType: evidenceState?.currentAssetType ?? null,
+      assetTypeReviewed: evidenceState?.assetTypeReviewed === true,
       trusted: resolveReviewedSecurityReference(cusip, evidence).outcome === "AUTHORITATIVELY_RESOLVABLE" };
   });
   // Population coverage is complete, but network work is bounded before the
   // client is called. Trusted and rejected CUSIPs are never requested.
   const plannedLookupCusips = selectInstitutionalReferenceLookupCusips({
     population, trustedState, maxCusips, cursor, refreshTerminal,
+    includeAssetTypeBackfill: true,
   });
   const client = new OpenFigiClient();
-  const providerResolutions = await client.resolveCusips(plannedLookupCusips);
+  const stateByCusip = new Map(trustedState.map((state) => [state.cusip, state]));
+  const providerLookupCusips = plannedLookupCusips.filter((cusip) => {
+    const state = stateByCusip.get(cusip);
+    if (!state?.trusted || !state.candidateEvidence?.length) return true;
+    const symbols = new Set(state.evidence.map((item) => String(item.symbol ?? "").trim().toUpperCase()).filter(Boolean));
+    const types = Array.from(new Set(state.candidateEvidence
+      .filter((candidate) => symbols.has(String(candidate.ticker ?? "").trim().toUpperCase()))
+      .map((candidate) => classifyInstitutionalSecurityType(candidate))
+      .filter((classification) => classification.analyticsPopulation !== "INSUFFICIENT_SECURITY_TYPE_EVIDENCE")
+      .map((classification) => classification.canonicalType)));
+    return types.length !== 1;
+  });
+  const providerResolutions = await client.resolveCusips(providerLookupCusips);
   return { plan: buildInstitutionalSecurityReferencePlan({
     population, trustedState, providerResolutions, plannedLookupCusips, maxCusips, cursor, refreshTerminal,
+    includeAssetTypeBackfill: true,
   }),
     runtime: client.executionProfile };
 }

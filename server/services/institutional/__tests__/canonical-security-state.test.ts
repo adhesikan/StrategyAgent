@@ -30,6 +30,10 @@ describe("canonical security state", () => {
     expect(canonicalSecurityTypeStateQuery).toContain("'other_pooled_fund'");
     expect(canonicalSecurityTypeStateQuery).toContain("stock_eligible_identities");
     expect(canonicalSecurityTypeStateQuery).toContain("candidate.share_class_figi");
+    expect(canonicalStockIdentityForSymbolQuery).not.toContain("target_cusips");
+    expect(canonicalStockIdentityForSymbolQuery).toContain(
+      "FROM canonical\nWHERE symbol = $1",
+    );
   });
 
   it("centralizes amendment, manager-quarter, and holding eligibility semantics", () => {
@@ -60,5 +64,7 @@ describe("canonical security state", () => {
   it("executes the symbol-scoped canonical identity query against PostgreSQL", async () => {
     const result = await pool.query(canonicalStockIdentityForSymbolQuery, ["AAPL"]);
     expect(result.rows).toEqual(expect.any(Array));
+    const state = await pool.query(canonicalSecurityTypeStateQuery);
+    expect(state.rows).toEqual(expect.any(Array));
   });
 });

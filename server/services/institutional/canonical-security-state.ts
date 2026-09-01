@@ -4,7 +4,6 @@
  * persisted mapping evidence; asset type is read from security_master.
  */
 import {
-  CANONICAL_EFFECTIVE_HOLDINGS_CTE,
   CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY,
 } from "./institutional-effective-holdings";
 
@@ -53,7 +52,7 @@ evidence AS (
 }
 
 export const canonicalSecurityTypeStateCte = buildCanonicalSecurityStateCte(`
-${CANONICAL_EFFECTIVE_HOLDINGS_CTE},
+${CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY},
 eligible_cusips AS (
   SELECT DISTINCT h.cusip
   FROM canonical_effective_holdings h
@@ -84,19 +83,10 @@ FROM canonical`;
  */
 export const canonicalStockIdentityForSymbolQuery = `
 ${buildCanonicalSecurityStateCte(`
-target_cusips AS (
-  SELECT cusip
-  FROM institutional_security_mappings
-  WHERE UPPER(TRIM(mapped_symbol)) = $1
-  UNION
-  SELECT cusip
-  FROM security_master
-  WHERE UPPER(TRIM(ticker)) = $1
-), ${CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY},
+${CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY},
 eligible_cusips AS (
   SELECT DISTINCT h.cusip
   FROM canonical_effective_holdings h
-  JOIN target_cusips target ON target.cusip = h.cusip
 )
 `)}
 SELECT

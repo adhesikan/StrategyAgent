@@ -7,6 +7,18 @@
  */
 
 export { INSTITUTIONAL_ANALYTICS_LAYER, createInstitutionalQuarter } from "./types";
+export {
+  resolveCanonicalInstitutionalSecurityContext,
+  resolveCanonicalInstitutionalSecurityContexts,
+  canonicalInstitutionalSecurityContextForSymbolQuery,
+  canonicalInstitutionalSecurityContextsQuery,
+} from "../canonical-institutional-security-context";
+export type {
+  CanonicalInstitutionalSecurityContext,
+  CanonicalInstitutionalIdentityProvenance,
+} from "../canonical-institutional-security-context";
+export { loadCanonicalRuntimeSupport } from "../canonical-runtime-loaders";
+export type { CanonicalRuntimeSupport } from "../canonical-runtime-loaders";
 export type {
   AnalyticsDataQuality,
   CohortAnalyticsQuery,

@@ -7,24 +7,22 @@
  * or network I/O.
  */
 
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { db, pool } from "../../../db";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { db } from "../../../db";
 import {
   institutional13fFilings,
   institutional13fHoldings,
-  institutionalSecurityMappings,
   institutionalQuarterlyAggregates,
-  securityMaster,
   type InstitutionalQuarterlyAggregate,
 } from "@shared/schema";
 import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
 import { isEligibleForStockInstitutionalAnalytics } from "../security-type-eligibility";
-import { canonicalStockIdentityForSymbolQuery } from "../canonical-security-state";
 import {
-  evaluateStockCandidateIdentity,
-  type StockCandidateCanonicalRow,
+  resolveCanonicalInstitutionalSecurityContext,
+} from "../canonical-institutional-security-context";
+import {
   type StockCandidateIdentity,
 } from "./stock-candidate-identity";
 export {
@@ -259,50 +257,24 @@ export async function loadStockCandidateIdentity(
   accessionNumbers: string[],
   symbol: string,
 ): Promise<StockCandidateIdentity> {
-  const normalizedSymbol = symbol.trim().toUpperCase();
-  const canonicalResult = await pool.query<StockCandidateCanonicalRow>(
-    canonicalStockIdentityForSymbolQuery,
-    [normalizedSymbol],
-  );
-  const canonicalRows = canonicalResult.rows;
-  const evidenceRows = accessionNumbers.length === 0 ? [] : await db
-    .select({
-      cusip: institutional13fHoldings.cusip,
-      masterTicker: securityMaster.ticker,
-      masterReviewStatus: securityMaster.reviewStatus,
-      masterAssetType: securityMaster.assetType,
-      mappingSymbol: institutionalSecurityMappings.mappedSymbol,
-      mappingStatus: institutionalSecurityMappings.mappingStatus,
-      holdingMappedSymbol: institutional13fHoldings.mappedSymbol,
-      holdingMappingStatus: institutional13fHoldings.mappingStatus,
-    })
-    .from(institutional13fHoldings)
-    .leftJoin(
-      securityMaster,
-      eq(securityMaster.cusip, institutional13fHoldings.cusip),
-    )
-    .leftJoin(
-      institutionalSecurityMappings,
-      eq(
-        institutionalSecurityMappings.cusip,
-        institutional13fHoldings.cusip,
-      ),
-    )
-    .where(
-      and(
-        inArray(institutional13fHoldings.accessionNumber, accessionNumbers),
-        or(
-          sql`UPPER(${securityMaster.ticker}) = ${normalizedSymbol}`,
-          sql`UPPER(${institutionalSecurityMappings.mappedSymbol}) = ${normalizedSymbol}`,
-          sql`UPPER(${institutional13fHoldings.mappedSymbol}) = ${normalizedSymbol}`,
-        ),
-      ),
-    );
-  return evaluateStockCandidateIdentity(
-    normalizedSymbol,
-    canonicalRows,
-    evidenceRows,
-  );
+  // accessionNumbers are intentionally not identity input.  They remain in
+  // this signature for callers that subsequently load the selected period.
+  // Identity is resolved once from the canonical effective-holdings contract.
+  void accessionNumbers;
+  const context = await resolveCanonicalInstitutionalSecurityContext(symbol);
+  return context
+    ? {
+        candidateCusips: context.canonicalCusips,
+        hasReliableSecurityIdentity: true,
+        hasDisqualifyingCandidateEvidence: false,
+        hasTargetSpecificCandidateEvidence: true,
+      }
+    : {
+        candidateCusips: [],
+        hasReliableSecurityIdentity: false,
+        hasDisqualifyingCandidateEvidence: false,
+        hasTargetSpecificCandidateEvidence: false,
+      };
 }
 
 export async function loadStockCandidateCusips(

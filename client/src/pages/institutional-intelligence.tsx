@@ -145,68 +145,6 @@ interface StockTrend {
   dataQuality?: { status: string; coveragePercent: number | null; warnings: string[] };
 }
 
-interface LegacyStockData {
-  status: string;
-  symbol: string;
-  periodOfReport: string | null;
-  latestFilingDate: string | null;
-  freshness: {
-    status: string;
-    daysSincePeriodEnd: number;
-    daysSinceLatestFiling: number;
-  } | null;
-  coverage: {
-    mappingStatus: string;
-    eligibleHoldingCount: number;
-    excludedHoldingCount: number;
-    warnings: string[];
-  } | null;
-  summary: {
-    reportingManagerCount: number;
-    aggregateReportedShares: number | null;
-    aggregateReportedValue: number | null;
-    reportedSharesChange: number | null;
-    reportedSharesChangePercent: number | null;
-    trend: string;
-    trendLabel: string;
-  } | null;
-  managerActivity: {
-    new: number;
-    increased: number;
-    reduced: number;
-    exited: number;
-    unchanged: number;
-  } | null;
-  concentration: {
-    topHolderPercentOfReportedShares: number | null;
-    top5PercentOfReportedShares: number | null;
-    top10PercentOfReportedShares: number | null;
-    classification: string;
-  } | null;
-  historicalQuarters: Array<{
-    periodLabel: string;
-    aggregateReportedShares: number | null;
-    reportingManagerCount: number;
-    trend: string;
-  }>;
-  limitations: string[];
-}
-
-interface SignalData {
-  status: string;
-  score: number | null;
-  label: string | null;
-  latestQuarter: string | null;
-  summary: string | null;
-  scoreComponents?: Record<string, number | null>;
-  dataQuality?: {
-    mappingCoverage: number | null;
-    comparableManagerCount: number;
-    confidence: string;
-  };
-  freshness?: { delayed: boolean; periodEndDate: string | null };
-}
-
 interface RankingItem {
   symbol: string;
   companyName: string | null;
@@ -576,23 +514,9 @@ function StockView({
     enabled: !!symbol,
     staleTime: 5 * 60_000,
   });
-  const legacyQuery = useQuery<LegacyStockData>({
-    queryKey: [`/api/institutional/${symbol}`],
-    queryFn: () => fetchJson(`/api/institutional/${symbol}?maxHolders=20`),
-    enabled: !!symbol,
-    staleTime: 5 * 60_000,
-  });
-  const signalQuery = useQuery<SignalData>({
-    queryKey: [`/api/institutional/signals/${symbol}`],
-    queryFn: () => fetchJson(`/api/institutional/signals/${symbol}`),
-    enabled: !!symbol,
-    staleTime: 5 * 60_000,
-  });
-
   if (
     analyticsQuery.isLoading ||
-    trendQuery.isLoading ||
-    (!analyticsQuery.data && !legacyQuery.data && legacyQuery.isLoading)
+    trendQuery.isLoading
   ) {
     return <LoadingCards count={4} />;
   }
@@ -608,7 +532,6 @@ function StockView({
         onRetry={() => {
           void analyticsQuery.refetch();
           void trendQuery.refetch();
-          void legacyQuery.refetch();
         }}
       />
     );
@@ -619,17 +542,14 @@ function StockView({
   if (
     !analyticsQuery.data &&
     !trendQuery.data &&
-    !legacyQuery.data &&
-    primaryHardError &&
-    legacyQuery.isError
+    primaryHardError
   ) {
-    return <ErrorState onRetry={() => { void analyticsQuery.refetch(); void trendQuery.refetch(); void legacyQuery.refetch(); }} />;
+    return <ErrorState onRetry={() => { void analyticsQuery.refetch(); void trendQuery.refetch(); }} />;
   }
 
   const data = analyticsQuery.data;
   const trend = trendQuery.data;
-  const legacy = legacyQuery.data?.summary ? legacyQuery.data : undefined;
-  if (!data && !legacy) {
+  if (!data) {
     return <EmptyState title={`No reported 13F data for ${symbol}`} detail="A completed institutional snapshot is required before this stock can be analyzed." />;
   }
   if (data?.availability === "UNSUPPORTED") {
@@ -648,18 +568,12 @@ function StockView({
     return <EmptyState title={`Institutional data for ${symbol} is incomplete`} detail="This snapshot has incomplete mapping or comparison coverage. Holder and activity metrics are unavailable rather than shown as zero." onRetry={() => { void analyticsQuery.refetch(); void trendQuery.refetch(); }} />;
   }
 
-  const score = signalQuery.data?.score ?? null;
-  const quarters = trend?.quarters ?? legacy?.historicalQuarters ?? [];
-  const quality = data?.dataQuality?.status ?? legacy?.status ?? "unavailable";
+  const score = null;
+  const quarters = trend?.quarters ?? [];
+  const quality = data?.dataQuality?.status ?? "unavailable";
   const reportedShareChangePercent =
-    data?.aggregateReportedShareChangePct ??
-    (legacy?.summary?.reportedSharesChangePercent == null
-      ? null
-      : legacy.summary.reportedSharesChangePercent * 100);
-  const warnings = [
-    ...(data?.dataQuality?.warnings ?? []),
-    ...(legacy?.limitations ?? []).slice(0, 3),
-  ];
+    data?.aggregateReportedShareChangePct ?? null;
+  const warnings = data?.dataQuality?.warnings ?? [];
 
   return (
     <div className="space-y-5" data-testid="institutional-stock-view">
@@ -684,7 +598,7 @@ function StockView({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Accumulation score" help="accumulationScore" value={score == null ? "Unavailable" : formatInstitutionalScore(score)} detail={signalQuery.data?.label ?? "Requires sufficient history"} valueClass={scoreColor(score)} />
+        <Metric label="Accumulation score" help="accumulationScore" value="Unavailable" detail="Requires canonical signal support" valueClass={scoreColor(score)} />
         <Metric
           label="Reported holders"
           help="reportedHolders"
@@ -695,14 +609,13 @@ function StockView({
               : `${data.holderCountChange >= 0 ? "+" : ""}${data.holderCountChange} QoQ · ${data.reportingManagerCount} tracked managers`
           }
         />
-        <Metric label="Reported shares" help="reportedShares" value={formatNumber(data?.aggregateReportedShares ?? legacy?.summary?.aggregateReportedShares)} detail={formatPct(reportedShareChangePercent)} valueClass={toneForDirection(reportedShareChangePercent)} />
+        <Metric label="Reported shares" help="reportedShares" value={formatNumber(data?.aggregateReportedShares)} detail={formatPct(reportedShareChangePercent)} valueClass={toneForDirection(reportedShareChangePercent)} />
         <Metric label="Mapping coverage" help="mappingCoverage" value={data?.mappingCoverage?.coveragePercent == null ? "—" : `${data.mappingCoverage.coveragePercent.toFixed(0)}%`} detail={`Quality: ${quality}`} />
       </div>
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
         <span><strong className="text-foreground"><InstitutionalMetricLabel label="Data as of" metric="dataAsOf" /></strong>: {data?.dataAsOf ? formatDate(data.dataAsOf) : "Unavailable"}</span>
-        {legacy?.freshness && <><span><strong className="text-foreground">Period:</strong> {formatDate(legacy.periodOfReport)}</span><span><strong className="text-foreground">Latest filing:</strong> {formatDate(legacy.latestFilingDate)}</span><span><strong className="text-foreground">Freshness:</strong> {legacy.freshness.status.replace("_", " ")}</span></>}
-        <span><strong className="text-foreground"><InstitutionalMetricLabel label="Signal" metric="signal" /></strong>: {signalQuery.data?.status ?? "Unavailable"}</span>
+        <span><strong className="text-foreground"><InstitutionalMetricLabel label="Signal" metric="signal" /></strong>: Unavailable</span>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -710,7 +623,7 @@ function StockView({
           <CardHeader className="pb-3"><CardTitle className="text-sm">Share trend and breadth</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <Metric label="Trend classification" help="trendClassification" value={trend?.classification ?? legacy?.summary?.trendLabel ?? "Unavailable"} valueClass="text-base capitalize" />
+              <Metric label="Trend classification" help="trendClassification" value={trend?.classification ?? "Unavailable"} valueClass="text-base capitalize" />
               <Metric label="Breadth direction" help="breadthDirection" value={data?.breadth?.direction ?? "Unavailable"} detail={data?.breadth?.breadthRatio == null ? "No comparable denominator" : `${data.breadth.breadthRatio.toFixed(1)} ratio`} valueClass="text-base capitalize" />
             </div>
             {trend?.quarters && trend.quarters.length > 0 ? (
@@ -736,20 +649,13 @@ function StockView({
           <CardHeader className="pb-3"><CardTitle className="text-sm">Quarterly reported activity <span className="ml-1 text-xs font-normal text-muted-foreground"><InstitutionalMetricLabel label="Entrants vs exits" metric="entrantsVsExits" /></span></CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Metric label="Newly reported" help="newlyReported" value={data?.newlyReportedHolderCount ?? legacy?.managerActivity?.new ?? "—"} valueClass="text-emerald-600 dark:text-emerald-400" />
-              <Metric label="Increased" help="increased" value={data?.increasedReportedHolderCount ?? legacy?.managerActivity?.increased ?? "—"} valueClass="text-sky-600 dark:text-sky-400" />
-              <Metric label="Reduced" help="reduced" value={data?.reducedReportedHolderCount ?? legacy?.managerActivity?.reduced ?? "—"} valueClass="text-amber-600 dark:text-amber-400" />
-              <Metric label="No longer reported" help="noLongerReported" value={data?.noLongerReportedHolderCount ?? legacy?.managerActivity?.exited ?? "—"} valueClass="text-rose-600 dark:text-rose-400" />
-              <Metric label="Unchanged" help="unchanged" value={data?.unchangedReportedHolderCount ?? legacy?.managerActivity?.unchanged ?? "—"} />
-              <Metric label="Concentration" help="concentration" value={legacy?.concentration?.classification ?? "Unavailable"} valueClass="text-base capitalize" />
+              <Metric label="Newly reported" help="newlyReported" value={data?.newlyReportedHolderCount ?? "—"} valueClass="text-emerald-600 dark:text-emerald-400" />
+              <Metric label="Increased" help="increased" value={data?.increasedReportedHolderCount ?? "—"} valueClass="text-sky-600 dark:text-sky-400" />
+              <Metric label="Reduced" help="reduced" value={data?.reducedReportedHolderCount ?? "—"} valueClass="text-amber-600 dark:text-amber-400" />
+              <Metric label="No longer reported" help="noLongerReported" value={data?.noLongerReportedHolderCount ?? "—"} valueClass="text-rose-600 dark:text-rose-400" />
+              <Metric label="Unchanged" help="unchanged" value={data?.unchangedReportedHolderCount ?? "—"} />
+              <Metric label="Concentration" help="concentration" value="Unavailable" valueClass="text-base capitalize" />
             </div>
-            {legacy?.concentration && (
-              <p className="mt-4 text-xs text-muted-foreground">
-                Top reported holder: {legacy.concentration.topHolderPercentOfReportedShares == null ? "—" : `${(legacy.concentration.topHolderPercentOfReportedShares * 100).toFixed(1)}%`}
-                {" · "}Top five: {legacy.concentration.top5PercentOfReportedShares == null ? "—" : `${(legacy.concentration.top5PercentOfReportedShares * 100).toFixed(1)}%`}
-                {" · "}denominator is reported shares in the selected quarter.
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -799,20 +705,7 @@ function StockView({
         <Card>
            <CardHeader className="pb-3"><CardTitle className="text-sm"><InstitutionalMetricLabel label="Accumulation components" metric="accumulationScore" /></CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {Object.entries(signalQuery.data?.scoreComponents ?? {}).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between rounded bg-muted/30 px-3 py-2 text-xs">
-                 <span className="capitalize text-muted-foreground">
-                   {key === "breadth" || key === "concentration" || key === "entrantsVsExits" ? (
-                     <InstitutionalMetricLabel
-                       label={key.replace(/([A-Z])/g, " $1")}
-                       metric={key as "breadth" | "concentration" | "entrantsVsExits"}
-                     />
-                   ) : key.replace(/([A-Z])/g, " $1")}
-                 </span>
-                 <span className={cn("font-semibold tabular-nums", scoreColor(value))}>{value == null ? "Unavailable" : formatInstitutionalScore(value)}</span>
-              </div>
-            ))}
-            {!signalQuery.data?.scoreComponents && <p className="text-xs text-muted-foreground">Component scores are unavailable until the signal has sufficient comparable data.</p>}
+            <p className="text-xs text-muted-foreground">Component scores require the canonical signal loader and are unavailable for this snapshot.</p>
           </CardContent>
         </Card>
          <Card>
@@ -820,7 +713,6 @@ function StockView({
           <CardContent className="space-y-2 text-xs text-muted-foreground">
             <p className="flex items-start gap-2"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />This view describes reported Form 13F activity; it does not infer transaction dates or current positions.</p>
             {warnings.slice(0, 4).map((warning, index) => <p key={`${warning}-${index}`} className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />{warning}</p>)}
-             {signalQuery.data?.dataQuality && <p><InstitutionalMetricLabel label="Signal confidence" metric="signalConfidence" />: <strong className="text-foreground capitalize">{signalQuery.data.dataQuality.confidence}</strong>; <InstitutionalMetricLabel label="Comparable managers" metric="comparableManagers" />: {signalQuery.data.dataQuality.comparableManagerCount}.</p>}
           </CardContent>
         </Card>
       </div>

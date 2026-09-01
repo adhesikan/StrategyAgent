@@ -1,0 +1,125 @@
+Task #215B — Make historical backfill memory-bounded and production-safe
+
+The enhanced production dry-run correctly identified the real historical gap, but failed on 2024-Q1 with Node heap OOM after reporting:
+
+sourceFilings: 8130
+sourceHoldingRows: 3026705
+estimatedHoldingRowsToProcess: 3026705
+
+The process reached ~4 GB heap and crashed before advancing to the next quarter.
+
+OBJECTIVE
+
+Fix the EXISTING historical backfill implementation so both DRY_RUN and APPLY are memory-bounded and can safely process multi-million-row SEC 13F quarterly datasets.
+
+Do not increase Node heap as the primary solution.
+Do not create a parallel ingestion pipeline.
+Do not change canonical identity or analytics semantics.
+Do not execute production APPLY.
+Do not run OpenFIGI.
+Do not re-open mapping/remediation work.
+
+ROOT REQUIREMENT
+
+The parser/backfill must not retain the full INFOTABLE dataset or all parsed holdings for a quarter in memory.
+
+Refactor the existing accepted path to process the archive using bounded memory.
+
+Preferred design:
+
+1. Read/archive entries without materializing multi-million-row holdings into one giant JS object graph.
+
+2. Stream or chunk INFOTABLE processing where practical.
+
+3. Keep only minimal quarter-level counters/state needed for dry-run:
+   - sourceFilings
+   - sourceHoldingRows
+   - filingsAlreadyPresent
+   - filingsToInsert
+   - filingsPotentiallyUpdated
+   - amendmentsToReconcile
+   - estimatedHoldingRowsToProcess
+
+4. For APPLY, use bounded batches for persistence and downstream processing.
+
+5. Preserve existing:
+   - catalog-only source resolution
+   - effective filing semantics
+   - amendment supersession
+   - canonical USD values
+   - CUSIP QoQ
+   - put/call separation
+   - PRN exclusion
+   - positive-share rules
+   - trusted identity
+   - stock eligibility
+   - idempotency
+   - advisory locking
+   - resumability
+   - per-quarter transactional safety where currently supported
+
+6. Avoid loading all existing production holdings into application memory for comparison.
+Use database-side counts/lookups or bounded queries.
+
+7. Add bounded-memory safeguards:
+   - explicit batch size
+   - bounded concurrency
+   - no unbounded Promise.all over filings/holdings
+   - release parsed buffers/objects between batches
+   - quarter resources disposed before next quarter
+
+8. Dry-run must remain read-only.
+
+9. APPLY must continue to require explicit --apply and existing production guards.
+
+10. If the ZIP/archive library itself forces full uncompressed INFOTABLE buffering, replace only that part with a streaming-compatible implementation while preserving the same parser/output contract.
+
+TESTS
+
+Add/extend tests proving:
+
+- multi-million-row-like synthetic input is processed in bounded batches
+- no full holding population accumulation
+- dry-run counters remain correct
+- amendment counts remain correct
+- idempotent rerun
+- partial existing filings
+- full missing quarter
+- no-change quarter
+- malformed source fails closed
+- resources are released between quarters
+- APPLY path uses the same bounded ingestion mechanism as dry-run
+
+Also add lightweight runtime instrumentation for the CLI only:
+
+per quarter:
+heapUsedMBStart
+heapUsedMBPeak
+heapUsedMBEnd
+batchCount
+
+Do not expose individual filings or holdings.
+
+TARGET
+
+The production dry-run for 2024-Q1 through 2025-Q3 must complete without OOM under the current Railway memory allocation.
+
+RETURN ONLY
+
+ROOT CAUSE OF OOM
+
+MEMORY-BOUNDED DESIGN
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE command to rerun the production dry-run for:
+
+2024-Q1 through 2025-Q3
+
+Do not provide an APPLY command.

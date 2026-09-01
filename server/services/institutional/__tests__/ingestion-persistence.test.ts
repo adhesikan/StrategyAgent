@@ -64,6 +64,19 @@ vi.mock("../sec-13f-bulk-parser", async (importOriginal) => {
   return {
     ...actual,
     parseBulkFromDescriptor: mockParseBulkFromDescriptor,
+    prepareBulkArchiveFromDescriptor: vi.fn(async (descriptor: DatasetDescriptor) => ({
+      buffer: Buffer.alloc(0),
+      transportDiagnostics: {},
+      testResult: await mockParseBulkFromDescriptor(descriptor),
+    })),
+    streamPreparedBulkArchive: vi.fn(async (archive: any, _descriptor: DatasetDescriptor, options: any) => {
+      const result = archive.testResult as BulkParseResult;
+      if ((result.status === "success" || result.status === "partial_success") && result.holdings.length > 0) {
+        await options.onBatch(result.holdings);
+      }
+      const { holdings: _holdings, ...streamResult } = result;
+      return streamResult;
+    }),
   };
 });
 

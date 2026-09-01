@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   classifySecArchiveFailure,
   parseBulkQuarterFromBuffer,
+  streamBulkQuarterFromBuffer,
   type BulkParseResult,
   validateSecArchiveResponse,
 } from "../sec-13f-bulk-parser";
@@ -49,6 +50,91 @@ describe("historical SEC source classification", () => {
     const buffer = zip.toBuffer();
     expect(validateSecArchiveResponse("application/octet-stream", buffer)).toBeNull();
     expect(parseBulkQuarterFromBuffer(buffer, 2026, 1).status).toBe("success");
+  });
+});
+
+describe("bounded historical INFOTABLE streaming", () => {
+  function makeArchive(accessionOrder: string[], rowsPerAccession: number): Buffer {
+    const zip = new AdmZip();
+    const unique = Array.from(new Set(accessionOrder));
+    zip.addFile("SUBMISSION.tsv", Buffer.from(
+      "ACCESSION-NUMBER\tCIK\tNAME\tFORM-TYPE\tFILING-DATE\tCONFORMED-PERIOD-OF-REPORT\n" +
+      unique.map((accession, index) =>
+        `${accession}\t${String(index + 1).padStart(10, "0")}\tFUND ${index}\t${index === 1 ? "13F-HR/A" : "13F-HR"}\t2024-05-01\t2024-03-31`,
+      ).join("\n"),
+    ));
+    const rows = ["ACCESSION-NUMBER\tNAMEOFISSUER\tTITLEOFCLASS\tCUSIP\tVALUE\tSSHPRNAMT\tSSHPRNAMTTYPE"];
+    for (const accession of accessionOrder) {
+      for (let index = 0; index < rowsPerAccession; index++) {
+        rows.push(`${accession}\tISSUER ${index}\tCOM\t${String(index).padStart(9, "0")}\t1000\t10\tSH`);
+      }
+    }
+    zip.addFile("INFOTABLE.tsv", Buffer.from(rows.join("\n")));
+    return zip.toBuffer();
+  }
+
+  it("processes high-volume-like input with serial bounded batches and no full population result", async () => {
+    const accessions = Array.from({ length: 250 }, (_, index) =>
+      `${String(index + 1).padStart(10, "0")}-24-${String(index + 1).padStart(6, "0")}`,
+    );
+    const batchSizes: number[] = [];
+    let active = 0;
+    let maxActive = 0;
+    let totalRows = 0;
+    const result = await streamBulkQuarterFromBuffer(
+      makeArchive(accessions, 200),
+      2024,
+      1,
+      {
+        batchSize: 2_000,
+        async onBatch(batch) {
+          active++;
+          maxActive = Math.max(maxActive, active);
+          batchSizes.push(batch.length);
+          totalRows += batch.length;
+          await Promise.resolve();
+          active--;
+        },
+      },
+    );
+    expect(result.status).toBe("success");
+    expect(totalRows).toBe(50_000);
+    expect(result.diagnostics.joinedHoldingRows).toBe(50_000);
+    expect(Math.max(...batchSizes)).toBeLessThanOrEqual(2_000);
+    expect(batchSizes.length).toBeGreaterThan(1);
+    expect(maxActive).toBe(1);
+    expect("holdings" in result).toBe(false);
+  }, 20_000);
+
+  it("fails closed when an accession reappears after another accession", async () => {
+    const a = "0000000001-24-000001";
+    const b = "0000000002-24-000002";
+    let emitted = 0;
+    const result = await streamBulkQuarterFromBuffer(
+      makeArchive([a, b, a], 1),
+      2024,
+      1,
+      { batchSize: 1, onBatch(batch) { emitted += batch.length; } },
+    );
+    expect(result.status).toBe("empty_parse_failure");
+    expect(result.reason).toBe("INFOTABLE_ACCESSION_ORDER_VIOLATION");
+    expect(emitted).toBeLessThan(3);
+  });
+
+  it("releases batch references before processing the next quarter", async () => {
+    let retained: unknown[] | null = null;
+    for (const accession of ["0000000001-24-000001", "0000000002-24-000002"]) {
+      const result = await streamBulkQuarterFromBuffer(
+        makeArchive([accession], 10),
+        2024,
+        1,
+        { onBatch(batch) { retained = batch; } },
+      );
+      expect(result.status).toBe("success");
+      expect(retained).toHaveLength(10);
+      retained = null;
+    }
+    expect(retained).toBeNull();
   });
 });
 

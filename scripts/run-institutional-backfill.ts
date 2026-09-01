@@ -11,7 +11,7 @@ import {
   type DatasetDescriptor,
 } from "../server/services/institutional/sec-dataset-catalog";
 import {
-  parseBulkFromDescriptor,
+  streamBulkFromDescriptor,
   type BulkParseResult,
 } from "../server/services/institutional/sec-13f-bulk-parser";
 import { runInstitutionalIngestion } from "../server/services/institutional/ingestion-service";
@@ -29,10 +29,12 @@ interface ExistingFilingSnapshot {
   isEffective: boolean;
 }
 
+// Retained solely for buildDryRunQuarterPlan's compatibility/test contract.
 interface ExistingHoldingSnapshot {
   accessionNumber: string;
   holdingRows: number;
 }
+
 
 export interface DryRunQuarterPlan {
   quarter: string;
@@ -198,7 +200,7 @@ async function checkSchema(): Promise<void> {
 
 async function readExistingQuarterState(periodOfReport: string): Promise<{
   filings: ExistingFilingSnapshot[];
-  holdings: ExistingHoldingSnapshot[];
+  holdingRows: number;
 }> {
   const filingsResult = await db.execute(sql`
     SELECT accession_number AS "accessionNumber",
@@ -209,15 +211,37 @@ async function readExistingQuarterState(periodOfReport: string): Promise<{
      WHERE period_of_report = ${periodOfReport}
   `);
   const holdingsResult = await db.execute(sql`
-    SELECT accession_number AS "accessionNumber", COUNT(*)::int AS "holdingRows"
+    SELECT COUNT(*)::int AS "holdingRows"
       FROM institutional_13f_holdings
      WHERE period_of_report = ${periodOfReport}
-     GROUP BY accession_number
   `);
   return {
     filings: filingsResult.rows as ExistingFilingSnapshot[],
-    holdings: holdingsResult.rows as ExistingHoldingSnapshot[],
+    holdingRows: Number((holdingsResult.rows[0] as any)?.holdingRows ?? 0),
   };
+}
+
+function buildStreamingDryRunPlan(
+  descriptor: DatasetDescriptor,
+  existing: { filings: ExistingFilingSnapshot[]; holdingRows: number },
+  source: { status: string; sourceFilings: number; sourceHoldingRows: number; missingAccessions: number; missingHoldingRows: number; missingAmendments: number },
+): DryRunQuarterPlan {
+  if (source.status !== "success" && source.status !== "partial_success") {
+    return { quarter: `${descriptor.year}-Q${descriptor.q}`, catalogFile: descriptor.fileName, sourceAvailable: false,
+      existingFilings: existing.filings.length, existingEffectiveFilings: existing.filings.filter((f) => f.isEffective).length,
+      existingHoldingRows: existing.holdingRows, sourceFilings: null, sourceHoldingRows: null, filingsAlreadyPresent: null,
+      filingsToInsert: null, filingsPotentiallyUpdated: null, amendmentsToReconcile: null, estimatedHoldingRowsToProcess: null,
+      downstreamAggregateRebuildRequired: false, downstreamSignalRebuildRequired: false, status: "SOURCE_ERROR" };
+  }
+  const filingsAlreadyPresent = source.sourceFilings - source.missingAccessions;
+  const hasWork = source.missingAccessions > 0 || source.missingAmendments > 0;
+  return { quarter: `${descriptor.year}-Q${descriptor.q}`, catalogFile: descriptor.fileName, sourceAvailable: true,
+    existingFilings: existing.filings.length, existingEffectiveFilings: existing.filings.filter((f) => f.isEffective).length,
+    existingHoldingRows: existing.holdingRows, sourceFilings: source.sourceFilings, sourceHoldingRows: source.sourceHoldingRows,
+    filingsAlreadyPresent, filingsToInsert: source.missingAccessions, filingsPotentiallyUpdated: 0,
+    amendmentsToReconcile: source.missingAmendments, estimatedHoldingRowsToProcess: source.missingHoldingRows,
+    downstreamAggregateRebuildRequired: hasWork, downstreamSignalRebuildRequired: hasWork,
+    status: !hasWork ? "NO_CHANGE" : existing.filings.length === 0 ? "FULL_BACKFILL_REQUIRED" : "PARTIAL_BACKFILL_REQUIRED" };
 }
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
@@ -239,18 +263,35 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   if (!options.apply) {
     const plans: DryRunQuarterPlan[] = [];
     for (const descriptor of range.descriptors) {
-      const [source, existing] = await Promise.all([
-        parseBulkFromDescriptor(descriptor),
-        readExistingQuarterState(descriptor.expectedPeriodOfReport),
-      ]);
-      const plan = buildDryRunQuarterPlan({
-        descriptor,
-        source,
-        existingFilings: existing.filings,
-        existingHoldingRows: existing.holdings,
+      const heapUsedMBStart = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+      let heapUsedMBPeak = heapUsedMBStart;
+      let batchCount = 0;
+      const existing = await readExistingQuarterState(descriptor.expectedPeriodOfReport);
+      const existingAccessions = new Set(existing.filings.map((f) => normalizeAccession(f.accessionNumber)));
+      const seen = new Set<string>();
+      let sourceHoldingRows = 0, missingHoldingRows = 0, missingAmendments = 0;
+      const source = await streamBulkFromDescriptor(descriptor, {
+        onBatch(batch) {
+          batchCount++;
+          heapUsedMBPeak = Math.max(heapUsedMBPeak, Math.round(process.memoryUsage().heapUsed / 1024 / 1024));
+          for (const holding of batch) {
+            sourceHoldingRows++;
+            const accession = normalizeAccession(holding.accessionNumber);
+            if (!existingAccessions.has(accession)) {
+              missingHoldingRows++;
+              if (!seen.has(accession) && holding.isAmendment) missingAmendments++;
+            }
+            seen.add(accession);
+          }
+        },
+      });
+      const missingAccessions = [...seen].filter((accession) => !existingAccessions.has(accession)).length;
+      const plan = buildStreamingDryRunPlan(descriptor, existing, {
+        status: source.status, sourceFilings: seen.size, sourceHoldingRows, missingAccessions, missingHoldingRows, missingAmendments,
       });
       plans.push(plan);
-      console.log(JSON.stringify(plan));
+      const heapUsedMBEnd = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+      console.log(JSON.stringify({ ...plan, heapUsedMBStart, heapUsedMBPeak, heapUsedMBEnd, batchCount }));
     }
     const totals = plans.reduce((total, plan) => ({
       quarters: total.quarters + 1,

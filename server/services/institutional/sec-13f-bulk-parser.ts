@@ -29,6 +29,9 @@
 //   - Never log raw holding data, credentials, or full archive contents.
 
 import AdmZip from "adm-zip";
+import { Readable } from "node:stream";
+import { createInflateRaw } from "node:zlib";
+import { createInterface } from "node:readline";
 import { secFetchBuffer, secFetchBufferDetailed, SecHttpError } from "./sec-client";
 import type { DatasetDescriptor } from "./sec-dataset-catalog";
 
@@ -212,6 +215,37 @@ export interface BulkParseResult {
   /** Human-readable reason (safe, no secrets) */
   reason?: string;
   failureCode?: BulkSourceFailureCode;
+}
+
+/**
+ * The bounded counterpart of BulkParseResult.  Metadata tables are intentionally
+ * read eagerly (they are roughly one row per filing); INFOTABLE is never
+ * materialised as text, row objects, or a quarter-sized holdings array.
+ */
+export interface BulkStreamResult {
+  status: BulkQuarterStatus;
+  diagnostics: BulkParseDiagnostics;
+  reason?: string;
+}
+
+export interface BulkHoldingStreamOptions {
+  /** Hard maximum holdings per emitted batch. Defaults to 2,000. */
+  batchSize?: number;
+  /**
+   * Called serially. The caller must finish persisting/inspecting a batch before
+   * the inflater is allowed to produce the next one.
+   */
+  onBatch: (
+    holdings: ParsedBulkHolding[],
+    context: { accessionNumber: string; accessionComplete: boolean },
+  ) => Promise<void> | void;
+}
+
+/** A validated catalog archive, reusable for a no-write validation pass and a
+ * serial persistence pass without another network request or decompression. */
+export interface PreparedBulkArchive {
+  buffer: Buffer;
+  transportDiagnostics: Pick<BulkParseDiagnostics, "requestedUrl" | "finalUrl" | "httpStatus" | "contentType" | "contentLength">;
 }
 
 const ZIP_CONTENT_TYPES = new Set([
@@ -2123,6 +2157,189 @@ export function parseBulkQuarterFromBuffer(
 }
 
 // ---------------------------------------------------------------------------
+// Bounded archive reader
+// ---------------------------------------------------------------------------
+
+/**
+ * Read a ZIP entry through zlib without invoking AdmZip#getData().  AdmZip is
+ * still used for its central directory (and therefore retains the existing
+ * entry-resolution rules), but its eager inflater is deliberately bypassed.
+ */
+function zipEntryTextStream(archive: Buffer, entry: AdmZip.IZipEntry): Readable {
+  const header = entry.header;
+  if (header.encrypted) throw new Error("ENCRYPTED_ARCHIVE_ENTRY_UNSUPPORTED");
+  const dataOffset = header.realDataOffset || (
+    header.offset + 30 + archive.readUInt16LE(header.offset + 26) + archive.readUInt16LE(header.offset + 28)
+  );
+  const compressed = archive.subarray(dataOffset, dataOffset + header.compressedSize);
+  async function* chunks(): AsyncGenerator<Buffer> {
+    // Do not hand a multi-hundred MB compressed buffer to a stream as one chunk.
+    for (let offset = 0; offset < compressed.length; offset += 64 * 1024) {
+      yield compressed.subarray(offset, Math.min(offset + 64 * 1024, compressed.length));
+    }
+  }
+  if (header.method === 0) return Readable.from(chunks());
+  if (header.method === 8) return Readable.from(chunks()).pipe(createInflateRaw());
+  throw new Error(`UNSUPPORTED_ARCHIVE_COMPRESSION:${header.method}`);
+}
+
+function infoTableRowFromCells(
+  cells: string[],
+  headers: string[],
+  lookup: Map<string, string>,
+): InfoTableRow | null {
+  const raw: Record<string, string> = {};
+  for (let i = 0; i < headers.length; i++) raw[headers[i]] = (cells[i] ?? "").trim();
+  const accRaw = getField(raw, lookup, INFO_ACCESSION_ALIASES);
+  const issuerName = getField(raw, lookup, INFO_ISSUER_ALIASES).trim();
+  const classTitle = getField(raw, lookup, INFO_CLASS_ALIASES).trim();
+  const cusipRaw = getField(raw, lookup, INFO_CUSIP_ALIASES).trim();
+  if (!accRaw || !issuerName || !classTitle || !cusipRaw) return null;
+  const cusip = normalizeCusip(cusipRaw);
+  if (cusip.length !== 9) return null;
+  return {
+    accessionNumber: normalizeAccession(accRaw), issuerName: issuerName.replace(/\s+/g, " "),
+    classTitle: classTitle.replace(/\s+/g, " "), cusip,
+    figi: getField(raw, lookup, INFO_FIGI_ALIASES).trim() || null,
+    reportedValue: parseFiniteInt(getField(raw, lookup, INFO_VALUE_ALIASES)),
+    reportedShares: parseFiniteInt(getField(raw, lookup, INFO_SHARES_ALIASES)),
+    sharesPrnType: normalizeSharesPrnType(getField(raw, lookup, INFO_SHARESTYPE_ALIASES)),
+    putCall: normalizePutCall(getField(raw, lookup, INFO_PUTCALL_ALIASES)),
+    investmentDiscretion: getField(raw, lookup, INFO_DISCRETION_ALIASES).trim() || null,
+    otherManager: getField(raw, lookup, INFO_OTHERMGR_ALIASES).trim() || null,
+    votingSole: parseFiniteInt(getField(raw, lookup, INFO_VSOLE_ALIASES)),
+    votingShared: parseFiniteInt(getField(raw, lookup, INFO_VSHARED_ALIASES)),
+    votingNone: parseFiniteInt(getField(raw, lookup, INFO_VNONE_ALIASES)),
+  };
+}
+
+/**
+ * Parse an archive with bounded INFOTABLE memory.  This is intentionally async:
+ * awaiting onBatch supplies backpressure all the way to the inflater. Accessions
+ * must be contiguous in INFOTABLE; a reappearance fails closed rather than
+ * silently producing duplicate/incomplete filing batches.
+ */
+export async function streamBulkQuarterFromBuffer(
+  buffer: Buffer, _year: number, _q: 1 | 2 | 3 | 4, options: BulkHoldingStreamOptions,
+): Promise<BulkStreamResult> {
+  const startMs = Date.now();
+  let zip: AdmZip;
+  try { zip = new AdmZip(buffer); } catch {
+    return { status: "failed", diagnostics: { ...EMPTY_DIAGNOSTICS, archiveBytes: buffer.length }, reason: "Could not open archive as a ZIP file" };
+  }
+  const entries = zip.getEntries();
+  const subResolve = resolveRequiredArchiveEntry(entries, "SUBMISSION.tsv");
+  const infoResolve = resolveRequiredArchiveEntry(entries, "INFOTABLE.tsv");
+  const cpResolve = resolveRequiredArchiveEntry(entries, "COVERPAGE.tsv");
+  const names = entries.map((entry) => entry.entryName);
+  const resolutionDiag = {
+    archiveBytes: buffer.length, archiveEntries: names,
+    resolvedSubmissionEntry: subResolve.found ? subResolve.entry.entryName : null,
+    resolvedCoverPageEntry: cpResolve.found ? cpResolve.entry.entryName : null,
+    resolvedInfoTableEntry: infoResolve.found ? infoResolve.entry.entryName : null,
+    resolutionMode: subResolve.found ? subResolve.mode : infoResolve.found ? infoResolve.mode : null,
+  };
+  if (!subResolve.found || !infoResolve.found) {
+    return { status: "empty_parse_failure", diagnostics: { ...EMPTY_DIAGNOSTICS, ...resolutionDiag, durationMs: Date.now() - startMs }, reason: "REQUIRED_ARCHIVE_ENTRY_MISSING" };
+  }
+  try {
+    // These two tables are bounded by the filing population, not holding rows.
+    const submissionText = subResolve.entry.getData().toString("utf8");
+    const submission = parseSubmissionTsv(submissionText);
+    const subHasName = hasAnyAlias(buildHeaderLookup(parseTsv(submissionText).headers), SUB_NAME_ALIASES);
+    let subRows = submission.rows.slice();
+    let cover = new Map<string, CoverPageRow>();
+    let cpRows = 0, parsedCpRows = 0, duplicateCpRows = 0;
+    let cpMapping: Record<string, string | null> = {};
+    if (cpResolve.found) {
+      const parsed = parseCoverPageTsv(cpResolve.entry.getData().toString("utf8"));
+      cover = parsed.byAccession; cpRows = parsed.totalRows; parsedCpRows = parsed.parsedRows;
+      duplicateCpRows = parsed.duplicateAccessionCount; cpMapping = parsed.canonicalMapping;
+      if (parsed.missingHeaders.length && !subHasName) throw new Error("MANAGER_IDENTITY_SOURCE_MISSING");
+      for (const pending of submission.unknownTypeRows) {
+        const type = normalizeSubmissionType(cover.get(pending.accessionNumber)?.reportType ?? "");
+        if (type === "13F-HR" || type === "13F-HR/A") subRows.push({ ...pending, formType: type, isAmendment: type === "13F-HR/A" || cover.get(pending.accessionNumber)!.isAmendment });
+      }
+    } else if (!subHasName) throw new Error("MANAGER_IDENTITY_SOURCE_MISSING");
+    if (submission.missingHeaders.length || !subRows.length) throw new Error("INVALID_SUBMISSION");
+    const submissions = new Map(subRows.map((row) => [row.accessionNumber, row]));
+    let infoHeaders: string[] | null = null, infoLookup: Map<string, string> | null = null;
+    let infoMapping: Record<string, string | null> = {};
+    let totalInfo = 0, parsedInfo = 0, rejected = 0, joined = 0, missingManager = 0, putCall = 0, prn = 0, eligible = 0;
+    let batch: ParsedBulkHolding[] = [], currentAccession: string | null = null;
+    const completedAccessions = new Set<string>();
+    const batchSize = Math.max(1, options.batchSize ?? 2_000);
+    const flush = async (accessionComplete: boolean) => {
+      if (!batch.length || currentAccession === null) return;
+      const emitted = batch;
+      batch = [];
+      await options.onBatch(emitted, { accessionNumber: currentAccession, accessionComplete });
+    };
+    const lineReader = createInterface({ input: zipEntryTextStream(buffer, infoResolve.entry), crlfDelay: Infinity });
+    for await (const rawLine of lineReader) {
+      if (!rawLine.trim()) continue;
+      if (!infoHeaders) {
+        infoHeaders = stripBom(rawLine).split("\t").map((cell) => cell.trim().toUpperCase());
+        infoLookup = buildHeaderLookup(infoHeaders);
+        const missing = REQUIRED_INFOTABLE_FIELDS.filter((field) => !hasAnyAlias(infoLookup!, field.aliases));
+        if (missing.length) throw new Error(`REQUIRED_INFOTABLE_HEADERS_MISSING:${missing.map((field) => field.canonical).join(",")}`);
+        infoMapping = buildCanonicalMapping(infoLookup, ALL_INFOTABLE_FIELDS);
+        continue;
+      }
+      totalInfo++;
+      const row = infoTableRowFromCells(rawLine.split("\t"), infoHeaders, infoLookup!);
+      if (!row) { rejected++; continue; }
+      parsedInfo++;
+      if (currentAccession !== row.accessionNumber) {
+        if (currentAccession !== null) {
+          await flush(true);
+          completedAccessions.add(currentAccession);
+        }
+        if (completedAccessions.has(row.accessionNumber)) throw new Error("INFOTABLE_ACCESSION_ORDER_VIOLATION");
+        currentAccession = row.accessionNumber;
+      }
+      const sub = submissions.get(row.accessionNumber);
+      if (!sub) continue;
+      const cp = cover.get(row.accessionNumber);
+      const filerName = cp?.managerName || sub.name;
+      if (!filerName) { missingManager++; continue; }
+      joined++;
+      if (row.putCall) putCall++; else if (row.sharesPrnType === "PRN") prn++; else eligible++;
+      if (batch.length >= batchSize) await flush(false);
+      batch.push({ ...row, filerCik: sub.cik, filerName, filingType: sub.formType, filingDate: sub.filingDate, periodOfReport: sub.periodOfReport, isAmendment: sub.isAmendment || (cp?.isAmendment ?? false) });
+    }
+    await flush(true);
+    const coverJoins = subRows.reduce((count, row) => count + (cover.has(row.accessionNumber) ? 1 : 0), 0);
+    const diagnostics: BulkParseDiagnostics = {
+      ...EMPTY_DIAGNOSTICS, ...resolutionDiag, submissionRows: submission.totalRows, parsedSubmissionRows: submission.parsedRows,
+      coverPageRows: cpRows, parsedCoverPageRows: parsedCpRows, duplicateCoverPageAccessionCount: duplicateCpRows,
+      coverPageJoinCount: coverJoins, coverPageUnmatchedSubmissionCount: subRows.length - coverJoins,
+      informationTableRows: totalInfo, parsedInformationRows: parsedInfo, rejectedRows: rejected, joinedHoldingRows: joined,
+      missingManagerIdentityCount: missingManager, eligibleCommonStockRows: eligible, putCallExcludedRows: putCall, prnExcludedRows: prn,
+      submissionHeaderMapping: submission.canonicalMapping, coverPageHeaderMapping: cpMapping, infoTableHeaderMapping: infoMapping,
+      submissionTypeCounts: submission.submissionTypeCounts, normalizedSubmissionTypeCounts: submission.normalizedSubmissionTypeCounts,
+      recognizedHoldingsFormRows: submission.recognizedHoldingsFormRows, recognized13fHrRows: submission.recognized13fHrRows,
+      recognized13fHrAmendmentRows: submission.recognized13fHrAmendmentRows, excludedNoticeRows: submission.excludedNoticeRows,
+      excludedUnknownTypeRows: submission.excludedUnknownTypeRows, rejectedMissingAccession: submission.rejectedMissingAccession,
+      rejectedInvalidAccession: submission.rejectedInvalidAccession, rejectedMissingCik: submission.rejectedMissingCik,
+      rejectedInvalidCik: submission.rejectedInvalidCik, rejectedMissingPeriodOfReport: submission.rejectedMissingPeriodOfReport,
+      rejectedInvalidPeriodOfReport: submission.rejectedInvalidPeriodOfReport, rejectedInvalidFilingDate: submission.rejectedInvalidFilingDate,
+      rejectedOtherSubmissionValidation: submission.rejectedOtherSubmissionValidation, includedSubmissionCount: subRows.length,
+      excludedNoticeCount: submission.excludedNoticeCount, excludedUnknownSubmissionTypeCount: submission.excludedUnknownCount,
+      amendmentSubmissionCount: subRows.filter((row) => row.isAmendment).length, detectedPeriodFormats: submission.detectedPeriodFormats,
+      normalizedPeriodDistribution: submission.normalizedPeriodDistribution, durationMs: Date.now() - startMs,
+    };
+    if (!infoHeaders || (joined === 0 && totalInfo > 0) || (totalInfo > 100 && joined / totalInfo < MIN_JOIN_RATE_WARN)) {
+      return { status: "empty_parse_failure", diagnostics, reason: joined === 0 ? "Join rate 0%" : "Implausibly low join rate" };
+    }
+    return { status: rejected ? "partial_success" : "success", diagnostics };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "PARSE_FAILED";
+    return { status: "empty_parse_failure", diagnostics: { ...EMPTY_DIAGNOSTICS, ...resolutionDiag, durationMs: Date.now() - startMs }, reason };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Async entry point — downloads and parses (legacy year+quarter interface)
 // ---------------------------------------------------------------------------
 
@@ -2229,6 +2446,66 @@ export async function parseBulkFromDescriptor(
       ? { failureCode: "PARSE_FAILED" as const }
       : {}),
   };
+}
+
+/**
+ * Catalog-only streaming variant used by historical backfill callers.  It keeps
+ * the download/transport validation contract of parseBulkFromDescriptor while
+ * exposing the same serial, bounded batch mechanism used by APPLY.
+ */
+export async function streamBulkFromDescriptor(
+  descriptor: DatasetDescriptor,
+  options: BulkHoldingStreamOptions,
+  signal?: AbortSignal,
+): Promise<BulkStreamResult> {
+  const prepared = await prepareBulkArchiveFromDescriptor(descriptor, signal);
+  if ("status" in prepared) return prepared;
+  const result = await streamBulkQuarterFromBuffer(prepared.buffer, descriptor.year, descriptor.q, options);
+  return { ...result, diagnostics: { ...result.diagnostics, ...prepared.transportDiagnostics } };
+}
+
+export async function streamPreparedBulkArchive(
+  archive: PreparedBulkArchive,
+  descriptor: Pick<DatasetDescriptor, "year" | "q">,
+  options: BulkHoldingStreamOptions,
+): Promise<BulkStreamResult> {
+  const result = await streamBulkQuarterFromBuffer(archive.buffer, descriptor.year, descriptor.q, options);
+  return { ...result, diagnostics: { ...result.diagnostics, ...archive.transportDiagnostics } };
+}
+
+export async function prepareBulkArchiveFromDescriptor(
+  descriptor: DatasetDescriptor,
+  signal?: AbortSignal,
+): Promise<PreparedBulkArchive | BulkStreamResult> {
+  const startMs = Date.now();
+  let response: Awaited<ReturnType<typeof secFetchBufferDetailed>>;
+  try {
+    response = await secFetchBufferDetailed(descriptor.downloadUrl, signal);
+  } catch (error: unknown) {
+    const secError = error instanceof SecHttpError ? error : null;
+    return {
+      status: "failed",
+      diagnostics: {
+        ...EMPTY_DIAGNOSTICS, requestedUrl: descriptor.downloadUrl,
+        finalUrl: secError?.finalUrl ?? descriptor.downloadUrl, httpStatus: secError?.status ?? null,
+        contentType: secError?.contentType ?? null, contentLength: secError?.byteLength ?? null,
+        durationMs: Date.now() - startMs,
+      },
+      reason: `Dataset ${descriptor.fileName} retrieval failed: ${classifySecArchiveFailure(error)}`,
+    };
+  }
+  const transport = {
+    requestedUrl: response.requestedUrl, finalUrl: response.finalUrl, httpStatus: response.status,
+    contentType: response.contentType, contentLength: response.contentLength ?? response.byteLength,
+  };
+  if (validateSecArchiveResponse(response.contentType, response.buffer)) {
+    return {
+      status: "failed",
+      diagnostics: { ...EMPTY_DIAGNOSTICS, ...transport, archiveBytes: response.byteLength, durationMs: Date.now() - startMs },
+      reason: `Dataset ${descriptor.fileName} response is not a valid ZIP archive`,
+    };
+  }
+  return { buffer: response.buffer, transportDiagnostics: transport };
 }
 
 // ---------------------------------------------------------------------------

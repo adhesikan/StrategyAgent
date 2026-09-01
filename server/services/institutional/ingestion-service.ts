@@ -50,6 +50,8 @@ import {
 import {
   parseBulkQuarter,
   parseBulkFromDescriptor,
+  prepareBulkArchiveFromDescriptor,
+  streamPreparedBulkArchive,
   bulkDatasetUrl,
 } from "./sec-13f-bulk-parser";
 import type { ParsedBulkHolding } from "./sec-13f-bulk-parser";
@@ -1570,7 +1572,20 @@ async function ingestFromDescriptor(
     expectedPeriodOfReport: descriptor.expectedPeriodOfReport,
   });
 
-  const parseResult = await parseBulkFromDescriptor(descriptor, signal);
+  // Download once, then validate the complete archive before the first write.
+  // Both passes stream INFOTABLE with bounded backpressure from the same
+  // compressed buffer; malformed late rows therefore cannot cause partial
+  // persistence.
+  const prepared = await prepareBulkArchiveFromDescriptor(descriptor, signal);
+  const validatedAccessions = new Set<string>();
+  const parseResult = "status" in prepared
+    ? prepared
+    : await streamPreparedBulkArchive(prepared, descriptor, {
+        batchSize: 2_000,
+        onBatch(batch) {
+          for (const holding of batch) validatedAccessions.add(holding.accessionNumber);
+        },
+      });
 
   log("institutional_13f_archive_inspected", {
     quarter,
@@ -1587,7 +1602,6 @@ async function ingestFromDescriptor(
     httpStatus: parseResult.diagnostics.httpStatus,
     contentType: parseResult.diagnostics.contentType,
     contentLength: parseResult.diagnostics.contentLength,
-    failureCode: parseResult.failureCode,
     status: parseResult.status,
   });
 
@@ -1626,7 +1640,7 @@ async function ingestFromDescriptor(
       status: parseResult.status,
       errorCode: parseResult.status === "empty_parse_failure"
         ? "EMPTY_PARSE_FAILURE"
-        : parseResult.failureCode ?? "PARSE_FAILED",
+        : "PARSE_FAILED",
     };
   }
 
@@ -1679,20 +1693,12 @@ async function ingestFromDescriptor(
     durationMs: parseResult.diagnostics.durationMs,
   });
 
-  const holdingsByAccession = new Map<string, ParsedBulkHolding[]>();
-  for (const h of parseResult.holdings) {
-    if (!holdingsByAccession.has(h.accessionNumber)) {
-      holdingsByAccession.set(h.accessionNumber, []);
-    }
-    holdingsByAccession.get(h.accessionNumber)!.push(h);
-  }
-
-  const totalAccessions = holdingsByAccession.size;
+  const totalAccessions = validatedAccessions.size;
   log("institutional_13f_persistence_started", {
     quarter,
     fileName: descriptor.fileName,
     totalAccessions,
-    totalHoldings: parseResult.holdings.length,
+    totalHoldings: parseResult.diagnostics.joinedHoldingRows,
     eligibleCommonStockRows: parseResult.diagnostics.eligibleCommonStockRows,
   });
 
@@ -1707,56 +1713,67 @@ async function ingestFromDescriptor(
   let processedAccessions = 0;
   const chunkSize = opts?.chunkSize ?? Infinity;
   const persistenceStartMs = Date.now();
+  const accessionDisposition = new Map<string, "existing" | "new">();
 
   // Record totalAccessions in the run record immediately (fire-and-forget)
   if (opts?.runId) {
     heartbeatRun(opts.runId, 0, totalAccessions).catch(() => {});
   }
 
-  for (const [accession, holdings] of Array.from(holdingsByAccession.entries())) {
-    if (signal.aborted) { abortedEarly = true; break; }
+  if (!("status" in prepared)) {
+    const persistenceResult = await streamPreparedBulkArchive(prepared, descriptor, {
+      batchSize: 2_000,
+      async onBatch(batch, context) {
+        if (abortedEarly || chunkLimitReached) return;
+        const byAccession = new Map<string, ParsedBulkHolding[]>();
+        for (const holding of batch) {
+          const group = byAccession.get(holding.accessionNumber);
+          if (group) group.push(holding);
+          else byAccession.set(holding.accessionNumber, [holding]);
+        }
+        for (const [accession, holdings] of Array.from(byAccession.entries())) {
+          if (signal.aborted) {
+            abortedEarly = true;
+            return;
+          }
 
-    const existing = await db
-      .select({ id: institutional13fFilings.id })
-      .from(institutional13fFilings)
-      .where(eq(institutional13fFilings.accessionNumber, accession))
-      .limit(1);
+          const first = holdings[0];
+          let disposition = accessionDisposition.get(accession);
+          if (!disposition) {
+            const existing = await db
+              .select({ id: institutional13fFilings.id })
+              .from(institutional13fFilings)
+              .where(eq(institutional13fFilings.accessionNumber, accession))
+              .limit(1);
+            processedAccessions++;
+            disposition = existing.length > 0 ? "existing" : "new";
+            accessionDisposition.set(accession, disposition);
+            if (disposition === "existing") {
+              skippedExistingFilings++;
+            } else {
+              await upsertFiling({
+                accessionNumber: accession,
+                filerCik: first.filerCik,
+                filerName: first.filerName,
+                filingType: first.filingType,
+                filingDate: first.filingDate,
+                acceptedAt: null,
+                periodOfReport: first.periodOfReport,
+                amendmentFlag: first.isAmendment,
+                amendmentNumber: null,
+                amendmentType: null,
+                isEffective: true,
+                sourceUrl,
+                sourceChecksum: null,
+              });
+              await updateEffectivenessForFiler(first.filerCik, first.periodOfReport, accession, first.filingDate);
+              filingCount++;
+              newAccessions++;
+            }
+          }
+          if (disposition === "existing") continue;
 
-    processedAccessions++;
-
-    if (existing.length > 0) {
-      skippedExistingFilings++;
-      // Heartbeat for skipped accessions too (progress tracking)
-      if (processedAccessions % HEARTBEAT_INTERVAL === 0 && opts?.runId) {
-        heartbeatRun(opts.runId, processedAccessions, totalAccessions).catch(() => {});
-      }
-      continue;
-    }
-
-    const first = holdings[0];
-
-    await upsertFiling({
-      accessionNumber: accession,
-      filerCik: first.filerCik,
-      filerName: first.filerName,
-      filingType: first.filingType,
-      filingDate: first.filingDate,
-      acceptedAt: null,
-      // Use actual parsed periodOfReport from SUBMISSION.TSV, not descriptor's expected period.
-      // This preserves correct holdings dates for late filers and amendments.
-      periodOfReport: first.periodOfReport,
-      amendmentFlag: first.isAmendment,
-      amendmentNumber: null,
-      amendmentType: null,
-      isEffective: true,
-      // Record the catalog-resolved URL and dataset metadata for auditability.
-      sourceUrl,
-      sourceChecksum: null,
-    });
-
-    await updateEffectivenessForFiler(first.filerCik, first.periodOfReport, accession, first.filingDate);
-
-    const holdingRows: InsertInstitutional13fHolding[] = holdings.map((h) => ({
+          const holdingRows: InsertInstitutional13fHolding[] = holdings.map((h: ParsedBulkHolding) => ({
       accessionNumber: h.accessionNumber,
       filerCik: h.filerCik,
       filerName: h.filerName,
@@ -1778,35 +1795,49 @@ async function ingestFromDescriptor(
       filingDate: h.filingDate,
       mappedSymbol: null,
       mappingStatus: "unmapped",
-    }));
+          }));
 
-    await upsertHoldings(holdingRows);
+          await upsertHoldings(holdingRows);
+          holdingCount += holdingRows.length;
+          if (context.accessionComplete) {
+            const { mappedCount: mc, unmappedCount: uc } = await applyMappingsToHoldings(accession);
+            mappedCount += mc;
+            unmappedCount += uc;
+          }
 
-    const { mappedCount: mc, unmappedCount: uc } =
-      await applyMappingsToHoldings(accession);
-
-    filingCount++;
-    holdingCount += holdingRows.length;
-    mappedCount += mc;
-    unmappedCount += uc;
-    newAccessions++;
-
-    if (processedAccessions % PROGRESS_LOG_INTERVAL === 0) {
-      logPersistenceProgress(
-        quarter, "holdings", processedAccessions, totalAccessions,
-        filingCount, skippedExistingFilings, holdingCount, persistenceStartMs,
-      );
-    }
-
-    // Heartbeat: write progress to DB for stale-run detection and resumability
-    if (processedAccessions % HEARTBEAT_INTERVAL === 0 && opts?.runId) {
-      heartbeatRun(opts.runId, processedAccessions, totalAccessions).catch(() => {});
-    }
-
-    // Chunk limit: exit cleanly after processing N new accessions this invocation
-    if (chunkSize !== Infinity && newAccessions >= chunkSize) {
-      chunkLimitReached = true;
-      break;
+          if (processedAccessions % PROGRESS_LOG_INTERVAL === 0) {
+            logPersistenceProgress(
+              quarter, "holdings", processedAccessions, totalAccessions,
+              filingCount, skippedExistingFilings, holdingCount, persistenceStartMs,
+            );
+          }
+          if (processedAccessions % HEARTBEAT_INTERVAL === 0 && opts?.runId) {
+            heartbeatRun(opts.runId, processedAccessions, totalAccessions).catch(() => {});
+          }
+          if (context.accessionComplete && chunkSize !== Infinity && newAccessions >= chunkSize) {
+            chunkLimitReached = true;
+            return;
+          }
+        }
+      },
+    });
+    if (
+      persistenceResult.status === "failed" ||
+      persistenceResult.status === "empty_parse_failure"
+    ) {
+      return {
+        quarter,
+        periodOfReport: descriptor.expectedPeriodOfReport,
+        filingCount,
+        holdingCount,
+        mappedCount,
+        unmappedCount,
+        skippedExistingFilings,
+        totalAccessions,
+        processedAccessions,
+        status: "partial",
+        errorCode: "PARSE_FAILED",
+      };
     }
   }
 

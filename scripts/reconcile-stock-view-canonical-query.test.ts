@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   buildSetBasedStockViewQuery,
+  buildStockViewReadOnlyUrl,
   buildStockViewReconciliationReport,
   MAX_MISMATCH_SAMPLES,
   parseStockViewReconciliationArguments,
+  STOCK_VIEW_RECONCILIATION_TIMEOUT_MS,
   validateStockViewReconciliationArguments,
+  validateStockViewReconciliationRuntime,
+  withStockViewReconciliationTimeout,
 } from "./reconcile-stock-view-canonical-query";
-import { RECONCILIATION_TIMEOUT_MS, withReconciliationTimeout } from "./reconcile-live-stock-resolver";
 
 const metadata = {
   runtimeDatabaseName: "railway",
@@ -153,14 +156,34 @@ describe("actual Stock View canonical query reconciliation", () => {
       expectedDatabase: null,
     })).toEqual(["EXPECTED_COMMIT_REQUIRED", "EXPECTED_DATABASE_REQUIRED"]);
     expect(report({ expectedCommit: "different" }).sameCommit).toBe(false);
+    const source = readFileSync(new URL("./reconcile-stock-view-canonical-query.ts", import.meta.url), "utf8");
+    expect(source).toContain("DATABASE_RUNTIME_REJECTED:DATABASE_MISMATCH");
+    expect(source).toContain("DATABASE_RUNTIME_REJECTED:COMMIT_MISMATCH");
+  });
+
+  it("requires the bounded production Railway database", () => {
+    const env = {
+      DATABASE_URL: "postgresql://user:secret@db.railway.internal/railway",
+      RAILWAY_ENVIRONMENT_NAME: "production",
+      RAILWAY_PROJECT_ID: "project",
+      RAILWAY_SERVICE_ID: "service",
+      RAILWAY_ENVIRONMENT_ID: "environment",
+    };
+    expect(validateStockViewReconciliationRuntime(env)).toEqual([]);
+    expect(validateStockViewReconciliationRuntime({
+      ...env,
+      EXTERNAL_DATABASE_URL: "postgresql://external",
+    })).toContain("EXTERNAL_DATABASE_URL_FORBIDDEN");
+    expect(new URL(buildStockViewReadOnlyUrl(env.DATABASE_URL))
+      .searchParams.get("options")).toBe("-c default_transaction_read_only=on");
   });
 
   it("preserves the hard timeout fail-closed contract", async () => {
-    await expect(withReconciliationTimeout(
+    await expect(withStockViewReconciliationTimeout(
       () => new Promise<never>(() => {}),
       1,
     )).rejects.toThrow("RECONCILIATION_TIMEOUT");
-    expect(RECONCILIATION_TIMEOUT_MS).toBeLessThanOrEqual(180_000);
+    expect(STOCK_VIEW_RECONCILIATION_TIMEOUT_MS).toBeLessThanOrEqual(180_000);
   });
 
   it("contains no production write operations", () => {
@@ -168,6 +191,11 @@ describe("actual Stock View canonical query reconciliation", () => {
     expect(source).toContain("SET TRANSACTION READ ONLY");
     expect(source).toContain("SET LOCAL statement_timeout");
     expect(source).toContain("await client.query(\"COMMIT\")");
+    expect(source).toContain("await client.query(\"ROLLBACK\")");
+    expect(source).not.toContain('import { pool } from "../server/db"');
+    expect(source.indexOf("buildStockViewReadOnlyUrl(process.env.DATABASE_URL"))
+      .toBeLessThan(source.indexOf('await import("../server/db")'));
+    expect(source).not.toContain('from "./reconcile-live-stock-resolver"');
     expect(source).not.toMatch(/\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|CREATE|COPY|CALL|DO|GRANT|REVOKE|VACUUM)\b/);
     expect(source).not.toMatch(/import\([^)]*(mutation|ingestion|apply)/i);
   });

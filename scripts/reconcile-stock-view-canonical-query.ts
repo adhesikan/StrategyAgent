@@ -9,20 +9,14 @@
 import { execFileSync } from "node:child_process";
 import { runCli } from "../server/cli-runtime";
 import {
-  buildReconciliationReadOnlyUrl,
-  RECONCILIATION_TIMEOUT_MS,
-  validateReconciliationRuntime,
-  withReconciliationTimeout,
-} from "./reconcile-live-stock-resolver";
-import {
   canonicalSecurityTypeStateQuery,
   canonicalStockIdentityCte,
   canonicalStockIdentityForSymbolQuery,
   parseCanonicalStockEligibleIdentities,
 } from "../server/services/institutional/canonical-security-state";
-import { pool } from "../server/db";
 
 export const STOCK_VIEW_RECONCILIATION_STATEMENT_TIMEOUT_MS = 170_000;
+export const STOCK_VIEW_RECONCILIATION_TIMEOUT_MS = 180_000;
 export const MAX_MISMATCH_SAMPLES = 10;
 
 export type FirstFailedPredicate =
@@ -40,6 +34,15 @@ export type FirstFailedPredicate =
 export interface StockViewReconciliationArguments {
   expectedCommit: string | null;
   expectedDatabase: string | null;
+}
+
+interface StockViewReconciliationRuntimeEnv {
+  DATABASE_URL?: string;
+  EXTERNAL_DATABASE_URL?: string;
+  RAILWAY_ENVIRONMENT_NAME?: string;
+  RAILWAY_PROJECT_ID?: string;
+  RAILWAY_SERVICE_ID?: string;
+  RAILWAY_ENVIRONMENT_ID?: string;
 }
 
 export interface StockViewMismatchSample {
@@ -106,6 +109,10 @@ function normalize(value: unknown): string {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function normalizeStatus(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 function rowsOf(result: unknown): Record<string, any>[] {
   return (result as { rows?: Record<string, any>[] }).rows ??
     (Array.isArray(result) ? result : []);
@@ -164,6 +171,56 @@ export function validateStockViewReconciliationArguments(
   return issues;
 }
 
+export function buildStockViewReadOnlyUrl(databaseUrl: string): string {
+  const url = new URL(databaseUrl);
+  url.searchParams.set("options", "-c default_transaction_read_only=on");
+  return url.toString();
+}
+
+export function validateStockViewReconciliationRuntime(
+  env: StockViewReconciliationRuntimeEnv,
+): string[] {
+  const issues: string[] = [];
+  if (!env.DATABASE_URL) issues.push("DATABASE_URL_REQUIRED");
+  if (env.EXTERNAL_DATABASE_URL) issues.push("EXTERNAL_DATABASE_URL_FORBIDDEN");
+  if (env.RAILWAY_ENVIRONMENT_NAME !== "production") {
+    issues.push("RAILWAY_ENVIRONMENT_IS_NOT_PRODUCTION");
+  }
+  if (!env.RAILWAY_PROJECT_ID) issues.push("RAILWAY_PROJECT_ID_REQUIRED");
+  if (!env.RAILWAY_SERVICE_ID) issues.push("RAILWAY_SERVICE_ID_REQUIRED");
+  if (!env.RAILWAY_ENVIRONMENT_ID) issues.push("RAILWAY_ENVIRONMENT_ID_REQUIRED");
+  try {
+    const url = new URL(env.DATABASE_URL ?? "");
+    if (!["postgres:", "postgresql:"].includes(url.protocol) ||
+      !(url.hostname.endsWith(".railway.internal") || url.hostname.endsWith(".rlwy.net"))) {
+      issues.push("DATABASE_URL_IS_NOT_A_RAILWAY_POSTGRES_ENDPOINT");
+    }
+  } catch {
+    if (env.DATABASE_URL) issues.push("DATABASE_URL_INVALID");
+  }
+  return issues;
+}
+
+export async function withStockViewReconciliationTimeout<T>(
+  operation: () => Promise<T>,
+  timeoutMs = STOCK_VIEW_RECONCILIATION_TIMEOUT_MS,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("RECONCILIATION_TIMEOUT")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function setBySymbol(
   identities: readonly IdentityRow[],
 ): Map<string, Set<string>> {
@@ -194,7 +251,7 @@ function firstFailedPredicate(
   if (!trace.trustedSymbol) return "TRUSTED_MAPPING";
   if (trace.trustedSymbol !== symbol) return "MAPPED_SYMBOL";
   if (!trace.securityMasterPresent) return "SECURITY_MASTER_JOIN";
-  if (!["common_stock", "reit"].includes(normalize(trace.assetType))) {
+  if (!["common_stock", "reit"].includes(normalizeStatus(trace.assetType))) {
     return "ASSET_TYPE";
   }
   if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)) return "SYMBOL_VALIDATION";
@@ -273,8 +330,8 @@ export function buildStockViewReconciliationReport(
     (input.traceRows ?? [])
       .filter((row) =>
         row.securityMasterTickerMatch &&
-        normalize(row.securityMasterReviewStatus) === "REVIEWED" &&
-        ["common_stock", "reit"].includes(normalize(row.assetType)),
+        normalizeStatus(row.securityMasterReviewStatus) === "reviewed" &&
+        ["common_stock", "reit"].includes(normalizeStatus(row.assetType)),
       )
       .map((row) => row.requestedSymbol),
   );
@@ -371,7 +428,7 @@ ORDER BY target.cusip`;
 async function main(): Promise<void> {
   const args = parseStockViewReconciliationArguments(process.argv.slice(2));
   const argumentIssues = validateStockViewReconciliationArguments(args);
-  const runtimeIssues = validateReconciliationRuntime(process.env, args);
+  const runtimeIssues = validateStockViewReconciliationRuntime(process.env);
   if (argumentIssues.length || runtimeIssues.length) {
     throw new Error(`DATABASE_RUNTIME_REJECTED:${[
       ...argumentIssues,
@@ -379,7 +436,8 @@ async function main(): Promise<void> {
     ].join(",")}`);
   }
   const runningCommit = localCommit();
-  process.env.DATABASE_URL = buildReconciliationReadOnlyUrl(process.env.DATABASE_URL!);
+  process.env.DATABASE_URL = buildStockViewReadOnlyUrl(process.env.DATABASE_URL!);
+  const { pool } = await import("../server/db");
   const startedAt = performance.now();
   let queryCount = 0;
   let timedOut = false;
@@ -388,50 +446,52 @@ async function main(): Promise<void> {
     return operation();
   };
   try {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query("SET TRANSACTION READ ONLY");
-      await client.query(
-        `SET LOCAL statement_timeout = '${STOCK_VIEW_RECONCILIATION_STATEMENT_TIMEOUT_MS}ms'`,
-      );
-      const query = <T = Record<string, any>>(statement: string, params?: unknown[]) =>
-        measure(async () => rowsOf(await client.query<T>(statement, params)));
-      const identity = (await query(
-        "SELECT current_database() AS database, current_schema() AS schema",
-      ))[0] ?? {};
-      if (String(identity.database) !== args.expectedDatabase) {
-        throw new Error("DATABASE_RUNTIME_REJECTED:DATABASE_MISMATCH");
-      }
-      if (runningCommit !== args.expectedCommit) {
-        throw new Error("DATABASE_RUNTIME_REJECTED:COMMIT_MISMATCH");
-      }
-      const canonicalState = (await query(canonicalSecurityTypeStateQuery))[0] ?? {};
-      const canonicalIdentities = Array.from(
-        parseCanonicalStockEligibleIdentities(canonicalState.stock_eligible_identities),
-      ).map(([cusip, symbol]) => ({ cusip, symbol }));
-      const targetSymbols = Array.from(new Set(
-        canonicalIdentities
-          .map((row) => normalize(row.symbol))
-          .filter((symbol) => /^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)),
-      )).sort();
-      const targetJson = JSON.stringify(canonicalIdentities);
-      const stockViewRows = targetSymbols.length
-        ? await query<StockViewRow>(buildSetBasedStockViewQuery(), [targetSymbols])
-        : [];
-      const runtimeCanonicalRows = targetSymbols.length
-        ? await query<IdentityRow>(`
+    const report = await withStockViewReconciliationTimeout(async () => {
+      const client = await pool.connect();
+      let committed = false;
+      try {
+        await client.query("BEGIN");
+        await client.query("SET TRANSACTION READ ONLY");
+        await client.query(
+          `SET LOCAL statement_timeout = '${STOCK_VIEW_RECONCILIATION_STATEMENT_TIMEOUT_MS}ms'`,
+        );
+        const query = <T = Record<string, any>>(statement: string, params?: unknown[]) =>
+          measure(async () => rowsOf(await client.query<T>(statement, params)));
+        const identity = (await query(
+          "SELECT current_database() AS database, current_schema() AS schema",
+        ))[0] ?? {};
+        if (String(identity.database) !== args.expectedDatabase) {
+          throw new Error("DATABASE_RUNTIME_REJECTED:DATABASE_MISMATCH");
+        }
+        if (runningCommit !== args.expectedCommit) {
+          throw new Error("DATABASE_RUNTIME_REJECTED:COMMIT_MISMATCH");
+        }
+        const canonicalState = (await query(canonicalSecurityTypeStateQuery))[0] ?? {};
+        const canonicalIdentities = Array.from(
+          parseCanonicalStockEligibleIdentities(canonicalState.stock_eligible_identities),
+        ).map(([cusip, symbol]) => ({ cusip, symbol }));
+        const targetSymbols = Array.from(new Set(
+          canonicalIdentities
+            .map((row) => normalize(row.symbol))
+            .filter((symbol) => /^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)),
+        )).sort();
+        const targetJson = JSON.stringify(canonicalIdentities);
+        const stockViewRows = targetSymbols.length
+          ? await query<StockViewRow>(buildSetBasedStockViewQuery(), [targetSymbols])
+          : [];
+        const runtimeCanonicalRows = targetSymbols.length
+          ? await query<IdentityRow>(`
 ${canonicalStockIdentityCte}
 SELECT cusip, symbol
 FROM canonical
 WHERE symbol = ANY($1::text[])
 ORDER BY cusip`, [targetSymbols])
-        : [];
-      const traceRows = canonicalIdentities.length
-        ? await query<TraceRow>(sqlTraceQuery(), [targetJson])
-        : [];
-      const supportRows = targetSymbols.length
-        ? await query(`
+          : [];
+        const traceRows = canonicalIdentities.length
+          ? await query<TraceRow>(sqlTraceQuery(), [targetJson])
+          : [];
+        const supportRows = targetSymbols.length
+          ? await query(`
           SELECT UPPER(TRIM(symbol)) AS symbol, 'aggregate' AS source
           FROM institutional_quarterly_aggregates
           WHERE UPPER(TRIM(symbol)) = ANY($1::text[])
@@ -440,35 +500,39 @@ ORDER BY cusip`, [targetSymbols])
           FROM institutional_symbol_signals
           WHERE UPPER(TRIM(symbol)) = ANY($1::text[])
         `, [targetSymbols])
-        : [];
-      const aggregateSymbols = supportRows
-        .filter((row) => row.source === "aggregate")
-        .map((row) => row.symbol);
-      const signalSymbols = supportRows
-        .filter((row) => row.source === "signal")
-        .map((row) => row.symbol);
-      const report = buildStockViewReconciliationReport({
-        canonicalIdentities,
-        stockViewRows,
-        runtimeCanonicalRows,
-        traceRows,
-        aggregateSymbols,
-        signalSymbols,
-        runtimeDatabaseName: String(identity.database),
-        runtimeSchemaName: String(identity.schema),
-        runningCommit,
-        expectedCommit: args.expectedCommit,
-        queryCount,
-        runtimeMs: performance.now() - startedAt,
-        timedOut: false,
-      });
-      if (!report.sameCommit) throw new Error("DATABASE_RUNTIME_REJECTED:COMMIT_MISMATCH");
-      await client.query("COMMIT");
-      return report;
-    } finally {
-      client.release();
-    }
-    }, RECONCILIATION_TIMEOUT_MS);
+          : [];
+        const aggregateSymbols = supportRows
+          .filter((row) => row.source === "aggregate")
+          .map((row) => row.symbol);
+        const signalSymbols = supportRows
+          .filter((row) => row.source === "signal")
+          .map((row) => row.symbol);
+        const report = buildStockViewReconciliationReport({
+          canonicalIdentities,
+          stockViewRows,
+          runtimeCanonicalRows,
+          traceRows,
+          aggregateSymbols,
+          signalSymbols,
+          runtimeDatabaseName: String(identity.database),
+          runtimeSchemaName: String(identity.schema),
+          runningCommit,
+          expectedCommit: args.expectedCommit,
+          queryCount,
+          runtimeMs: performance.now() - startedAt,
+          timedOut: false,
+        });
+        if (!report.sameCommit) throw new Error("DATABASE_RUNTIME_REJECTED:COMMIT_MISMATCH");
+        await client.query("COMMIT");
+        committed = true;
+        return report;
+      } finally {
+        if (!committed) {
+          await client.query("ROLLBACK").catch(() => undefined);
+        }
+        client.release();
+      }
+    }, STOCK_VIEW_RECONCILIATION_TIMEOUT_MS);
     console.log(JSON.stringify({
       ...report,
       timedOut,
@@ -487,7 +551,7 @@ ORDER BY cusip`, [targetSymbols])
         timedOut: true,
         queryCount,
         runtimeMs: performance.now() - startedAt,
-        timeoutMs: RECONCILIATION_TIMEOUT_MS,
+        timeoutMs: STOCK_VIEW_RECONCILIATION_TIMEOUT_MS,
       }));
     }
     throw error;

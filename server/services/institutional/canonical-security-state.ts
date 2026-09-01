@@ -81,14 +81,16 @@ FROM canonical`;
  * Symbol-scoped form of the same canonical identity contract. `$1` must be a
  * normalized symbol supplied through the database driver's parameter binding.
  */
-export const canonicalStockIdentityForSymbolQuery = `
-${buildCanonicalSecurityStateCte(`
+export const canonicalStockIdentityCte = buildCanonicalSecurityStateCte(`
 ${CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY},
 eligible_cusips AS (
   SELECT DISTINCT h.cusip
   FROM canonical_effective_holdings h
 )
-`)}
+`);
+
+export const canonicalStockIdentityForSymbolQuery = `
+${canonicalStockIdentityCte}
 SELECT
   cusip,
   'reviewed'::text AS "reviewStatus",

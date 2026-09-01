@@ -1,0 +1,213 @@
+Task #212 — Production reconcile ACTUAL Stock View canonical query
+
+CURRENT PRODUCTION FACT
+
+Task #211 was deployed.
+
+JPM still returns:
+
+GET /api/institutional/v1/stocks/JPM
+→ HTTP 200
+→ availability: UNSUPPORTED
+→ reportedHolderCount: 0
+→ mappingCoverage.candidateHoldingCount: 0
+→ mappingCoverage.reliablyMappedHoldingCount: 0
+
+GET /api/institutional/v1/stocks/JPM/trend
+→ HTTP 404 DATA_UNAVAILABLE
+
+There is no PostgreSQL syntax/runtime exception.
+
+AAPL works.
+
+Therefore the actual deployed Stock View query is executing successfully
+but is still producing an empty canonical candidate set for JPM.
+
+DO NOT make another speculative fix.
+
+DO NOT run remediation.
+DO NOT run ingestion.
+DO NOT run OpenFIGI.
+DO NOT modify mappings.
+DO NOT modify production data.
+DO NOT APPLY anything.
+
+OBJECTIVE
+
+Prove, in production and read-only, the exact set difference between:
+
+A. the accepted canonical stock-eligible population
+
+and
+
+B. the ACTUAL canonicalStockIdentityForSymbolQuery used by Stock View.
+
+The production verifier must execute the same query/function used by:
+
+loadStockCandidateIdentity
+→ canonicalStockIdentityForSymbolQuery
+
+Do not reimplement equivalent logic.
+
+STEP 1 — CREATE BOUNDED READ-ONLY RECONCILER
+
+Build a report-only script:
+
+scripts/reconcile-stock-view-canonical-query.ts
+
+It must:
+
+1. Load the accepted canonical stock-eligible symbol/CUSIP population.
+2. For every valid canonical symbol, execute/evaluate the exact shared
+   canonicalStockIdentityForSymbolQuery contract used by Stock View.
+3. Compare exact CUSIP sets.
+4. Report only compact aggregate counts and at most 10 mismatch samples.
+
+Prefer a set-based form of the exact query if possible.
+
+Do NOT create an N+1 process that can run for hours.
+
+Target < 2 minutes.
+Hard fail-closed timeout <= 180 seconds.
+
+STEP 2 — REQUIRED COUNTS
+
+Return:
+
+canonicalSymbols
+canonicalCusips
+
+stockViewResolvableSymbols
+stockViewUnresolvableSymbols
+
+identitySetMismatchSymbols
+
+canonicalOnlyCusips
+stockViewOnlyCusips
+
+mappingBackedCanonicalSymbols
+mappingBackedStockViewResolvableSymbols
+mappingBackedStockViewUnresolvableSymbols
+
+directSecurityMasterCanonicalSymbols
+directSecurityMasterResolvableSymbols
+
+aggregateBackedButStockViewUnresolvable
+signalBackedButStockViewUnresolvable
+
+runtimeDatabaseName
+runtimeSchemaName
+runningCommit
+expectedCommit
+sameCommit
+
+queryCount
+runtimeMs
+timedOut
+
+STEP 3 — MISMATCH SAMPLE
+
+For at most 10 mismatches report:
+
+symbol
+canonicalCusips
+stockViewCusips
+mappingEvidencePresent true/false
+securityMasterTickerMatch true/false
+assetType
+firstFailedPredicate
+
+Do not dump raw holdings.
+
+STEP 4 — IDENTIFY FIRST DIVERGENCE
+
+For a mismatched mapping-backed symbol, determine the exact first predicate
+that removes it from Stock View:
+
+EFFECTIVE_HOLDING_SELECTION
+TRUSTED_MAPPING
+MAPPED_SYMBOL
+SECURITY_MASTER_JOIN
+ASSET_TYPE
+SYMBOL_VALIDATION
+SHARE_CLASS_VALIDATION
+CANONICAL_GROUPING
+FINAL_SYMBOL_FILTER
+OTHER
+
+Do not infer.
+
+STEP 5 — JPM
+
+JPM may appear in the bounded mismatch sample, but do not hardcode it.
+
+If it does, report:
+
+canonicalCusips
+stockViewCusips
+firstFailedPredicate
+
+No special-case fix.
+
+STEP 6 — VERIFY DEPLOYED CODE
+
+The script must verify the currently running Railway commit.
+
+Require:
+
+--expected-commit
+--expected-database
+
+Fail closed if either differs.
+
+Production database is expected to be:
+
+railway
+
+STEP 7 — NO FIX YET
+
+This task is READ ONLY.
+
+Do not modify runtime identity semantics in this task.
+
+We need the production set comparison before making another correction.
+
+TESTS
+
+Add tests proving:
+
+- direct identity reconciliation
+- mapping-backed identity reconciliation
+- multi-CUSIP reconciliation
+- mismatch detection
+- bounded output
+- timeout fail-closed
+- no writes
+- commit/database mismatch fail-closed
+
+Run:
+
+focused reconciliation tests
+institutional suite
+release suite
+production build
+git diff --check
+
+RETURN ONLY
+
+SCRIPT
+
+COMMIT SHA
+
+TEST RESULTS
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE production read-only command in this form:
+
+npx tsx scripts/reconcile-stock-view-canonical-query.ts \
+  --expected-commit "<DEPLOYED_COMMIT_SHA>" \
+  --expected-database "railway"
+
+Do not execute it.
+Do not provide an APPLY command.

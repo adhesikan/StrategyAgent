@@ -26,3 +26,9 @@ Canonical asset type is CUSIP-scoped and must remain attached when exact/reviewe
 **Why:** Requiring the security-master ticker to match the resolved symbol dropped valid mapping-only common stocks and REITs during holding enrichment, making broad accepted coverage appear limited to legacy repaired symbols.
 
 **How to apply:** Use the security-master row joined by CUSIP as the type authority after identity resolves; only ticker-dependent descriptive metadata and theme membership require the master ticker to match the resolved symbol.
+
+Canonical coverage reconciliation must compare the complete CUSIP→symbol population, not just equal CUSIP counts or aggregate/signal row counts. Runtime identity must resolve each canonical symbol to the same CUSIP set.
+
+**Why:** Count-equal populations can still disagree symbol-for-symbol, while persisted aggregates and signals can make an incompatible runtime resolver look complete. Derived rows are presence evidence only, never identity authority.
+
+**How to apply:** Reuse the live resolver's pure gate in population verifiers, report bounded set mismatches, and establish commit plus non-secret database identity before diagnosing code, cache, deployment, or configuration drift.

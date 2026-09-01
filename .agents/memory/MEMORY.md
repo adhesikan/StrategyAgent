@@ -112,3 +112,4 @@
 - [Guarded canonical corrections](canonical-correction-apply.md) — type/symbol corrections are hash-bound and must clear canonical blockers before institutional remediation.
 - [Institutional holding-count contract](institutional-holding-count-contract.md) — planner and APPLY must share canonical filing/holding semantics; validate counts before mutation.
 - [Institutional acceptance semantics](institutional-acceptance-semantics.md) — expected target counts persist after APPLY; acceptance depends on missing/pending counts and reconciliation.
+- [Institutional runtime identity](institutional-runtime-identity.md) — active stock runtime resolves identity once from canonical effective holdings; downstream reads receive CUSIPs, never ticker evidence.

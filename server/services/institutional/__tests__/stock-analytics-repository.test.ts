@@ -152,7 +152,7 @@ describe("stock analytics portfolio denominators", () => {
     expect(poolQueryMock).toHaveBeenCalledWith(expect.stringContaining("FROM canonical"), ["GENR"]);
   });
 
-  it("supplements canonical identity with selected-filing symbol evidence", async () => {
+  it("does not supplement canonical identity with selected-filing ticker evidence", async () => {
     selectMock
       .mockReturnValueOnce(candidateCusipsQuery([
         { cusip: "111111111" },
@@ -160,23 +160,18 @@ describe("stock analytics portfolio denominators", () => {
       ]));
     await expect(
       loadStockCandidateCusips(["accession-1"], "xyz"),
-    ).resolves.toEqual(["111111111"]);
+    ).resolves.toEqual([]);
+    expect(selectMock).not.toHaveBeenCalled();
   });
 
-  it("accepts a generic stock identity carried by the canonical mapping for its CUSIP", async () => {
-    selectMock
-      .mockReturnValueOnce(candidateCusipsQuery([
-        {
-          cusip: "123456789",
-          masterTicker: null,
-          masterReviewStatus: "probable",
-          masterAssetType: "reit",
-          mappingSymbol: "GENR",
-          mappingStatus: "reviewed",
-          holdingMappedSymbol: "GENR",
-          holdingMappingStatus: "reviewed",
-        },
-      ]));
+  it("accepts a mapping-backed stock identity only after canonical resolution", async () => {
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{
+        cusips: ["123456789"],
+        assetTypes: ["reit"],
+        currentEffectivePeriod: "2026-06-30",
+      }],
+    });
 
     await expect(
       loadStockCandidateIdentity(["accession-generic"], "genr"),
@@ -188,28 +183,14 @@ describe("stock analytics portfolio denominators", () => {
     });
   });
 
-  it("retains every trusted CUSIP for one generic symbol", async () => {
-    selectMock
-      .mockReturnValueOnce(candidateCusipsQuery([
-        {
-          cusip: "111111111",
-          masterTicker: null,
-          masterReviewStatus: null,
-          mappingSymbol: "GENR",
-          mappingStatus: "exact",
-          holdingMappedSymbol: null,
-          holdingMappingStatus: null,
-        },
-        {
-          cusip: "222222222",
-          masterTicker: null,
-          masterReviewStatus: null,
-          mappingSymbol: "GENR",
-          mappingStatus: "reviewed",
-          holdingMappedSymbol: "GENR",
-          holdingMappingStatus: "exact",
-        },
-      ]));
+  it("retains every canonical CUSIP for one resolved symbol", async () => {
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{
+        cusips: ["222222222", "111111111"],
+        assetTypes: ["common_stock"],
+        currentEffectivePeriod: "2026-06-30",
+      }],
+    });
 
     await expect(
       loadStockCandidateIdentity(["accession-generic"], "GENR"),
@@ -232,10 +213,21 @@ describe("stock analytics portfolio denominators", () => {
     });
   });
 
-  it.each([
-    ["etf", "fund"],
-    ["preferred", "unsupported security"],
-  ])("rejects a mapping-only %s from stock identity", async (assetType) => {
+  it("preserves a genuine canonical database failure for route-level UPSTREAM_ERROR handling", async () => {
+    poolQueryMock.mockRejectedValueOnce(
+      Object.assign(new Error("database unavailable"), { code: "08006" }),
+    );
+    await expect(
+      loadStockCandidateIdentity([], "AAPL"),
+    ).rejects.toMatchObject({
+      message: "database unavailable",
+      code: "08006",
+    });
+  });
+
+  it.each(["etf", "preferred"])(
+    "does not recover a canonical-excluded %s from row-level ticker evidence",
+    async (assetType) => {
     selectMock
       .mockReturnValueOnce(candidateCusipsQuery([
         {
@@ -253,21 +245,15 @@ describe("stock analytics portfolio denominators", () => {
     await expect(
       loadStockCandidateIdentity(["accession-generic"], "GENR"),
     ).resolves.toMatchObject({
-      candidateCusips: ["123456789"],
+      candidateCusips: [],
       hasReliableSecurityIdentity: false,
-      hasDisqualifyingCandidateEvidence: true,
-      hasTargetSpecificCandidateEvidence: true,
+      hasDisqualifyingCandidateEvidence: false,
+      hasTargetSpecificCandidateEvidence: false,
     });
+    expect(selectMock).not.toHaveBeenCalled();
   });
 
   it("does not let a trusted status for another symbol validate target evidence", async () => {
-    poolQueryMock.mockResolvedValueOnce({
-      rows: [{
-        cusip: "111111111",
-        reviewStatus: "needs_review",
-        assetType: "common_stock",
-      }],
-    });
     selectMock
       .mockReturnValueOnce(
         candidateCusipsQuery([
@@ -286,14 +272,15 @@ describe("stock analytics portfolio denominators", () => {
     await expect(
       loadStockCandidateIdentity(["accession-1"], "JPM"),
     ).resolves.toEqual({
-      candidateCusips: ["111111111"],
+      candidateCusips: [],
       hasReliableSecurityIdentity: false,
-      hasDisqualifyingCandidateEvidence: true,
-      hasTargetSpecificCandidateEvidence: true,
+      hasDisqualifyingCandidateEvidence: false,
+      hasTargetSpecificCandidateEvidence: false,
     });
+    expect(selectMock).not.toHaveBeenCalled();
   });
 
-  it("keeps diagnostic CUSIPs but marks mixed trusted/conflicting evidence as disqualifying", async () => {
+  it("does not import conflicting row-level evidence into canonical identity", async () => {
     selectMock
       .mockReturnValueOnce(candidateCusipsQuery([
         {
@@ -316,11 +303,12 @@ describe("stock analytics portfolio denominators", () => {
         },
       ]));
     await expect(loadStockCandidateIdentity(["accession-1"], "NVDA")).resolves.toEqual({
-      candidateCusips: ["111111111", "222222222"],
-      hasReliableSecurityIdentity: true,
-      hasDisqualifyingCandidateEvidence: true,
-      hasTargetSpecificCandidateEvidence: true,
+      candidateCusips: [],
+      hasReliableSecurityIdentity: false,
+      hasDisqualifyingCandidateEvidence: false,
+      hasTargetSpecificCandidateEvidence: false,
     });
+    expect(selectMock).not.toHaveBeenCalled();
   });
 
   it("keeps latest holder details pinned to a lagging canonical aggregate quarter", () => {

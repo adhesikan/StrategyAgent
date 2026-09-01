@@ -9,6 +9,8 @@ import {
   canonicalSecurityTypeStateQuery,
   parseCanonicalStockEligibleIdentities,
 } from "../server/services/institutional/canonical-security-state";
+import type { CanonicalInstitutionalSecurityContext } from "../server/services/institutional/canonical-institutional-security-context";
+import type { CanonicalRuntimeSupport } from "../server/services/institutional/canonical-runtime-loaders";
 
 const TIMEOUT_MS = 180_000;
 const STATEMENT_TIMEOUT_MS = 170_000;
@@ -82,19 +84,148 @@ function addSample(target: string[], value: string) {
   if (target.length < SAMPLE_LIMIT) target.push(value);
 }
 
+export interface RuntimeAcceptanceReport {
+  canonicalSymbols: number;
+  identityResolved: number;
+  identityFailed: number;
+  holdingsLoaded: number;
+  holdingsUnavailableLegitimately: number;
+  holdingsUnexpectedFailure: number;
+  aggregatesLoaded: number;
+  aggregateMissingUnexpectedly: number;
+  signalsLoaded: number;
+  signalMissingUnexpectedly: number;
+  trendLoaded: number;
+  trendInsufficientHistory: number;
+  trendUnexpectedFailure: number;
+  stockViewAvailable: number;
+  stockViewPartial: number;
+  stockViewInsufficientHistory: number;
+  stockViewNoReportedPosition: number;
+  stockViewUnexpectedUnsupported: number;
+  stockViewUpstreamError: number;
+  runtimeExceptions: number;
+  unexpectedSamples: Record<RootCause, string[]>;
+  acceptance: "PASS" | "FAIL";
+}
+
+export function buildRuntimeAcceptanceReport(
+  symbols: readonly string[],
+  contexts: ReadonlyMap<string, CanonicalInstitutionalSecurityContext>,
+  support: CanonicalRuntimeSupport,
+): RuntimeAcceptanceReport {
+  const unexpected = samples();
+  let holdingsLoaded = 0;
+  let holdingsUnavailableLegitimately = 0;
+  let holdingsUnexpectedFailure = 0;
+  let aggregatesLoaded = 0;
+  let aggregateMissingUnexpectedly = 0;
+  let signalsLoaded = 0;
+  let signalMissingUnexpectedly = 0;
+  let trendLoaded = 0;
+  let trendInsufficientHistory = 0;
+  let trendUnexpectedFailure = 0;
+  let stockViewAvailable = 0;
+  let stockViewPartial = 0;
+  let stockViewInsufficientHistory = 0;
+  let stockViewNoReportedPosition = 0;
+
+  for (const symbol of symbols) {
+    const context = contexts.get(symbol);
+    if (!context) {
+      addSample(unexpected.IDENTITY_CONTRACT, symbol);
+      continue;
+    }
+    const holdings = support.holdingsBySymbol.get(symbol);
+    const aggregates = support.aggregatesBySymbol.get(symbol) ?? [];
+    const latest = aggregates[0];
+    if (!holdings || holdings.eligibleHoldingCount === 0) {
+      holdingsUnavailableLegitimately++;
+      stockViewNoReportedPosition++;
+    } else if (
+      context.currentEffectivePeriod &&
+      holdings.latestPeriod !== context.currentEffectivePeriod
+    ) {
+      holdingsUnexpectedFailure++;
+      addSample(unexpected.PERIOD_SELECTION, symbol);
+    } else {
+      holdingsLoaded++;
+    }
+    if (!latest) {
+      aggregateMissingUnexpectedly++;
+      addSample(unexpected.AGGREGATE_LOOKUP, symbol);
+      continue;
+    }
+    aggregatesLoaded++;
+    if (support.signalAvailableSymbols.has(symbol)) signalsLoaded++;
+    else {
+      signalMissingUnexpectedly++;
+      addSample(unexpected.SIGNAL_LOOKUP, symbol);
+    }
+    if (aggregates.length >= 2) trendLoaded++;
+    else trendInsufficientHistory++;
+
+    if (!holdings || holdings.eligibleHoldingCount === 0) continue;
+    if (aggregates.length < 2) {
+      stockViewInsufficientHistory++;
+    } else if (latest.coverageStatus === "partial") {
+      stockViewPartial++;
+    } else {
+      stockViewAvailable++;
+    }
+  }
+
+  const identityFailed = symbols.length - contexts.size;
+  const failureCount =
+    identityFailed +
+    holdingsUnexpectedFailure +
+    aggregateMissingUnexpectedly +
+    signalMissingUnexpectedly +
+    trendUnexpectedFailure;
+  return {
+    canonicalSymbols: symbols.length,
+    identityResolved: contexts.size,
+    identityFailed,
+    holdingsLoaded,
+    holdingsUnavailableLegitimately,
+    holdingsUnexpectedFailure,
+    aggregatesLoaded,
+    aggregateMissingUnexpectedly,
+    signalsLoaded,
+    signalMissingUnexpectedly,
+    trendLoaded,
+    trendInsufficientHistory,
+    trendUnexpectedFailure,
+    stockViewAvailable,
+    stockViewPartial,
+    stockViewInsufficientHistory,
+    stockViewNoReportedPosition,
+    stockViewUnexpectedUnsupported: identityFailed,
+    stockViewUpstreamError: 0,
+    runtimeExceptions: 0,
+    unexpectedSamples: unexpected,
+    acceptance: failureCount === 0 ? "PASS" : "FAIL",
+  };
+}
+
 async function main(): Promise<void> {
   assertRuntime();
   process.env.DATABASE_URL = readOnlyUrl(process.env.DATABASE_URL!);
   const started = performance.now();
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("RUNTIME_ACCEPTANCE_TIMEOUT")), TIMEOUT_MS));
+    {
+      timeoutHandle = setTimeout(
+        () => reject(new Error("RUNTIME_ACCEPTANCE_TIMEOUT")),
+        TIMEOUT_MS,
+      );
+    });
   const acceptance = async () => {
     const { pool } = await import("../server/db");
     const { resolveCanonicalInstitutionalSecurityContexts } =
       await import("../server/services/institutional/canonical-institutional-security-context");
     const { loadCanonicalRuntimeSupport } =
       await import("../server/services/institutional/canonical-runtime-loaders");
-    const unexpected = samples();
     try {
       const client = await pool.connect();
       try {
@@ -110,71 +241,26 @@ async function main(): Promise<void> {
         const contextValues = Array.from(contexts.values());
         // Same shared aggregate/signal batch loader used by runtime consumers.
         const support = await loadCanonicalRuntimeSupport(contextValues);
-        let holdingsLoaded = 0, holdingsUnavailableLegitimately = 0;
-        let aggregatesLoaded = 0, aggregateMissingUnexpectedly = 0;
-        let signalsLoaded = 0, signalMissingUnexpectedly = 0;
-        let trendLoaded = 0, trendInsufficientHistory = 0, trendUnexpectedFailure = 0;
-        for (const symbol of symbols) {
-          const context = contexts.get(symbol);
-          if (!context) { addSample(unexpected.IDENTITY_CONTRACT, symbol); continue; }
-          const aggregateRows = support.aggregatesBySymbol.get(symbol) ?? [];
-          const holdingSupport = support.holdingsBySymbol.get(symbol);
-          if (!holdingSupport) {
-            holdingsUnavailableLegitimately++;
-            addSample(unexpected.HOLDING_SELECTION, symbol);
-          } else if (
-            context.currentEffectivePeriod &&
-            holdingSupport.latestPeriod !== context.currentEffectivePeriod
-          ) {
-            addSample(unexpected.PERIOD_SELECTION, symbol);
-          } else {
-            holdingsLoaded++;
-          }
-          const latest = aggregateRows[0];
-          if (!latest) { aggregateMissingUnexpectedly++; addSample(unexpected.AGGREGATE_LOOKUP, symbol); continue; }
-          aggregatesLoaded++;
-          if (support.signalsBySymbol.has(symbol)) signalsLoaded++;
-          else { signalMissingUnexpectedly++; addSample(unexpected.SIGNAL_LOOKUP, symbol); }
-          if (aggregateRows.length >= 2) trendLoaded++;
-          else trendInsufficientHistory++;
-        }
+        const report = buildRuntimeAcceptanceReport(
+          symbols,
+          contexts,
+          support,
+        );
         await client.query("COMMIT");
-        const identityFailed = symbols.length - contexts.size;
-        const stockViewAvailable = symbols.filter((symbol) =>
-          contexts.has(symbol) &&
-          support.holdingsBySymbol.has(symbol) &&
-          (support.aggregatesBySymbol.get(symbol)?.length ?? 0) >= 2,
-        ).length;
-        const unexpectedUnsupported = identityFailed;
-        const unexpectedFailureCount =
-          identityFailed +
-          aggregateMissingUnexpectedly +
-          signalMissingUnexpectedly +
-          trendUnexpectedFailure +
-          Object.values(unexpected).reduce((sum, values) => sum + values.length, 0);
         console.log(JSON.stringify({
-          canonicalSymbols: symbols.length, identityResolved: contexts.size, identityFailed,
-          holdingsLoaded, holdingsUnavailableLegitimately, holdingsUnexpectedFailure: 0,
-          aggregatesLoaded, aggregateMissingUnexpectedly,
-          signalsLoaded, signalMissingUnexpectedly,
-          trendLoaded, trendInsufficientHistory, trendUnexpectedFailure,
-          stockViewAvailable,
-          stockViewPartial: 0,
-          stockViewInsufficientHistory: trendInsufficientHistory,
-          stockViewNoReportedPosition: holdingsUnavailableLegitimately,
-          stockViewUnexpectedUnsupported: unexpectedUnsupported,
-          stockViewUpstreamError: 0,
-          runtimeExceptions: 0,
-          unexpectedSamples: unexpected,
+          ...report,
           runtimeMs: Math.round(performance.now() - started),
           boundedTimeoutMs: TIMEOUT_MS,
           readOnly: true,
-          acceptance: unexpectedFailureCount === 0 ? "PASS" : "FAIL",
         }, null, 2));
       } finally { client.release(); }
     } finally { await pool.end(); }
   };
-  await Promise.race([acceptance(), timeout]);
+  try {
+    await Promise.race([acceptance(), timeout]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
 }
 if (!process.env.VITEST) void runCli(main, {
   label: "institutional-runtime-population-acceptance", close: async () => undefined,

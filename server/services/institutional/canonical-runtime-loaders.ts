@@ -21,6 +21,8 @@ export interface CanonicalRuntimeSupport {
   holdingsBySymbol: Map<string, CanonicalHoldingSupport>;
   aggregatesBySymbol: Map<string, typeof institutionalQuarterlyAggregates.$inferSelect[]>;
   signalsBySymbol: Map<string, typeof institutionalSymbolSignals.$inferSelect>;
+  /** Materialized signal or sufficient aggregate inputs for the live fallback. */
+  signalAvailableSymbols: Set<string>;
 }
 
 export async function loadCanonicalRuntimeSupport(
@@ -30,8 +32,14 @@ export async function loadCanonicalRuntimeSupport(
   const holdingsBySymbol = new Map<string, CanonicalHoldingSupport>();
   const aggregatesBySymbol = new Map<string, typeof institutionalQuarterlyAggregates.$inferSelect[]>();
   const signalsBySymbol = new Map<string, typeof institutionalSymbolSignals.$inferSelect>();
+  const signalAvailableSymbols = new Set<string>();
   if (symbols.length === 0) {
-    return { holdingsBySymbol, aggregatesBySymbol, signalsBySymbol };
+    return {
+      holdingsBySymbol,
+      aggregatesBySymbol,
+      signalsBySymbol,
+      signalAvailableSymbols,
+    };
   }
   const [holdingResult, aggregates, signals] = await Promise.all([
     pool.query<{
@@ -74,6 +82,18 @@ export async function loadCanonicalRuntimeSupport(
     rows.push(aggregate);
     aggregatesBySymbol.set(symbol, rows);
   }
-  for (const signal of signals) signalsBySymbol.set(signal.symbol.trim().toUpperCase(), signal);
-  return { holdingsBySymbol, aggregatesBySymbol, signalsBySymbol };
+  for (const signal of signals) {
+    const symbol = signal.symbol.trim().toUpperCase();
+    signalsBySymbol.set(symbol, signal);
+    signalAvailableSymbols.add(symbol);
+  }
+  for (const [symbol, rows] of Array.from(aggregatesBySymbol.entries())) {
+    if (rows.length >= 2) signalAvailableSymbols.add(symbol);
+  }
+  return {
+    holdingsBySymbol,
+    aggregatesBySymbol,
+    signalsBySymbol,
+    signalAvailableSymbols,
+  };
 }

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import AdmZip from "adm-zip";
+import { readFileSync } from "node:fs";
 import {
   classifySecArchiveFailure,
   parseBulkQuarterFromBuffer,
+  type BulkParseResult,
   validateSecArchiveResponse,
 } from "../sec-13f-bulk-parser";
 import { SecHttpError } from "../sec-client";
@@ -11,6 +13,7 @@ import {
   resolveCatalogQuarterRange,
 } from "../sec-dataset-catalog";
 import {
+  buildDryRunQuarterPlan,
   parseHistoricalBackfillArgs,
   validateHistoricalBackfillEnvironment,
 } from "../../../../scripts/run-institutional-backfill";
@@ -48,6 +51,7 @@ describe("historical SEC source classification", () => {
     expect(parseBulkQuarterFromBuffer(buffer, 2026, 1).status).toBe("success");
   });
 });
+
 
 describe("catalog range and guarded backfill", () => {
   const catalog = parseCatalogHtml(`
@@ -88,6 +92,98 @@ describe("catalog range and guarded backfill", () => {
       DATABASE_URL: "postgres://redacted",
     })).toThrow("PRODUCTION_NODE_ENV_REQUIRED");
   });
+
+  const descriptor = {
+    downloadUrl: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/01mar2024-31may2024_form13f.zip",
+    fileName: "01mar2024-31may2024_form13f.zip",
+    windowStart: "2024-03-01",
+    windowEnd: "2024-05-31",
+    expectedPeriodOfReport: "2024-03-31",
+    year: 2024,
+    q: 1 as const,
+  };
+  const source = {
+    status: "success",
+    holdings: [
+      { accessionNumber: "0001-24-000001", filingDate: "2024-05-01", isAmendment: false },
+      { accessionNumber: "0001-24-000001", filingDate: "2024-05-01", isAmendment: false },
+      { accessionNumber: "0002-24-000002", filingDate: "2024-05-02", isAmendment: true },
+    ],
+    diagnostics: {},
+  } as BulkParseResult;
+
+  it("projects a full backfill from the same accession population ingestion uses", () => {
+    expect(buildDryRunQuarterPlan({
+      descriptor,
+      source,
+      existingFilings: [],
+      existingHoldingRows: [],
+    })).toMatchObject({
+      sourceFilings: 2,
+      sourceHoldingRows: 3,
+      filingsAlreadyPresent: 0,
+      filingsToInsert: 2,
+      filingsPotentiallyUpdated: 0,
+      amendmentsToReconcile: 1,
+      estimatedHoldingRowsToProcess: 3,
+      downstreamAggregateRebuildRequired: true,
+      downstreamSignalRebuildRequired: true,
+      status: "FULL_BACKFILL_REQUIRED",
+    });
+  });
+
+  it("projects partial and no-change reruns without inventing updates", () => {
+    const existing = [{
+      accessionNumber: "000124000001",
+      amendmentFlag: false,
+      filingDate: "2024-05-01",
+      isEffective: true,
+    }];
+    expect(buildDryRunQuarterPlan({
+      descriptor,
+      source,
+      existingFilings: existing,
+      existingHoldingRows: [{ accessionNumber: "000124000001", holdingRows: 2 }],
+    })).toMatchObject({
+      filingsAlreadyPresent: 1,
+      filingsToInsert: 1,
+      amendmentsToReconcile: 1,
+      estimatedHoldingRowsToProcess: 1,
+      status: "PARTIAL_BACKFILL_REQUIRED",
+    });
+
+    expect(buildDryRunQuarterPlan({
+      descriptor,
+      source,
+      existingFilings: [
+        ...existing,
+        { accessionNumber: "000224000002", amendmentFlag: true, filingDate: "2024-05-02", isEffective: true },
+      ],
+      existingHoldingRows: [
+        { accessionNumber: "000124000001", holdingRows: 2 },
+        { accessionNumber: "000224000002", holdingRows: 1 },
+      ],
+    })).toMatchObject({
+      filingsAlreadyPresent: 2,
+      filingsToInsert: 0,
+      estimatedHoldingRowsToProcess: 0,
+      status: "NO_CHANGE",
+    });
+  });
+
+  it("reports source errors without projecting database work", () => {
+    expect(buildDryRunQuarterPlan({
+      descriptor,
+      source: { status: "failed", holdings: [], diagnostics: {} } as BulkParseResult,
+      existingFilings: [],
+      existingHoldingRows: [],
+    })).toMatchObject({
+      sourceAvailable: false,
+      sourceFilings: null,
+      filingsToInsert: null,
+      status: "SOURCE_ERROR",
+    });
+  });
 });
 
 describe("historical coverage source status", () => {
@@ -101,5 +197,16 @@ describe("historical coverage source status", () => {
       .toBe("SOURCE_MISSING");
     expect(classifyHistoricalSource({ catalogAvailable: false, latestRunStatus: null, latestRunErrorCode: null, quarterEnd: "2026-09-30", today }))
       .toBe("NOT_YET_PUBLISHED");
+  });
+
+  it("uses the canonical trusted-evidence union rather than reviewed security_master alone", () => {
+    const source = readFileSync(
+      new URL("../../../../scripts/audit-institutional-historical-coverage.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("FROM institutional_security_mappings");
+    expect(source).toContain("LOWER(COALESCE(status, '')) IN ('exact', 'reviewed')");
+    expect(source).toContain("sm.asset_type IN ('common_stock', 'reit')");
+    expect(source).not.toContain("sm.review_status = 'reviewed'");
   });
 });

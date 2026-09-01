@@ -79,26 +79,70 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
 
   for (const item of enumerateRange(range.fromQuarter, range.toQuarter)) {
     const result = await db.execute(sql`
+      WITH ranked_filings AS (
+        SELECT f.*,
+               ROW_NUMBER() OVER (
+                 PARTITION BY f.filer_cik, f.period_of_report
+                 ORDER BY f.is_effective DESC,
+                          f.accepted_at DESC NULLS LAST,
+                          f.filing_date DESC,
+                          f.accession_number DESC
+               ) AS filing_rank
+          FROM institutional_13f_filings f
+      ), effective_holdings AS (
+        SELECT h.*
+          FROM institutional_13f_holdings h
+          JOIN ranked_filings f
+            ON f.accession_number = h.accession_number
+           AND f.is_effective = true
+           AND f.filing_rank = 1
+         WHERE h.period_of_report = ${item.period}
+           AND h.put_call IS NULL
+           AND COALESCE(UPPER(h.shares_prn_type), 'SH') <> 'PRN'
+           AND h.reported_shares > 0
+      ), evidence AS (
+        SELECT cusip, mapped_symbol AS symbol, mapping_status AS status
+          FROM institutional_security_mappings
+        UNION ALL
+        SELECT cusip, ticker AS symbol, review_status AS status
+          FROM security_master
+      ), trusted AS (
+        SELECT cusip,
+               MAX(NULLIF(UPPER(TRIM(symbol)), ''))
+                 FILTER (WHERE LOWER(COALESCE(status, '')) IN ('exact', 'reviewed')) AS symbol
+          FROM evidence
+         GROUP BY cusip
+        HAVING COUNT(DISTINCT NULLIF(UPPER(TRIM(symbol)), ''))
+                 FILTER (WHERE LOWER(COALESCE(status, '')) IN ('exact', 'reviewed')) = 1
+           AND BOOL_OR(LOWER(COALESCE(status, '')) = 'rejected') IS NOT TRUE
+      ), canonical AS (
+        SELECT DISTINCT e.cusip, t.symbol, sm.asset_type
+          FROM (SELECT DISTINCT cusip FROM effective_holdings) e
+          JOIN trusted t ON t.cusip = e.cusip
+          LEFT JOIN security_master sm ON sm.cusip = e.cusip
+         WHERE sm.asset_type IN ('common_stock', 'reit')
+           AND (
+             (t.symbol ~ '^[A-Z0-9]+$' AND LENGTH(t.symbol) <= 12)
+             OR (
+               t.symbol ~ '^[A-Z0-9]+\.[A-Z0-9]+$'
+               AND LENGTH(t.symbol) <= 12
+               AND EXISTS (
+                 SELECT 1
+                   FROM institutional_security_candidate_observations candidate
+                  WHERE candidate.cusip = e.cusip
+                    AND candidate.is_current = TRUE
+                    AND UPPER(TRIM(candidate.ticker)) = t.symbol
+                    AND NULLIF(TRIM(candidate.share_class_figi), '') IS NOT NULL
+               )
+             )
+           )
+      )
       SELECT
         (SELECT COUNT(*)::int FROM institutional_13f_filings f WHERE f.period_of_report = ${item.period}) AS filings,
         (SELECT COUNT(*)::int FROM institutional_13f_filings f WHERE f.period_of_report = ${item.period} AND f.is_effective = true) AS "effectiveFilings",
         (SELECT COUNT(*)::int FROM institutional_13f_holdings h WHERE h.period_of_report = ${item.period}) AS "holdingRows",
-        (SELECT COUNT(DISTINCT h.cusip)::int
-           FROM institutional_13f_holdings h
-           JOIN institutional_13f_filings f ON f.accession_number = h.accession_number AND f.is_effective = true
-           JOIN security_master sm ON sm.cusip = h.cusip
-          WHERE h.period_of_report = ${item.period}
-            AND h.put_call IS NULL AND COALESCE(UPPER(h.shares_prn_type), '') <> 'PRN'
-            AND h.reported_shares > 0 AND sm.review_status = 'reviewed'
-            AND sm.asset_type IN ('common_stock', 'reit', 'adr')) AS "canonicalStockCusips",
-        (SELECT COUNT(DISTINCT sm.ticker)::int
-           FROM institutional_13f_holdings h
-           JOIN institutional_13f_filings f ON f.accession_number = h.accession_number AND f.is_effective = true
-           JOIN security_master sm ON sm.cusip = h.cusip
-          WHERE h.period_of_report = ${item.period}
-            AND h.put_call IS NULL AND COALESCE(UPPER(h.shares_prn_type), '') <> 'PRN'
-            AND h.reported_shares > 0 AND sm.review_status = 'reviewed'
-            AND sm.asset_type IN ('common_stock', 'reit', 'adr') AND sm.ticker IS NOT NULL) AS "canonicalStockSymbols",
+        (SELECT COUNT(*)::int FROM canonical) AS "canonicalStockCusips",
+        (SELECT COUNT(DISTINCT symbol)::int FROM canonical) AS "canonicalStockSymbols",
         (SELECT COUNT(DISTINCT a.symbol)::int FROM institutional_quarterly_aggregates a WHERE a.period_of_report = ${item.period}) AS "aggregateSymbols",
         (SELECT COUNT(DISTINCT s.symbol)::int FROM institutional_symbol_signals s WHERE s.period_end_date = ${item.period}) AS "signalSymbols",
         (SELECT r.status FROM institutional_ingestion_runs r WHERE r.quarter = ${item.quarter} ORDER BY r.started_at DESC LIMIT 1) AS "latestRunStatus",

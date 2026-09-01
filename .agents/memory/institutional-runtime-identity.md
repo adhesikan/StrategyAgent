@@ -7,4 +7,4 @@ Active stock Institutional Intelligence must resolve identity once from the cano
 
 **Why:** Independent ticker-based resolvers repeatedly diverged from accepted canonical identity and caused valid symbols to lose holdings, aggregates, or trend data at different runtime stages.
 
-**How to apply:** Resolve context at the top-level service boundary, then pass its CUSIPs and effective period through downstream reads. Population acceptance must call the actual Stock View and trend services; batched loaders may support classification but must not replace service availability semantics.
+**How to apply:** Resolve context at the top-level service boundary, then pass its CUSIPs and effective period through downstream reads. Population acceptance must call the actual Stock View and trend services; batched loaders may support classification but must not replace service availability semantics. Coverage audits must union exact/reviewed institutional mappings with reviewed security-master evidence before applying persisted stock-type eligibility; a direct reviewed-security-master join is too narrow.

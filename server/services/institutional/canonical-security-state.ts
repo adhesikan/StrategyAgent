@@ -3,14 +3,15 @@
  * remediation analyzer. Identity trust is resolved from exact/reviewed
  * persisted mapping evidence; asset type is read from security_master.
  */
-import { CANONICAL_EFFECTIVE_HOLDINGS_CTE } from "./institutional-effective-holdings";
+import {
+  CANONICAL_EFFECTIVE_HOLDINGS_CTE,
+  CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY,
+} from "./institutional-effective-holdings";
 
-export const canonicalSecurityTypeStateQuery = `
-${CANONICAL_EFFECTIVE_HOLDINGS_CTE},
-eligible_cusips AS (
-  SELECT DISTINCT h.cusip
-  FROM canonical_effective_holdings h
-), evidence AS (
+function buildCanonicalSecurityStateCte(eligibleCusipsCte: string): string {
+  return `
+${eligibleCusipsCte},
+evidence AS (
   SELECT cusip, mapped_symbol AS symbol, mapping_status AS status, NULL::text AS asset_type
   FROM institutional_security_mappings
   UNION ALL
@@ -47,7 +48,19 @@ eligible_cusips AS (
     )
   )
   GROUP BY e.cusip
+)`;
+}
+
+export const canonicalSecurityTypeStateCte = buildCanonicalSecurityStateCte(`
+${CANONICAL_EFFECTIVE_HOLDINGS_CTE},
+eligible_cusips AS (
+  SELECT DISTINCT h.cusip
+  FROM canonical_effective_holdings h
 )
+`);
+
+export const canonicalSecurityTypeStateQuery = `
+${canonicalSecurityTypeStateCte}
 SELECT
   COUNT(*)::int AS trusted_cusips,
   COUNT(*) FILTER (WHERE NULLIF(TRIM(asset_type), '') IS NOT NULL)::int AS asset_type_populated,
@@ -63,6 +76,36 @@ SELECT
     '{}'::jsonb
   ) AS stock_eligible_identities
 FROM canonical`;
+
+/**
+ * Symbol-scoped form of the same canonical identity contract. `$1` must be a
+ * normalized symbol supplied through the database driver's parameter binding.
+ */
+export const canonicalStockIdentityForSymbolQuery = `
+${buildCanonicalSecurityStateCte(`
+target_cusips AS (
+  SELECT cusip
+  FROM institutional_security_mappings
+  WHERE UPPER(TRIM(mapped_symbol)) = $1
+  UNION
+  SELECT cusip
+  FROM security_master
+  WHERE UPPER(TRIM(ticker)) = $1
+), ${CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY},
+eligible_cusips AS (
+  SELECT DISTINCT h.cusip
+  FROM canonical_effective_holdings h
+  JOIN target_cusips target ON target.cusip = h.cusip
+)
+`)}
+SELECT
+  cusip,
+  'reviewed'::text AS "reviewStatus",
+  asset_type AS "assetType"
+FROM canonical
+WHERE symbol = $1
+  AND asset_type IN ('common_stock', 'reit')
+ORDER BY cusip`;
 
 export function parseCanonicalStockEligibleIdentities(
   value: unknown,

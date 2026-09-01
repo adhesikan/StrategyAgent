@@ -38,3 +38,9 @@ Population-wide resolver reconciliation must batch database evidence reads, grou
 **Why:** A semantically correct verifier can still run for hours when it repeats filing work or loads an unnecessarily broad evidence population; a fail-closed timeout is safer than an unbounded diagnostic.
 
 **How to apply:** Keep canonical identity loading set-based, bound accession batches, compare sets in memory, emit compact metrics, and treat timeout as a failed reconciliation rather than partial success.
+
+The live Stock View must seed its shared identity predicate from a symbol-scoped form of the canonical effective-holdings contract, not from a direct security-master ticker lookup.
+
+**Why:** A mapping-backed canonical symbol can be valid in the reconciled CUSIP→symbol population while having no matching `security_master.ticker`; feeding only direct-ticker rows to the same pure predicate creates a false `UNSUPPORTED` result.
+
+**How to apply:** Share the canonical CTE and eligibility rules between population verification and runtime symbol lookup, parameterize the requested symbol, and retain selected-filing evidence only as supplemental diagnostics rather than identity authority.

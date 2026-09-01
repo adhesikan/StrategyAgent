@@ -101,5 +101,6 @@ describe("live Stock View reconciliation CLI safety", () => {
     expect(source).not.toMatch(/\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|CREATE|COPY|CALL|DO|GRANT|REVOKE|VACUUM)\b/);
     expect(source).not.toMatch(/import\([^)]*(mutation|ingestion|apply)/i);
     expect(source).not.toContain("console.log(process.env.DATABASE_URL");
+    expect(source).toContain("close: async () => undefined");
   });
 });

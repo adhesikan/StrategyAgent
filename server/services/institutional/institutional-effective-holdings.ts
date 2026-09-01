@@ -6,8 +6,8 @@
  * an anomalous state with more than one effective filing, and keeps planner
  * and APPLY semantics identical.
  */
-export const CANONICAL_EFFECTIVE_HOLDINGS_CTE = `
-WITH ranked_filings AS (
+export const CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY = `
+ranked_filings AS (
   SELECT
     f.accession_number,
     f.filer_cik,
@@ -39,6 +39,9 @@ canonical_effective_holdings AS (
     AND COALESCE(UPPER(h.shares_prn_type), 'SH') <> 'PRN'
     AND h.reported_shares > 0
 )`;
+
+export const CANONICAL_EFFECTIVE_HOLDINGS_CTE =
+  `WITH ${CANONICAL_EFFECTIVE_HOLDINGS_CTE_BODY}`;
 
 export const CANONICAL_EFFECTIVE_HOLDINGS_SCOPE =
   "effective filings ranked by filer and reporting period; null put/call, non-PRN, positive-share holdings";

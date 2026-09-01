@@ -8,7 +8,7 @@
  */
 
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { db } from "../../../db";
+import { db, pool } from "../../../db";
 import {
   institutional13fFilings,
   institutional13fHoldings,
@@ -21,8 +21,10 @@ import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
 import { isEligibleForStockInstitutionalAnalytics } from "../security-type-eligibility";
+import { canonicalStockIdentityForSymbolQuery } from "../canonical-security-state";
 import {
   evaluateStockCandidateIdentity,
+  type StockCandidateCanonicalRow,
   type StockCandidateIdentity,
 } from "./stock-candidate-identity";
 export {
@@ -157,14 +159,11 @@ export async function loadStockCandidateIdentity(
   symbol: string,
 ): Promise<StockCandidateIdentity> {
   const normalizedSymbol = symbol.trim().toUpperCase();
-  const canonicalRows = await db
-    .select({
-      cusip: securityMaster.cusip,
-      reviewStatus: securityMaster.reviewStatus,
-      assetType: securityMaster.assetType,
-    })
-    .from(securityMaster)
-    .where(sql`UPPER(${securityMaster.ticker}) = ${normalizedSymbol}`);
+  const canonicalResult = await pool.query<StockCandidateCanonicalRow>(
+    canonicalStockIdentityForSymbolQuery,
+    [normalizedSymbol],
+  );
+  const canonicalRows = canonicalResult.rows;
   const evidenceRows = accessionNumbers.length === 0 ? [] : await db
     .select({
       cusip: institutional13fHoldings.cusip,

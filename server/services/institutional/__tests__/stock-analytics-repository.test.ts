@@ -1,16 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { selectMock } = vi.hoisted(() => ({
+const { selectMock, poolQueryMock } = vi.hoisted(() => ({
   selectMock: vi.fn(),
+  poolQueryMock: vi.fn(),
 }));
 
 vi.mock("../../../db", () => ({
   db: {
     select: selectMock,
   },
+  pool: {
+    query: poolQueryMock,
+  },
 }));
 
 import {
+  evaluateStockCandidateIdentity,
   loadAllStockInstitutionalHoldings,
   loadManagerPortfolioValues,
   loadStockCandidateIdentity,
@@ -44,17 +49,6 @@ function candidateCusipsQuery(rows: unknown[]) {
   };
 }
 
-function canonicalCusipsQuery(rows: unknown[]) {
-  return {
-    from: () => ({
-      where: async () => rows.map((row) => ({
-        assetType: "common_stock",
-        ...(row as Record<string, unknown>),
-      })),
-    }),
-  };
-}
-
 function orderedLimitedQuery(rows: unknown[]) {
   return {
     from: () => ({
@@ -80,6 +74,8 @@ function orderedQuery(rows: unknown[]) {
 describe("stock analytics portfolio denominators", () => {
   beforeEach(() => {
     selectMock.mockReset();
+    poolQueryMock.mockReset();
+    poolQueryMock.mockResolvedValue({ rows: [] });
   });
 
   it("uses the full filing value for common equity, PUT, and CALL requests", async () => {
@@ -112,11 +108,10 @@ describe("stock analytics portfolio denominators", () => {
   });
 
   it("loads an isolated unmapped row from the symbol's canonical security-master CUSIP", async () => {
-    selectMock
-      .mockReturnValueOnce(
-        canonicalCusipsQuery([{ cusip: "111111111" }]),
-      )
-      .mockReturnValueOnce(candidateCusipsQuery([]));
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ cusip: "111111111", reviewStatus: "reviewed", assetType: "common_stock" }],
+    });
+    selectMock.mockReturnValueOnce(candidateCusipsQuery([]));
     await expect(
       loadStockCandidateCusips(["accession-1"], "xyz"),
     ).resolves.toEqual(["111111111"]);
@@ -137,9 +132,26 @@ describe("stock analytics portfolio denominators", () => {
     });
   });
 
+  it("uses the verifier's canonical contract when the old direct-ticker path has no row", async () => {
+    const canonicalRow = {
+      cusip: "111111111",
+      reviewStatus: "reviewed",
+      assetType: "common_stock",
+    };
+    const oldStockViewIdentity = evaluateStockCandidateIdentity("GENR", [], []);
+    const verifierIdentity = evaluateStockCandidateIdentity("GENR", [canonicalRow], []);
+    poolQueryMock.mockResolvedValueOnce({ rows: [canonicalRow] });
+
+    const fixedStockViewIdentity = await loadStockCandidateIdentity([], "GENR");
+
+    expect(oldStockViewIdentity.hasReliableSecurityIdentity).toBe(false);
+    expect(verifierIdentity.hasReliableSecurityIdentity).toBe(true);
+    expect(fixedStockViewIdentity).toEqual(verifierIdentity);
+    expect(poolQueryMock).toHaveBeenCalledWith(expect.stringContaining("FROM canonical"), ["GENR"]);
+  });
+
   it("supplements canonical identity with selected-filing symbol evidence", async () => {
     selectMock
-      .mockReturnValueOnce(canonicalCusipsQuery([]))
       .mockReturnValueOnce(candidateCusipsQuery([
         { cusip: "111111111" },
         { cusip: "111111111" },
@@ -151,7 +163,6 @@ describe("stock analytics portfolio denominators", () => {
 
   it("accepts a generic stock identity carried by the canonical mapping for its CUSIP", async () => {
     selectMock
-      .mockReturnValueOnce(canonicalCusipsQuery([]))
       .mockReturnValueOnce(candidateCusipsQuery([
         {
           cusip: "123456789",
@@ -177,7 +188,6 @@ describe("stock analytics portfolio denominators", () => {
 
   it("retains every trusted CUSIP for one generic symbol", async () => {
     selectMock
-      .mockReturnValueOnce(canonicalCusipsQuery([]))
       .mockReturnValueOnce(candidateCusipsQuery([
         {
           cusip: "111111111",
@@ -210,8 +220,6 @@ describe("stock analytics portfolio denominators", () => {
   });
 
   it("leaves an unknown symbol unsupported when no canonical evidence exists", async () => {
-    selectMock.mockReturnValueOnce(canonicalCusipsQuery([]));
-
     await expect(
       loadStockCandidateIdentity([], "UNKNOWN"),
     ).resolves.toEqual({
@@ -227,7 +235,6 @@ describe("stock analytics portfolio denominators", () => {
     ["preferred", "unsupported security"],
   ])("rejects a mapping-only %s from stock identity", async (assetType) => {
     selectMock
-      .mockReturnValueOnce(canonicalCusipsQuery([]))
       .mockReturnValueOnce(candidateCusipsQuery([
         {
           cusip: "123456789",
@@ -252,12 +259,14 @@ describe("stock analytics portfolio denominators", () => {
   });
 
   it("does not let a trusted status for another symbol validate target evidence", async () => {
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{
+        cusip: "111111111",
+        reviewStatus: "needs_review",
+        assetType: "common_stock",
+      }],
+    });
     selectMock
-      .mockReturnValueOnce(
-        canonicalCusipsQuery([
-          { cusip: "111111111", reviewStatus: "needs_review" },
-        ]),
-      )
       .mockReturnValueOnce(
         candidateCusipsQuery([
           {
@@ -284,7 +293,6 @@ describe("stock analytics portfolio denominators", () => {
 
   it("keeps diagnostic CUSIPs but marks mixed trusted/conflicting evidence as disqualifying", async () => {
     selectMock
-      .mockReturnValueOnce(canonicalCusipsQuery([]))
       .mockReturnValueOnce(candidateCusipsQuery([
         {
           cusip: "111111111",

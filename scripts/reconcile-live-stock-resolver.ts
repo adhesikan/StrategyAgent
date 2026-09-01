@@ -413,7 +413,10 @@ async function main(): Promise<void> {
 }
 
 if (!process.env.VITEST) {
-  void runCli(main, { label: "live-stock-resolver-reconciliation" }).then((code) => {
+  void runCli(main, {
+    label: "live-stock-resolver-reconciliation",
+    close: async () => undefined,
+  }).then((code) => {
     process.exitCode ||= code;
   });
 }

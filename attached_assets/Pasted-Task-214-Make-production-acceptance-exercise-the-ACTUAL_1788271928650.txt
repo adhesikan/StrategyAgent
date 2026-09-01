@@ -1,0 +1,304 @@
+Task #214 — Make production acceptance exercise the ACTUAL Stock View service
+
+CRITICAL CONTRADICTION
+
+The production population acceptance harness reported:
+
+canonicalSymbols: 1465
+identityResolved: 1465
+holdingsLoaded: 1465
+aggregatesLoaded: 1465
+signalsLoaded: 1465
+stockViewUnexpectedUnsupported: 0
+stockViewUpstreamError: 0
+runtimeExceptions: 0
+acceptance: PASS
+
+However immediately afterward the ACTUAL production HTTP/service path shows:
+
+GET /api/institutional/v1/stocks/JPM
+→ HTTP 200
+→ availability: UNSUPPORTED
+→ reportedHolderCount: 0
+→ candidateHoldingCount: 0
+→ reliablyMappedHoldingCount: 0
+
+AAPL works.
+
+Therefore the acceptance harness is NOT yet equivalent to the actual
+Stock View service execution.
+
+STOP debugging individual symbols.
+
+Do not modify production data.
+Do not run remediation.
+Do not run ingestion.
+Do not run OpenFIGI.
+Do not APPLY.
+Do not add ticker exceptions.
+
+OBJECTIVE
+
+Make ONE runtime implementation authoritative.
+
+The production acceptance harness must invoke the SAME top-level service
+function used by the HTTP route:
+
+getStockInstitutionalAnalytics
+
+It must not independently compose identity, holdings, aggregates, signals,
+trend, or availability in a way that can disagree with that service.
+
+PART 1 — TRACE ACTUAL ROUTE
+
+Confirm:
+
+GET /api/institutional/v1/stocks/:symbol
+→ route handler
+→ getStockInstitutionalAnalytics
+→ repository/service dependencies
+→ availability result
+
+Identify every step executed by getStockInstitutionalAnalytics that is NOT
+currently executed by accept-institutional-runtime-population.ts.
+
+Return that delta.
+
+PART 2 — REMOVE ACCEPTANCE SHADOW IMPLEMENTATION
+
+Inspect:
+
+scripts/accept-institutional-runtime-population.ts
+
+If it independently calls:
+
+canonical context loader
+holding loader
+aggregate loader
+signal loader
+trend loader
+availability classifier
+
+instead of the actual top-level Stock View service, that is a shadow
+implementation and must not be used as final runtime acceptance.
+
+Refactor acceptance so the Stock View acceptance result is obtained by
+calling the actual:
+
+getStockInstitutionalAnalytics
+
+for the canonical population.
+
+You may optimize/batch prerequisites internally, but acceptance semantics
+must come from the actual service.
+
+Do not create another interpretation of Stock View.
+
+PART 3 — FIND THE SYSTEMIC SERVICE DIVERGENCE
+
+Use the actual service for the population and classify all failures.
+
+For every canonical runtime-valid symbol record:
+
+serviceAvailability
+
+Classify:
+
+AVAILABLE
+PARTIAL
+INSUFFICIENT_HISTORY
+NO_REPORTED_POSITION
+UNSUPPORTED
+UPSTREAM_ERROR
+
+For canonical stock-eligible symbols:
+
+UNSUPPORTED is unexpected.
+
+Find the FIRST shared service predicate causing canonical/resolvable
+mapping-backed symbols to become UNSUPPORTED.
+
+Inspect especially whether getStockInstitutionalAnalytics still:
+
+- rebuilds candidate identity
+- filters selected filings independently
+- requires mapped_symbol/ticker after canonical context resolution
+- calls a legacy repository path
+- constructs holder evidence separately
+- computes mapping coverage from a different candidate population
+- overwrites a valid canonical context with an empty legacy result
+
+Do not assume which one.
+Prove it.
+
+PART 4 — ONE CONTEXT THROUGH THE WHOLE SERVICE
+
+Once:
+
+CanonicalInstitutionalSecurityContext
+
+is resolved, pass that SAME context through the complete Stock View service.
+
+No component inside getStockInstitutionalAnalytics may independently
+reinterpret whether the symbol is canonical/eligible.
+
+Downstream code may calculate data quality and availability from actual
+data, but it may not change a canonical stock identity into UNSUPPORTED
+because a legacy ticker-derived candidate set is empty.
+
+UNSUPPORTED should mean the canonical context itself determined that the
+security is unsupported.
+
+PART 5 — TREND
+
+The actual production route also shows:
+
+GET /api/institutional/v1/stocks/JPM/trend
+→ 404 DATA_UNAVAILABLE
+
+The final acceptance harness must call the ACTUAL:
+
+getStockInstitutionalTrend
+
+as well.
+
+Do not infer trend availability from aggregate counts.
+
+Legitimate INSUFFICIENT_HISTORY is acceptable.
+Unexpected DATA_UNAVAILABLE for a canonical symbol with required materialized
+history must be classified separately.
+
+PART 6 — POPULATION ACCEPTANCE MUST BE REAL SERVICE ACCEPTANCE
+
+Final production acceptance must report results from the actual services:
+
+stockViewServiceCalls
+stockViewAvailable
+stockViewPartial
+stockViewInsufficientHistory
+stockViewNoReportedPosition
+stockViewUnexpectedUnsupported
+stockViewUpstreamError
+stockViewRuntimeExceptions
+
+trendServiceCalls
+trendAvailable
+trendInsufficientHistory
+trendUnexpectedUnavailable
+trendRuntimeExceptions
+
+At most 10 samples for unexpected classes.
+
+The script must fail acceptance if:
+
+stockViewUnexpectedUnsupported > 0
+stockViewUpstreamError > 0
+stockViewRuntimeExceptions > 0
+trendUnexpectedUnavailable > 0
+trendRuntimeExceptions > 0
+
+for canonical runtime-valid symbols.
+
+PART 7 — PERFORMANCE
+
+Do NOT create another 9-hour N+1 verifier.
+
+The canonical population is ~1465 symbols.
+
+Reuse/batch shared prerequisites where possible.
+
+If actual service invocation cannot be safely population-batched, create
+a shared pure service evaluator used BOTH by:
+
+getStockInstitutionalAnalytics
+
+and
+
+the acceptance harness.
+
+The route and harness must consume the SAME evaluator.
+
+There must be no acceptance-only business logic.
+
+Hard timeout <= 180 seconds.
+
+PART 8 — REGRESSION
+
+Add a test specifically proving this cannot happen again:
+
+shared loaders = PASS
+but
+actual getStockInstitutionalAnalytics = UNSUPPORTED
+
+The test must fail before the correction and pass afterward.
+
+Also cover:
+
+direct identity
+mapping-backed identity
+multi-CUSIP identity
+insufficient history
+no reported position
+fund
+unsupported security
+genuine repository failure
+
+PART 9 — FINAL ARCHITECTURAL RULE
+
+Document/enforce:
+
+There is ONE authoritative Stock View service contract.
+
+HTTP route
+and
+production acceptance
+
+must consume the same service/evaluator.
+
+There must never again be:
+
+"verifier says PASS but production route fails."
+
+VALIDATION
+
+Run:
+
+actual Stock View service tests
+actual trend service tests
+PostgreSQL-backed tests
+runtime acceptance tests
+institutional suite
+release suite
+production build
+git diff --check
+
+NO production writes.
+
+RETURN
+
+ACTUAL SERVICE / ACCEPTANCE DELTA
+
+FIRST SERVICE DIVERGENCE
+
+GENERIC ROOT CAUSE
+
+FIX
+
+SHADOW ACCEPTANCE LOGIC REMOVED YES/NO
+
+STOCK VIEW AND ACCEPTANCE SAME CONTRACT YES/NO
+
+TREND AND ACCEPTANCE SAME CONTRACT YES/NO
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE production command for the corrected
+accept-institutional-runtime-population.ts.
+
+Do not provide an APPLY command.

@@ -1,0 +1,227 @@
+Task #209 — Fix Stock View regression after canonical holder propagation
+
+PRODUCTION REGRESSION
+
+After deploying the Task #208 holder-enrichment fix, Stock View now returns:
+
+"Institutional source data is temporarily unavailable.
+No holder counts are shown because the upstream result could not be verified."
+
+for AAPL as well.
+
+AAPL WORKED BEFORE Task #208.
+
+Therefore this is now a regression in the runtime Stock View path introduced
+by the canonical holder-enrichment propagation change.
+
+Do NOT reopen:
+- institutional remediation
+- mappings
+- OpenFIGI
+- canonical population repair
+- ingestion
+- security-type correction
+
+Production acceptance of those systems remains complete.
+
+CURRENT DEPLOYED BEHAVIOR
+
+Actual route:
+
+GET /api/institutional/v1/stocks/:symbol?topN=20
+
+Current flow:
+
+route
+→ getStockInstitutionalAnalytics
+→ canonical identity resolution
+→ holder loading/enrichment
+→ availability
+→ response
+
+Task #208 changed holder enrichment to propagate:
+
+trusted canonical symbol
++
+bounded canonical CUSIP set
+
+AAPL now also fails with HTTP 503 / UPSTREAM_ERROR.
+
+OBJECTIVE
+
+Find the exact runtime exception or failed invariant introduced by Task #208
+and make the smallest generic fix.
+
+DO NOT speculate.
+
+STEP 1 — CAPTURE THE REAL ERROR
+
+Trace the actual Stock View service call for a normal resolved stock using
+the production-equivalent repository/service path.
+
+The error must be logged internally with:
+
+stage
+error class
+PostgreSQL error code if applicable
+safe error message
+service/repository function
+
+Do NOT log:
+DATABASE_URL
+credentials
+cookies
+API keys
+raw sensitive request headers
+
+Do not expose internal errors to the browser.
+
+Identify the exact first exception after successful canonical identity
+resolution.
+
+Return the precise failing function and condition.
+
+STEP 2 — REVIEW TASK #208 PARAMETER CONTRACT
+
+Inspect the changes in:
+
+server/services/institutional/analytics/types.ts
+server/services/institutional/analytics/security-enrichment-repository.ts
+server/services/institutional/analytics/stock-analytics-repository.ts
+server/services/institutional/analytics/stock-trend-repository.ts
+
+Specifically verify:
+
+- canonical symbol parameter shape
+- canonical CUSIP collection type
+- empty/non-empty CUSIP handling
+- SQL parameter binding
+- ANY()/IN() array handling
+- CUSIP normalization
+- multi-CUSIP behavior
+- topN handling
+- current/prior period handling
+- optional canonical authorization handling
+- legacy caller behavior
+
+Check whether Task #208 passed an object/array/set in a shape the downstream
+repository does not expect.
+
+STEP 3 — AAPL REGRESSION FIXTURE
+
+Add a regression fixture where:
+
+- identity resolves through direct security-master evidence
+- canonical symbol is AAPL-like
+- one canonical CUSIP exists
+- holder rows exist
+- canonical authorization is supplied
+
+Before the fix, reproduce the exact failure.
+
+After the fix, prove:
+
+identity resolution succeeds
+holder loading succeeds
+enrichment succeeds
+Stock View returns HTTP 200
+
+Do not hardcode AAPL.
+
+STEP 4 — MAPPING-BACKED FIXTURE
+
+Also preserve Task #208's intended behavior:
+
+mapping-backed canonical symbol
+→ canonical identity succeeds
+→ holder loading by canonical CUSIP set succeeds
+→ no re-resolution through legacy ticker evidence
+→ HTTP 200
+
+Test multi-CUSIP as well.
+
+STEP 5 — GENUINE FAILURE SEMANTICS
+
+Preserve HTTP 503 UPSTREAM_ERROR for an actual repository/database/runtime
+failure.
+
+Do not convert real failures to empty data or zero holders.
+
+STEP 6 — FIX ONLY FIRST DIVERGENCE
+
+Make the smallest generic correction.
+
+Do not redesign the analytics service.
+Do not change canonical identity rules.
+Do not modify production data.
+Do not add ticker exceptions.
+Do not add fallback ticker matching.
+
+VALIDATION
+
+Run:
+
+focused Stock View tests
+holder enrichment tests
+trend repository tests
+Task #187 availability tests
+Task #205/#207 resolver tests
+Task #206 reconciliation tests
+Task #208 regression tests
+full institutional suite
+release suite
+production build
+git diff --check
+
+NO production writes.
+NO APPLY.
+NO ingestion.
+
+Also inspect the Railway startup line:
+
+[execution-intent] startup table init failed: syntax error at or near "EXISTS"
+
+Only state whether it is related to this Stock View failure.
+Do NOT fix it in this task unless it is proven causal.
+
+Likewise, do not modify the drizzle startup migration behavior in this task.
+
+RETURN ONLY
+
+IDENTITY RESOLUTION PASS/FAIL
+
+FIRST FAILING FUNCTION
+
+EXACT RUNTIME ERROR
+
+POSTGRES ERROR CODE if applicable
+
+TASK #208 REGRESSION CAUSE
+
+FIX
+
+WHY AAPL REGRESSED
+
+WHY MAPPING-BACKED SYMBOLS WILL NOW WORK
+
+UPSTREAM_ERROR SEMANTICS PRESERVED YES/NO
+
+EXECUTION-INTENT WARNING RELATED YES/NO
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE post-deployment verification procedure using:
+
+AAPL
+JPM
+ORCL
+AVGO
+TSLA
+
+Do not provide any APPLY command.

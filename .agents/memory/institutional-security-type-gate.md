@@ -50,3 +50,9 @@ Once Stock View authorizes a canonical symbol and CUSIP set, holder enrichment m
 **Why:** Re-running the older row-level resolver downstream can reject a valid mapping-backed canonical identity and turn an ordinary stock lookup into an upstream failure.
 
 **How to apply:** Pass the trusted canonical symbol only alongside its bounded CUSIP set; use CUSIPs for holdings queries, keep the symbol as presentation identity, and leave non-Stock-View enrichment callers on the normal evidence resolver.
+
+Runtime symbol-scoped identity queries must derive from the complete canonical effective-holdings CTE, not from a direct-ticker or mapping prefilter.
+
+**Why:** A prefilter can omit a valid mapping-backed symbol before canonical trust and asset-type eligibility are evaluated, creating a verifier/runtime CUSIP-set mismatch.
+
+**How to apply:** Apply the requested symbol only in the final canonical result filter; keep effective filing, positive-share, non-PRN, non-put/call, trust, and asset-type predicates shared with the population verifier.

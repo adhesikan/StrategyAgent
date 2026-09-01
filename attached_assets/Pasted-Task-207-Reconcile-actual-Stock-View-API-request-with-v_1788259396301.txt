@@ -1,0 +1,266 @@
+Task #207 — Reconcile actual Stock View API request with verified live resolver
+
+PRODUCTION FACTS
+
+The deployed bounded production verifier completed successfully:
+
+runningCommit:
+9c27ba00ccf70d1ffff31c215c02124a9d80c6c8
+
+sameCommit: true
+
+runtimeDatabaseName: railway
+analyzerDatabaseName: railway
+sameDatabaseIdentity: true
+
+canonicalStockEligibleCusips: 1466
+canonicalStockEligibleSymbols: 1465
+
+liveResolverResolvableSymbols: 1453
+liveResolverUnresolvableCanonicalSymbols: 12
+
+aggregateBackedSymbols: 1465
+signalBackedSymbols: 1465
+
+aggregateBackedButLiveUnresolvable: 12
+signalBackedButLiveUnresolvable: 12
+
+identitySetMismatches: 0
+
+firstDivergencePoint:
+SYMBOL_NORMALIZATION
+
+The 12 unresolved canonical symbols are malformed/nonstandard symbols
+such as 0HW0, 1JFD, 23I, etc.
+
+Therefore normal symbols such as JPM and ORCL are expected to be among
+the 1453 live-resolvable canonical symbols.
+
+HOWEVER:
+
+The actual authenticated Institutional Intelligence Stock View UI still
+returns:
+
+JPM:
+"JPM is not in the institutional security master"
+"No canonical CUSIP identity is available for this symbol."
+
+ORCL:
+"ORCL is not in the institutional security master"
+"No canonical CUSIP identity is available for this symbol."
+
+AAPL works and displays real institutional holdings.
+
+This means the remaining problem is NOT generic remediation and NOT the
+canonical institutional population.
+
+OBJECTIVE
+
+Trace the ACTUAL authenticated Stock View request from browser to response
+and reconcile it with the exact resolver evaluated by
+reconcile-live-stock-resolver.ts.
+
+Do not modify institutional data.
+Do not run remediation.
+Do not run enrichment.
+Do not run ingestion.
+Do not perform another population-wide diagnostic.
+Do not make speculative fixes.
+
+STEP 1 — TRACE THE FRONTEND REQUEST
+
+Find the exact client code executed when the user enters JPM or ORCL and
+clicks "Research symbol".
+
+Report:
+
+frontend function
+HTTP method
+exact route template
+query parameters
+request body if any
+authentication behavior
+
+Identify the exact backend route handling that request.
+
+STEP 2 — TRACE THE BACKEND REQUEST
+
+Starting from that exact route, trace:
+
+route
+→ handler
+→ service
+→ repository
+→ identity resolver
+→ availability classifier
+→ response serializer
+
+Find the exact code branch producing:
+
+"is not in the institutional security master"
+
+and:
+
+"No canonical CUSIP identity is available for this symbol."
+
+Do NOT infer this from similarly named resolver code.
+Trace the actual route used by the UI.
+
+STEP 3 — COMPARE WITH PRODUCTION VERIFIER
+
+Identify the exact resolver/predicate used by:
+
+scripts/reconcile-live-stock-resolver.ts
+
+versus the exact resolver/predicate used by the actual Stock View API.
+
+Answer:
+
+SAME RESOLVER: YES/NO
+
+SAME QUERY: YES/NO
+
+SAME CANONICAL IDENTITY CONTRACT: YES/NO
+
+SAME ASSET-TYPE ENRICHMENT: YES/NO
+
+SAME AVAILABILITY CLASSIFICATION: YES/NO
+
+Find the FIRST divergence.
+
+IMPORTANT POSSIBILITY
+
+Task #205 extracted/reused a "pure identity gate" for the verifier.
+
+Verify that the actual Stock View repository/service was also migrated to
+that same gate.
+
+It is possible the verifier proves the new resolver works while the
+production API route still calls an older repository lookup.
+
+STEP 4 — VERIFY JPM/ORCL THROUGH ACTUAL SERVICE PATH
+
+Use repository/service-level READ-ONLY tests against production data or
+a production-safe diagnostic path.
+
+For JPM and ORCL report only:
+
+canonicalIdentityResolved: true/false
+liveVerifierIdentityResolved: true/false
+actualStockViewIdentityResolved: true/false
+
+Do not dump holdings or sensitive data.
+
+These symbols are diagnostic examples only.
+Do NOT hardcode them into runtime behavior.
+
+STEP 5 — FIX
+
+Once the first divergence is proven:
+
+Make the actual Stock View route consume the SAME shared canonical
+identity resolver/gate that produced the 1453/1465 production
+reconciliation result.
+
+There must be ONE canonical runtime identity authorization contract.
+
+Do not authorize identity from:
+- aggregate presence
+- signal presence
+- holding ticker
+
+Preserve:
+
+- trusted canonical CUSIP identity
+- common_stock/REIT eligibility
+- multi-CUSIP support
+- fund exclusion
+- unsupported security handling
+- UNMAPPED behavior
+- NO_REPORTED_POSITION behavior
+- INSUFFICIENT_HISTORY behavior
+- fail-closed semantics
+
+Do not change the 12 malformed-symbol behavior in this task.
+That is separate cleanup.
+
+STEP 6 — REGRESSION
+
+Add a synthetic fixture reproducing:
+
+canonical resolver = resolved
+verifier = resolved
+Stock View old path = unresolved
+
+Then prove after the fix:
+
+canonical resolver = resolved
+verifier = resolved
+Stock View = resolved
+
+Also test:
+
+direct security-master identity
+mapping-only identity
+multi-CUSIP identity
+fund
+unsupported
+unknown/unmapped
+insufficient history
+no reported position
+
+No production ticker exceptions.
+
+VALIDATION
+
+Focused Stock View/API tests
+Task #187 availability tests
+Task #205 resolver tests
+Task #206 reconciliation tests
+full institutional suite
+release suite
+production build
+git diff --check
+
+Also fix the verifier cleanup bug:
+
+[live-stock-resolver-reconciliation] CLOSE_ERROR:
+options.close is not a function
+
+This cleanup fix must not change reconciliation semantics.
+
+NO production writes.
+NO APPLY.
+NO ingestion.
+
+RETURN
+
+ACTUAL FRONTEND ROUTE
+
+ACTUAL BACKEND ROUTE
+
+VERIFIER RESOLVER
+
+STOCK VIEW RESOLVER
+
+SAME RESOLVER YES/NO
+
+FIRST DIVERGENCE POINT
+
+WHY AAPL WORKED
+
+WHY JPM/ORCL FAILED
+
+FIX
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then give exactly ONE post-deployment verification procedure:
+test AAPL plus previously failing normal symbols JPM, ORCL and AVGO
+through the ACTUAL Stock View API/UI path.
+
+Do not provide an APPLY command.

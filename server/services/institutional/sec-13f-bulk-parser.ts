@@ -29,7 +29,7 @@
 //   - Never log raw holding data, credentials, or full archive contents.
 
 import AdmZip from "adm-zip";
-import { secFetchBuffer, SecHttpError } from "./sec-client";
+import { secFetchBuffer, secFetchBufferDetailed, SecHttpError } from "./sec-client";
 import type { DatasetDescriptor } from "./sec-dataset-catalog";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +53,14 @@ export type BulkQuarterStatus =
   | "empty_parse_failure"
   | "failed";
 
+export type BulkSourceFailureCode =
+  | "SOURCE_UNAVAILABLE"
+  | "SOURCE_REJECTED"
+  | "RATE_LIMITED"
+  | "SOURCE_FORMAT_UNEXPECTED"
+  | "PARSE_FAILED"
+  | "NOT_YET_PUBLISHED";
+
 /** Resolution tier used to locate a required archive entry. */
 export type ArchiveResolutionMode =
   | "bare_exact"       // Root-level bare basename: SUBMISSION.tsv
@@ -65,6 +73,11 @@ export type ResolveArchiveEntryResult =
   | { found: false; error: "REQUIRED_ARCHIVE_ENTRY_MISSING" | "AMBIGUOUS_ARCHIVE_ENTRY" };
 
 export interface BulkParseDiagnostics {
+  requestedUrl: string | null;
+  finalUrl: string | null;
+  httpStatus: number | null;
+  contentType: string | null;
+  contentLength: number | null;
   archiveBytes: number;
   /** First ≤8 entry names (safe to log) */
   archiveEntries: string[];
@@ -198,6 +211,35 @@ export interface BulkParseResult {
   diagnostics: BulkParseDiagnostics;
   /** Human-readable reason (safe, no secrets) */
   reason?: string;
+  failureCode?: BulkSourceFailureCode;
+}
+
+const ZIP_CONTENT_TYPES = new Set([
+  "application/zip",
+  "application/octet-stream",
+  "application/x-zip-compressed",
+  "binary/octet-stream",
+]);
+
+export function classifySecArchiveFailure(error: unknown): BulkSourceFailureCode {
+  if (error instanceof SecHttpError) {
+    if (error.status === 403) return "SOURCE_REJECTED";
+    if (error.status === 429) return "RATE_LIMITED";
+    if (error.redirected || (error.status >= 300 && error.status < 400)) return "SOURCE_FORMAT_UNEXPECTED";
+    return "SOURCE_UNAVAILABLE";
+  }
+  return "SOURCE_UNAVAILABLE";
+}
+
+export function validateSecArchiveResponse(
+  contentType: string | null,
+  buffer: Buffer,
+): BulkSourceFailureCode | null {
+  const normalized = contentType?.split(";", 1)[0].trim().toLowerCase() ?? null;
+  if (buffer.length === 0) return "SOURCE_FORMAT_UNEXPECTED";
+  if (normalized && !ZIP_CONTENT_TYPES.has(normalized)) return "SOURCE_FORMAT_UNEXPECTED";
+  if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) return "SOURCE_FORMAT_UNEXPECTED";
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1406,6 +1448,11 @@ export function findZipEntry(
 // ---------------------------------------------------------------------------
 
 const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
+  requestedUrl: null,
+  finalUrl: null,
+  httpStatus: null,
+  contentType: null,
+  contentLength: null,
   archiveBytes: 0,
   archiveEntries: [],
   resolvedSubmissionEntry: null,
@@ -2019,6 +2066,7 @@ export function parseBulkQuarterFromBuffer(
   }
 
   const diagnostics: BulkParseDiagnostics = {
+    ...EMPTY_DIAGNOSTICS,
     archiveBytes: buffer.length,
     archiveEntries: allEntryNames,
     ...resolutionDiag,
@@ -2129,25 +2177,58 @@ export async function parseBulkFromDescriptor(
   const startMs = Date.now();
   const label = descriptor.fileName;
 
-  let buffer: Buffer;
+  let response: Awaited<ReturnType<typeof secFetchBufferDetailed>>;
   try {
-    buffer = await secFetchBuffer(descriptor.downloadUrl, signal);
+    response = await secFetchBufferDetailed(descriptor.downloadUrl, signal);
   } catch (err: any) {
-    const is404 = err instanceof SecHttpError && err.status === 404;
+    const failureCode = classifySecArchiveFailure(err);
     return {
-      status: is404 ? "empty_not_published" : "failed",
+      status: "failed",
       holdings: [],
-      diagnostics: { ...EMPTY_DIAGNOSTICS, durationMs: Date.now() - startMs },
-      reason: is404
-        ? `Dataset ${label} not available (HTTP 404) — URL may be stale; refresh catalog`
-        : `Download failed: ${err.name ?? "NETWORK_ERROR"}`,
+      diagnostics: {
+        ...EMPTY_DIAGNOSTICS,
+        requestedUrl: descriptor.downloadUrl,
+        finalUrl: err instanceof SecHttpError ? err.finalUrl : descriptor.downloadUrl,
+        httpStatus: err instanceof SecHttpError ? err.status : null,
+        contentType: err instanceof SecHttpError ? err.contentType : null,
+        contentLength: err instanceof SecHttpError ? err.byteLength : null,
+        durationMs: Date.now() - startMs,
+      },
+      reason: `Dataset ${label} retrieval failed: ${failureCode}`,
+      failureCode,
     };
   }
 
-  // Pass the holdings year+q so the expected entry prefix (e.g. "2026Q1") is
-  // tried first. Auto-detect fallback handles cases where the SEC uses a
-  // different internal naming convention inside post-2023 ZIPs.
-  return parseBulkQuarterFromBuffer(buffer, descriptor.year, descriptor.q, startMs);
+  const formatFailure = validateSecArchiveResponse(response.contentType, response.buffer);
+  const transportDiagnostics = {
+    requestedUrl: response.requestedUrl,
+    finalUrl: response.finalUrl,
+    httpStatus: response.status,
+    contentType: response.contentType,
+    contentLength: response.contentLength ?? response.byteLength,
+  };
+  if (formatFailure) {
+    return {
+      status: "failed",
+      holdings: [],
+      diagnostics: {
+        ...EMPTY_DIAGNOSTICS,
+        ...transportDiagnostics,
+        archiveBytes: response.byteLength,
+        durationMs: Date.now() - startMs,
+      },
+      reason: `Dataset ${label} response is not a valid ZIP archive`,
+      failureCode: formatFailure,
+    };
+  }
+  const parsed = parseBulkQuarterFromBuffer(response.buffer, descriptor.year, descriptor.q, startMs);
+  return {
+    ...parsed,
+    diagnostics: { ...parsed.diagnostics, ...transportDiagnostics },
+    ...(parsed.status === "failed" || parsed.status === "empty_parse_failure"
+      ? { failureCode: "PARSE_FAILED" as const }
+      : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -36,10 +36,23 @@ export class SecHttpError extends Error {
     public readonly url: string,
     public readonly contentType: string | null = null,
     public readonly byteLength: number | null = null,
+    public readonly finalUrl: string = url,
+    public readonly redirected: boolean = false,
   ) {
     super(`SEC EDGAR HTTP ${status} for ${url}`);
     this.name = "SecHttpError";
   }
+}
+
+export interface SecBufferResponse {
+  buffer: Buffer;
+  status: number;
+  contentType: string | null;
+  contentLength: number | null;
+  byteLength: number;
+  requestedUrl: string;
+  finalUrl: string;
+  redirected: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +203,11 @@ export async function secFetchDetailed(
 
 /** Fetch as Buffer (for binary files). */
 export async function secFetchBuffer(url: string, signal?: AbortSignal): Promise<Buffer> {
+  return (await secFetchBufferDetailed(url, signal)).buffer;
+}
+
+/** Fetch binary content while retaining safe transport metadata for classification. */
+export async function secFetchBufferDetailed(url: string, signal?: AbortSignal): Promise<SecBufferResponse> {
   const cfg = getInstitutionalConfig();
   if (!cfg.secUserAgent) throw new SecUserAgentMissingError();
 
@@ -204,10 +222,29 @@ export async function secFetchBuffer(url: string, signal?: AbortSignal): Promise
     await rateLimit();
 
     try {
-      const res = await fetch(url, { headers, signal });
-      if (!res.ok) throw new SecHttpError(res.status, url);
+      const res = await fetch(url, { headers, signal, redirect: "manual" });
+      const contentType = res.headers.get("content-type");
+      const contentLengthHeader = res.headers.get("content-length");
+      const contentLength = contentLengthHeader && /^\d+$/.test(contentLengthHeader)
+        ? Number(contentLengthHeader)
+        : null;
+      const redirected = res.status >= 300 && res.status < 400;
+      if (redirected) {
+        throw new SecHttpError(res.status, url, contentType, contentLength, res.url || url, true);
+      }
+      if (!res.ok) throw new SecHttpError(res.status, url, contentType, contentLength, res.url || url, false);
       const ab = await res.arrayBuffer();
-      return Buffer.from(ab);
+      const buffer = Buffer.from(ab);
+      return {
+        buffer,
+        status: res.status,
+        contentType,
+        contentLength,
+        byteLength: buffer.length,
+        requestedUrl: url,
+        finalUrl: res.url || url,
+        redirected: false,
+      };
     } catch (err: any) {
       if (err instanceof SecHttpError && err.status >= 400 && err.status < 500 && err.status !== 429) {
         throw err;

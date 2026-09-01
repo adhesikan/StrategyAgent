@@ -53,7 +53,12 @@ import {
   bulkDatasetUrl,
 } from "./sec-13f-bulk-parser";
 import type { ParsedBulkHolding } from "./sec-13f-bulk-parser";
-import type { DatasetDescriptor } from "./sec-dataset-catalog";
+import {
+  getCachedCatalog,
+  selectDatasetWindows,
+  toDatasetDescriptor,
+  type DatasetDescriptor,
+} from "./sec-dataset-catalog";
 import { applyMappingsToHoldings, upsertMapping } from "./mapping-service";
 import { computeQuarterlyAggregate, derivePeriodLabel, type AggregationInput } from "./aggregation-engine";
 import { classifyTrend } from "./trend-classifier";
@@ -371,20 +376,24 @@ async function upsertHoldings(holdings: InsertInstitutional13fHolding[]): Promis
 async function updateEffectivenessForFiler(
   filerCik: string,
   periodOfReport: string,
-  newAccession: string,
-  newFilingDate: string,
+  _newAccession: string,
+  _newFilingDate: string,
 ): Promise<void> {
-  // Mark all other filings for this filer+quarter as not effective
-  await db
-    .update(institutional13fFilings)
-    .set({ isEffective: false })
-    .where(
-      and(
-        eq(institutional13fFilings.filerCik, filerCik),
-        eq(institutional13fFilings.periodOfReport, periodOfReport),
-        sql`${institutional13fFilings.accessionNumber} != ${newAccession}`,
-      ),
-    );
+  // Recompute deterministically so ingestion order and resumable reruns cannot
+  // leave both an original and amendment effective.
+  await db.execute(sql`
+    UPDATE institutional_13f_filings
+       SET is_effective = accession_number = (
+         SELECT accession_number
+           FROM institutional_13f_filings
+          WHERE filer_cik = ${filerCik}
+            AND period_of_report = ${periodOfReport}
+          ORDER BY amendment_flag DESC, filing_date DESC, accession_number DESC
+          LIMIT 1
+       )
+     WHERE filer_cik = ${filerCik}
+       AND period_of_report = ${periodOfReport}
+  `);
 }
 
 // ---------------------------------------------------------------------------
@@ -1299,14 +1308,7 @@ async function ingestQuarter(
       sourceChecksum: null,
     });
 
-    if (first.isAmendment) {
-      await updateEffectivenessForFiler(
-        first.filerCik,
-        first.periodOfReport,
-        accession,
-        first.filingDate,
-      );
-    }
+    await updateEffectivenessForFiler(first.filerCik, first.periodOfReport, accession, first.filingDate);
 
     const holdingRows: InsertInstitutional13fHolding[] = holdings.map((h) => ({
       accessionNumber: h.accessionNumber,
@@ -1555,7 +1557,7 @@ async function ingestQuarter(
 async function ingestFromDescriptor(
   descriptor: DatasetDescriptor,
   signal: AbortSignal,
-  opts?: { chunkSize?: number; runId?: string },
+  opts?: { chunkSize?: number; runId?: string; enableReferenceEnrichment?: boolean },
 ): Promise<QuarterIngestionResult> {
   const quarter = `${descriptor.year}-Q${descriptor.q}`;
   const sourceUrl = descriptor.downloadUrl;
@@ -1580,6 +1582,12 @@ async function ingestFromDescriptor(
     resolvedCoverPageEntry: parseResult.diagnostics.resolvedCoverPageEntry,
     resolvedInfoTableEntry: parseResult.diagnostics.resolvedInfoTableEntry,
     resolutionMode: parseResult.diagnostics.resolutionMode,
+    requestedUrl: parseResult.diagnostics.requestedUrl,
+    finalUrl: parseResult.diagnostics.finalUrl,
+    httpStatus: parseResult.diagnostics.httpStatus,
+    contentType: parseResult.diagnostics.contentType,
+    contentLength: parseResult.diagnostics.contentLength,
+    failureCode: parseResult.failureCode,
     status: parseResult.status,
   });
 
@@ -1616,6 +1624,9 @@ async function ingestFromDescriptor(
       unmappedCount: 0,
       skippedExistingFilings: 0,
       status: parseResult.status,
+      errorCode: parseResult.status === "empty_parse_failure"
+        ? "EMPTY_PARSE_FAILURE"
+        : parseResult.failureCode ?? "PARSE_FAILED",
     };
   }
 
@@ -1743,14 +1754,7 @@ async function ingestFromDescriptor(
       sourceChecksum: null,
     });
 
-    if (first.isAmendment) {
-      await updateEffectivenessForFiler(
-        first.filerCik,
-        first.periodOfReport,
-        accession,
-        first.filingDate,
-      );
-    }
+    await updateEffectivenessForFiler(first.filerCik, first.periodOfReport, accession, first.filingDate);
 
     const holdingRows: InsertInstitutional13fHolding[] = holdings.map((h) => ({
       accessionNumber: h.accessionNumber,
@@ -1925,11 +1929,13 @@ async function ingestFromDescriptor(
   const previousPeriod = previousCalendarQuarterEnd(
     descriptor.expectedPeriodOfReport,
   );
-  await enrichInstitutionalSecurityReferencesForIngestion(
-    previousPeriod
-      ? [descriptor.expectedPeriodOfReport, previousPeriod]
-      : [descriptor.expectedPeriodOfReport],
-  );
+  if (opts?.enableReferenceEnrichment !== false) {
+    await enrichInstitutionalSecurityReferencesForIngestion(
+      previousPeriod
+        ? [descriptor.expectedPeriodOfReport, previousPeriod]
+        : [descriptor.expectedPeriodOfReport],
+    );
+  }
   const reconciliation = await reconcileEffectiveInstitutionalSecurities(
     previousPeriod
       ? [descriptor.expectedPeriodOfReport, previousPeriod]
@@ -2047,6 +2053,8 @@ export async function runInstitutionalIngestion(
      * The daily scheduler uses this to bound each run to < 10-15 minutes.
      */
     chunkSize?: number;
+    /** Historical backfills disable provider enrichment and use only persisted trusted identity. */
+    enableReferenceEnrichment?: boolean;
   } = {},
 ): Promise<{ status: "completed" | "partial" | "skipped_disabled" | "skipped_locked" | "failed"; quartersProcessed: number }> {
   const cfg = getInstitutionalConfig();
@@ -2056,6 +2064,25 @@ export async function runInstitutionalIngestion(
       reason: !cfg.ingestionEnabled ? "ingestion_disabled" : "no_user_agent",
     });
     return { status: "skipped_disabled", quartersProcessed: 0 };
+  }
+
+  let resolvedDescriptors = options.specificDescriptors;
+  if ((!resolvedDescriptors || resolvedDescriptors.length === 0) && !options.specificQuarterLabels?.length) {
+    try {
+      const catalog = await getCachedCatalog(cfg.secUserAgent!);
+      const requestedCount = options.quartersOverride ?? cfg.backfillQuarters;
+      resolvedDescriptors = selectDatasetWindows(requestedCount, catalog).map(toDatasetDescriptor);
+      if (resolvedDescriptors.length === 0) {
+        log("institutional_13f_ingestion_failed", { errorCode: "CATALOG_EMPTY" });
+        return { status: "failed", quartersProcessed: 0 };
+      }
+    } catch (error: any) {
+      log("institutional_13f_ingestion_failed", {
+        errorCode: "CATALOG_FETCH_FAILED",
+        detailCode: error?.name ?? "ERROR",
+      });
+      return { status: "failed", quartersProcessed: 0 };
+    }
   }
 
   const lockAcquired = await tryAcquireLock();
@@ -2076,8 +2103,8 @@ export async function runInstitutionalIngestion(
     let overallStatus: "completed" | "partial" | "failed" = "completed";
 
     // ── Descriptor path (catalog-driven, post-2023 safe) ────────────────────
-    if (options.specificDescriptors && options.specificDescriptors.length > 0) {
-      for (const descriptor of options.specificDescriptors) {
+    if (resolvedDescriptors && resolvedDescriptors.length > 0) {
+      for (const descriptor of resolvedDescriptors) {
         if (controller.signal.aborted) break;
 
         const runQuarter = `${descriptor.year}-Q${descriptor.q}`;
@@ -2117,7 +2144,11 @@ export async function runInstitutionalIngestion(
         const start = Date.now();
 
         try {
-          const result = await ingestFromDescriptor(descriptor, controller.signal, { chunkSize, runId });
+          const result = await ingestFromDescriptor(descriptor, controller.signal, {
+            chunkSize,
+            runId,
+            enableReferenceEnrichment: options.enableReferenceEnrichment,
+          });
           const durationMs = Date.now() - start;
 
           if (result.status === "empty_not_published") {
@@ -2130,11 +2161,13 @@ export async function runInstitutionalIngestion(
               durationMs,
             });
             log("institutional_13f_quarter_not_published", { quarter: runQuarter, fileName: descriptor.fileName });
-          } else if (result.status === "empty_parse_failure") {
+          } else if (result.status === "empty_parse_failure" || result.status === "failed") {
             await updateRun(runId, {
               status: "failed",
-              errorCode: "EMPTY_PARSE_FAILURE",
-              errorSummary: "Archive downloaded but zero 13F-HR holdings parsed",
+              errorCode: result.errorCode ?? "PARSE_FAILED",
+              errorSummary: result.status === "empty_parse_failure"
+                ? "Archive downloaded but zero 13F-HR holdings parsed"
+                : "SEC source retrieval or archive validation failed",
               filingCount: 0,
               holdingCount: 0,
               completedAt: new Date(),

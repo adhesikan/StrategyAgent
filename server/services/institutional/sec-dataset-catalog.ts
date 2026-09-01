@@ -511,3 +511,58 @@ export function toDatasetDescriptor(
     q: parsed.holdingsQ,
   };
 }
+
+export interface QuarterRangeResolution {
+  descriptors: DatasetDescriptor[];
+  missingQuarterLabels: string[];
+}
+
+function quarterOrdinal(year: number, q: number): number {
+  return year * 4 + q - 1;
+}
+
+/** Resolve an inclusive holdings-quarter range exclusively from the official catalog. */
+export function resolveCatalogQuarterRange(
+  fromQuarter: string,
+  toQuarter: string,
+  catalog: InstitutionalDatasetCatalogEntry[],
+): QuarterRangeResolution {
+  const parse = (label: string): { year: number; q: 1 | 2 | 3 | 4; label: string } => {
+    const match = /^(\d{4})-?Q([1-4])$/i.exec(label.trim());
+    if (!match) throw new Error(`INVALID_QUARTER:${label}`);
+    const year = Number(match[1]);
+    const q = Number(match[2]) as 1 | 2 | 3 | 4;
+    return { year, q, label: `${year}-Q${q}` };
+  };
+  const from = parse(fromQuarter);
+  const to = parse(toQuarter);
+  const start = quarterOrdinal(from.year, from.q);
+  const end = quarterOrdinal(to.year, to.q);
+  if (start > end) throw new Error("INVALID_QUARTER_RANGE");
+
+  const byLabel = new Map<string, InstitutionalDatasetCatalogEntry>();
+  for (const entry of catalog) {
+    if (!byLabel.has(entry.canonicalPeriodLabel)) {
+      byLabel.set(entry.canonicalPeriodLabel, entry);
+    }
+  }
+
+  const descriptors: DatasetDescriptor[] = [];
+  const missingQuarterLabels: string[] = [];
+  for (let ordinal = start; ordinal <= end; ordinal++) {
+    const year = Math.floor(ordinal / 4);
+    const q = (ordinal % 4) + 1 as 1 | 2 | 3 | 4;
+    const canonical = `${year}Q${q}`;
+    const entry = byLabel.get(canonical);
+    if (!entry) {
+      missingQuarterLabels.push(`${year}-Q${q}`);
+      continue;
+    }
+    descriptors.push(toDatasetDescriptor({
+      entry,
+      expectedPeriodOfReport: entry.expectedPeriodOfReport,
+      canonicalPeriodLabel: canonical,
+    }));
+  }
+  return { descriptors, missingQuarterLabels };
+}

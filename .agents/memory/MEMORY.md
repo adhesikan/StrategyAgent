@@ -113,3 +113,4 @@
 - [Institutional holding-count contract](institutional-holding-count-contract.md) — planner and APPLY must share canonical filing/holding semantics; validate counts before mutation.
 - [Institutional acceptance semantics](institutional-acceptance-semantics.md) — expected target counts persist after APPLY; acceptance depends on missing/pending counts and reconciliation.
 - [Institutional runtime identity](institutional-runtime-identity.md) — active stock runtime resolves identity once from canonical effective holdings; downstream reads receive CUSIPs, never ticker evidence.
+- [Historical 13F source retrieval](historical-13f-source-retrieval.md) — explicit and scheduled quarters resolve through the SEC catalog; transport/format failures never mean not published.

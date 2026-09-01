@@ -339,4 +339,56 @@ describe("institutional enrichment PostgreSQL repository", () => {
       },
     });
   });
+
+  it("carries an authorized canonical CUSIP through holder enrichment without ticker fallback", async () => {
+    selectMock
+      .mockReturnValueOnce(
+        holdingQuery([
+          {
+            holding: {
+              id: "holding-canonical",
+              accessionNumber: "accession-1",
+              filerCik: "0001",
+              filerName: "Example Fund",
+              issuerName: "Canonical Company",
+              classTitle: "COM",
+              cusip: "111111111",
+              reportedValue: 25_000,
+              reportedShares: 500,
+              sharesPrnType: "SH",
+              putCall: null,
+              periodOfReport: "2026-03-31",
+              mappedSymbol: null,
+              mappingStatus: null,
+            },
+            master: {
+              id: "security-canonical",
+              ticker: null,
+              issuerName: "Canonical Company",
+              exchange: null,
+              assetType: "common_stock",
+              reviewStatus: "unmapped",
+            },
+            mapping: null,
+          },
+        ]),
+      )
+      .mockReturnValueOnce(symbolQuery([]))
+      .mockReturnValueOnce(themeQuery([]));
+
+    const rows = await getEnrichedInstitutionalHoldings({
+      accessionNumbers: ["accession-1"],
+      cusips: ["111111111"],
+      trustedCanonicalSymbol: "GENR",
+    });
+
+    expect(rows[0]).toMatchObject({
+      cusip: "111111111",
+      mappingResolution: "reliably_mapped",
+      metadata: {
+        symbol: "GENR",
+        assetType: "common_stock",
+      },
+    });
+  });
 });

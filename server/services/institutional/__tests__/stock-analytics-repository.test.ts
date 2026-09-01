@@ -127,6 +127,7 @@ describe("stock analytics portfolio denominators", () => {
     expect(loadPage).toHaveBeenCalledWith({
       accessionNumbers: ["accession-1"],
       cusips: ["111111111"],
+      trustedCanonicalSymbol: "XYZ",
       limit: 5_000,
       offset: 0,
     });

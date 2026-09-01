@@ -137,7 +137,10 @@ export async function loadAllStockInstitutionalHoldings(
     const page = await loadPage({
       accessionNumbers,
       ...(candidateCusips && candidateCusips.length > 0
-        ? { cusips: candidateCusips }
+        ? {
+            cusips: candidateCusips,
+            trustedCanonicalSymbol: symbol,
+          }
         : { symbol }),
       limit: pageSize,
       offset,

@@ -187,7 +187,20 @@ export async function getEnrichedInstitutionalHoldings(
     .limit(query.limit ?? 10_000)
     .offset(query.offset ?? 0) as unknown as EnrichedHoldingRow[];
 
-  const resolutions = rows.map((row) => resolveReliableSecurityMapping(evidenceFor(row)));
+  const trustedCanonicalSymbol =
+    query.cusips?.length && query.trustedCanonicalSymbol?.trim()
+      ? query.trustedCanonicalSymbol.trim().toUpperCase()
+      : null;
+  const trustedCanonicalCusips = new Set(query.cusips ?? []);
+  const resolutions = rows.map((row) =>
+    trustedCanonicalSymbol && trustedCanonicalCusips.has(row.holding.cusip)
+      ? {
+          status: "reliably_mapped" as const,
+          symbol: trustedCanonicalSymbol,
+          reason: null,
+        }
+      : resolveReliableSecurityMapping(evidenceFor(row)),
+  );
   const symbolList = Array.from(
     new Set(
       resolutions

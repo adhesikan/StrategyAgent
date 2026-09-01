@@ -44,3 +44,9 @@ The live Stock View must seed its shared identity predicate from a symbol-scoped
 **Why:** A mapping-backed canonical symbol can be valid in the reconciled CUSIP→symbol population while having no matching `security_master.ticker`; feeding only direct-ticker rows to the same pure predicate creates a false `UNSUPPORTED` result.
 
 **How to apply:** Share the canonical CTE and eligibility rules between population verification and runtime symbol lookup, parameterize the requested symbol, and retain selected-filing evidence only as supplemental diagnostics rather than identity authority.
+
+Once Stock View authorizes a canonical symbol and CUSIP set, holder enrichment must consume that authorization directly instead of re-resolving each holding from legacy ticker fields.
+
+**Why:** Re-running the older row-level resolver downstream can reject a valid mapping-backed canonical identity and turn an ordinary stock lookup into an upstream failure.
+
+**How to apply:** Pass the trusted canonical symbol only alongside its bounded CUSIP set; use CUSIPs for holdings queries, keep the symbol as presentation identity, and leave non-Stock-View enrichment callers on the normal evidence resolver.

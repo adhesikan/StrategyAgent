@@ -22,6 +22,7 @@ import {
 } from "../manager-cohort-service";
 import {
   loadAllStockInstitutionalHoldings,
+  loadStockCandidateIdentity,
 } from "./stock-analytics-repository";
 import type {
   CanonicalInstitutionalQuarterAggregate,
@@ -160,22 +161,22 @@ async function loadAllCanonicalCandidateHoldings(
     effectiveRows.map((row) => row.accessionNumber),
   );
   if (effectiveAccessions.size === 0) return [];
-  const holdings: EnrichedInstitutionalHolding[] = [];
-  const pageSize = 5_000;
-  let offset = 0;
-  while (true) {
-    const page = await getEnrichedInstitutionalHoldings({
-      symbol,
-      accessionNumbers: Array.from(effectiveAccessions),
-      limit: pageSize,
-      offset,
-    });
-    holdings.push(
-      ...filterCanonicalCandidatePopulation(page, effectiveAccessions),
-    );
-    if (page.length < pageSize) return holdings;
-    offset += page.length;
+  const accessions = Array.from(effectiveAccessions);
+  const identity = await loadStockCandidateIdentity(accessions, symbol);
+  if (
+    !identity.hasReliableSecurityIdentity ||
+    identity.hasDisqualifyingCandidateEvidence
+  ) {
+    return [];
   }
+  const holdings = await loadAllStockInstitutionalHoldings(
+    accessions,
+    symbol,
+    getEnrichedInstitutionalHoldings,
+    5_000,
+    identity.candidateCusips,
+  );
+  return filterCanonicalCandidatePopulation(holdings, effectiveAccessions);
 }
 
 export function filterCanonicalCandidatePopulation(

@@ -490,6 +490,12 @@ export interface EnrichedInstitutionalHoldingsQuery {
   periodOfReports?: string[];
   /** Restrict the SQL candidate set to evidence that may resolve to this symbol. */
   symbol?: string;
+  /**
+   * Canonical symbol already authorized for every supplied CUSIP by the shared
+   * Stock View identity gate. This bypasses legacy row-level ticker resolution;
+   * it is valid only when `cusips` is also present.
+   */
+  trustedCanonicalSymbol?: string;
   limit?: number;
   offset?: number;
 }

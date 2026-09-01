@@ -1,0 +1,115 @@
+Task #215A — Make historical backfill dry-run production-actionable
+
+Do not change ingestion semantics.
+Do not change SEC retrieval.
+Do not change canonical identity.
+Do not execute a production backfill.
+Do not add an APPLY operation.
+
+The Task #215 production dry-run successfully resolved:
+
+2024-Q1 through 2025-Q3
+
+to seven authoritative SEC catalog archives.
+
+However, the dry-run currently reports only:
+
+quarter
+archive filename
+
+That is insufficient to safely authorize a large historical production backfill.
+
+OBJECTIVE
+
+Enhance the EXISTING dry-run so it reports the projected database work for
+each quarter before we authorize APPLY.
+
+For each target quarter report compactly:
+
+quarter
+catalogFile
+sourceAvailable
+
+existingFilings
+existingEffectiveFilings
+existingHoldingRows
+
+sourceFilings if determinable read-only
+sourceHoldingRows if determinable read-only
+
+filingsAlreadyPresent
+filingsToInsert
+filingsPotentiallyUpdated
+amendmentsToReconcile
+
+estimatedHoldingRowsToProcess
+
+downstreamAggregateRebuildRequired
+downstreamSignalRebuildRequired
+
+status:
+NO_CHANGE
+PARTIAL_BACKFILL_REQUIRED
+FULL_BACKFILL_REQUIRED
+SOURCE_ERROR
+
+If determining source counts requires downloading/parsing the SEC archive,
+that is allowed in DRY_RUN because it is read-only.
+
+Do not persist anything.
+
+Also report totals:
+
+quarters
+quartersRequiringBackfill
+existingFilings
+sourceFilings
+filingsToInsert
+estimatedHoldingRowsToProcess
+
+Keep output compact. Do not print individual filings or holdings.
+
+IMPORTANT
+
+Preserve:
+
+- catalog-only SEC source resolution
+- dry-run default
+- production guards
+- resumability
+- idempotency
+- amendment handling
+- existing canonical materialization pipeline
+- no OpenFIGI
+- no remediation
+- no database writes
+
+Also inspect the historical coverage audit fields:
+
+canonicalStockCusips
+canonicalStockSymbols
+
+The previous production audit reported exactly 1 for every historical
+quarter despite hundreds of aggregate symbols.
+
+Determine whether those fields are intentionally measuring a narrower
+population or are incorrect audit calculations.
+
+If they are incorrect reporting only, fix the AUDIT calculation.
+Do not modify canonical production data.
+
+RETURN ONLY:
+
+DRY-RUN ENHANCEMENT
+AUDIT METRIC FINDING
+AUDIT FIX if required
+FILES CHANGED
+TEST RESULTS
+COMMIT SHA
+PRODUCTION BLOCKER YES/NO
+
+Then return exactly ONE command to rerun the enhanced dry-run for:
+
+2024-Q1 through 2025-Q3
+
+Do not provide an APPLY command.

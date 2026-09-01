@@ -15,6 +15,7 @@ vi.mock("../../../db", () => ({
 }));
 
 import {
+  classifyStockViewPostIdentityZero,
   evaluateStockCandidateIdentity,
   loadAllStockInstitutionalHoldings,
   loadManagerPortfolioValues,
@@ -372,6 +373,57 @@ describe("stock analytics portfolio denominators", () => {
     expect(selected?.currentFilings.map((filing) => filing.accessionNumber)).toEqual([
       "canonical-quarter-filing",
     ]);
+  });
+
+  it("uses EDGAR acceptance time before filing date and accession like the canonical filing CTE", () => {
+    const selected = selectAlignedStockFilings([
+      {
+        accessionNumber: "later-filing-date",
+        managerId: "manager-1",
+        managerName: "Example Manager",
+        periodOfReport: "2026-03-31",
+        filingDate: "2026-05-20",
+        acceptedAt: "2026-05-20T10:00:00.000Z",
+        isEffective: true,
+      },
+      {
+        accessionNumber: "canonical-later-acceptance",
+        managerId: "manager-1",
+        managerName: "Example Manager",
+        periodOfReport: "2026-03-31",
+        filingDate: "2026-05-19",
+        acceptedAt: "2026-05-21T10:00:00.000Z",
+        isEffective: true,
+      },
+    ], "latest", null);
+
+    expect(selected?.currentFilings).toHaveLength(1);
+    expect(selected?.currentFilings[0].accessionNumber).toBe(
+      "canonical-later-acceptance",
+    );
+  });
+
+  it("classifies the first post-identity stage that drops from nonzero to zero", () => {
+    expect(classifyStockViewPostIdentityZero({
+      canonicalCusipCount: 2,
+      currentPeriodSelected: 1,
+      effectiveFilingsSelected: 4,
+      holdingRowsByCanonicalCusips: 0,
+      eligibleHoldingRows: 0,
+      aggregateRows: 1,
+      signalRows: null,
+      holderDetailRows: 0,
+    })).toBe("HOLDINGS_BY_CUSIP");
+    expect(classifyStockViewPostIdentityZero({
+      canonicalCusipCount: 2,
+      currentPeriodSelected: 1,
+      effectiveFilingsSelected: 4,
+      holdingRowsByCanonicalCusips: 3,
+      eligibleHoldingRows: 0,
+      aggregateRows: 1,
+      signalRows: null,
+      holderDetailRows: 0,
+    })).toBe("ELIGIBLE_HOLDINGS");
   });
 
   it("does not expose a cached aggregate without aligned effective filings", async () => {

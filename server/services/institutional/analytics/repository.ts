@@ -123,6 +123,8 @@ export interface EffectiveFundFiling {
   managerName: string;
   periodOfReport: string;
   filingDate: string;
+  /** EDGAR acceptance timestamp used to rank competing effective filings. */
+  acceptedAt?: string | null;
   isEffective: boolean;
 }
 

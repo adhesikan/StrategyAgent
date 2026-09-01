@@ -69,6 +69,11 @@ function dateText(value: string | Date): string {
     : String(value).slice(0, 10);
 }
 
+function timestampText(value: string | Date | null | undefined): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
 function previousQuarterPeriod(periodOfReport: string): string | null {
   const current = parseQuarterIdentifier(periodOfReport);
   if (current?.kind !== "quarter") return null;
@@ -325,6 +330,8 @@ export function selectEffectiveStockFilings(
       if (period !== 0) return period;
       const manager = a.managerId.localeCompare(b.managerId);
       if (manager !== 0) return manager;
+      const accepted = (b.acceptedAt ?? "").localeCompare(a.acceptedAt ?? "");
+      if (accepted !== 0) return accepted;
       const filing = b.filingDate.localeCompare(a.filingDate);
       if (filing !== 0) return filing;
       return b.accessionNumber.localeCompare(a.accessionNumber);
@@ -521,6 +528,7 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
         managerName: institutional13fFilings.filerName,
         periodOfReport: institutional13fFilings.periodOfReport,
         filingDate: institutional13fFilings.filingDate,
+        acceptedAt: institutional13fFilings.acceptedAt,
         isEffective: institutional13fFilings.isEffective,
       })
       .from(institutional13fFilings)
@@ -532,6 +540,7 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       )
       .orderBy(
         desc(institutional13fFilings.periodOfReport),
+        desc(institutional13fFilings.acceptedAt),
         desc(institutional13fFilings.filingDate),
         desc(institutional13fFilings.accessionNumber),
       );
@@ -544,6 +553,7 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
         ...row,
         periodOfReport: dateText(row.periodOfReport),
         filingDate: dateText(row.filingDate),
+        acceptedAt: timestampText(row.acceptedAt),
       })),
       cohortManagerIds,
     );
@@ -666,7 +676,10 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       ),
       comparableManagerIds: selected.comparableManagerIds,
       canonicalAggregate,
-      stockViewDiagnostics,
+      ...(candidateIdentity.hasReliableSecurityIdentity &&
+      !candidateIdentity.hasDisqualifyingCandidateEvidence
+        ? { stockViewDiagnostics }
+        : {}),
     };
   },
 };

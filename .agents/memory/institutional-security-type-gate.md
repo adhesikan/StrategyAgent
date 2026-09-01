@@ -56,3 +56,9 @@ Runtime symbol-scoped identity queries must derive from the complete canonical e
 **Why:** A prefilter can omit a valid mapping-backed symbol before canonical trust and asset-type eligibility are evaluated, creating a verifier/runtime CUSIP-set mismatch.
 
 **How to apply:** Apply the requested symbol only in the final canonical result filter; keep effective filing, positive-share, non-PRN, non-put/call, trust, and asset-type predicates shared with the population verifier.
+
+Stock View and trend filing selection must use the canonical filing rank: effective status, EDGAR acceptance time descending with nulls last, filing date, then accession.
+
+**Why:** Selecting duplicate-effective amendments without `accepted_at` can choose a different accession from canonical materialization, leaving a valid CUSIP set with zero downstream holder rows.
+
+**How to apply:** Project and normalize `accepted_at` in runtime filing rows and rank it before filing date/accession; keep holder reads constrained to the selected accessions plus canonical CUSIPs.

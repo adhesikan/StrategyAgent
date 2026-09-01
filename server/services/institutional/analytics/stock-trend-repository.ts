@@ -43,6 +43,11 @@ function dateText(value: string | Date): string {
     : String(value).slice(0, 10);
 }
 
+function timestampText(value: string | Date | null | undefined): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
 function normalizeCoverageStatus(
   value: string,
 ): CanonicalInstitutionalQuarterAggregate["coverageStatus"] {
@@ -120,6 +125,7 @@ function selectEffectiveTrendFilings(
       (left, right) =>
         right.periodOfReport.localeCompare(left.periodOfReport) ||
         left.managerId.localeCompare(right.managerId) ||
+        (right.acceptedAt ?? "").localeCompare(left.acceptedAt ?? "") ||
         right.filingDate.localeCompare(left.filingDate) ||
         right.accessionNumber.localeCompare(left.accessionNumber),
     )) {
@@ -380,6 +386,7 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
           managerName: institutional13fFilings.filerName,
           periodOfReport: institutional13fFilings.periodOfReport,
           filingDate: institutional13fFilings.filingDate,
+          acceptedAt: institutional13fFilings.acceptedAt,
           isEffective: institutional13fFilings.isEffective,
         })
         .from(institutional13fFilings)
@@ -391,6 +398,7 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
         )
         .orderBy(
           desc(institutional13fFilings.periodOfReport),
+          desc(institutional13fFilings.acceptedAt),
           desc(institutional13fFilings.filingDate),
           desc(institutional13fFilings.accessionNumber),
         );
@@ -402,6 +410,7 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
           ...row,
           periodOfReport: dateText(row.periodOfReport),
           filingDate: dateText(row.filingDate),
+          acceptedAt: timestampText(row.acceptedAt),
         })),
         cohortManagerIds,
       );

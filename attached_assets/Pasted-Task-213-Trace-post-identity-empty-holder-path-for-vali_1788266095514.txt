@@ -1,0 +1,240 @@
+Task #213 — Trace post-identity empty-holder path for valid canonical symbols
+
+PRODUCTION FACTS
+
+The new production reconciler proved:
+
+canonicalSymbols: 1465
+canonicalCusips: 1466
+stockViewResolvableSymbols: 1453
+stockViewUnresolvableSymbols: 12
+identitySetMismatchSymbols: 12
+aggregateBackedButStockViewUnresolvable: 0
+signalBackedButStockViewUnresolvable: 0
+
+The only unresolved symbols are malformed/nonstandard symbols rejected at:
+
+SYMBOL_VALIDATION
+
+Examples:
+0HW0
+1JFD
+23I
+2CH
+2RM
+35Y
+37T
+4XC1
+87M
+8HH
+
+Production runtime:
+commit 257cec33dfeb08517595161a1c089340dab2a44b
+database railway
+schema public
+
+sameCommit: true
+
+Therefore normal symbols such as JPM, ORCL, AVGO, TSLA are canonical and
+resolvable through the ACTUAL Stock View canonical query.
+
+However JPM still returns:
+
+GET /api/institutional/v1/stocks/JPM
+→ HTTP 200
+→ availability: UNSUPPORTED
+→ reportedHolderCount: 0
+→ candidateHoldingCount: 0
+→ reliablyMappedHoldingCount: 0
+
+OBJECTIVE
+
+Trace the FIRST post-identity stage where a valid canonical symbol with a
+non-empty canonical CUSIP set becomes an empty holder/aggregate result.
+
+Do NOT inspect or change canonical identity again.
+
+Do NOT run remediation.
+Do NOT run ingestion.
+Do NOT run OpenFIGI.
+Do NOT modify mappings.
+Do NOT APPLY.
+
+STEP 1 — ADD STAGE COUNTS
+
+For the actual Stock View service path, log compact server-only diagnostics
+after successful identity resolution:
+
+symbol
+canonicalCusipCount
+canonicalCusipsBoundedCount
+
+Then at each stage:
+
+currentPeriodSelected
+effectiveFilingsSelected
+holdingRowsByCanonicalCusips
+eligibleHoldingRows
+aggregateRows
+signalRows
+holderDetailRows
+finalAvailability
+
+Do not log raw holdings.
+
+STEP 2 — IDENTIFY FIRST ZERO
+
+For a valid mapping-backed production symbol, identify the first stage where
+count transitions:
+
+nonzero → zero
+
+Classify the first divergence as exactly one of:
+
+CURRENT_PERIOD
+EFFECTIVE_FILINGS
+HOLDINGS_BY_CUSIP
+ELIGIBLE_HOLDINGS
+AGGREGATE_LOOKUP
+SIGNAL_LOOKUP
+HOLDER_DETAILS
+AVAILABILITY_CLASSIFIER
+OTHER
+
+STEP 3 — VERIFY QUERY KEYS
+
+Inspect every query after canonical identity resolution.
+
+After identity is authorized, downstream queries MUST use:
+
+canonical CUSIP set
++
+canonical filing period
+
+They must NOT require:
+
+security_master.ticker = requestedSymbol
+holding ticker = requestedSymbol
+mapped_symbol = requestedSymbol
+direct security-master ticker evidence
+
+Check especially:
+
+stock-analytics-repository
+security-enrichment-repository
+stock-trend-repository
+aggregate lookup
+current/prior holder loading
+
+STEP 4 — COMPARE AAPL VS MAPPING-BACKED STRUCTURALLY
+
+Compare only stage counts for:
+
+working direct identity
+vs
+valid mapping-backed identity
+
+Do not hardcode runtime behavior.
+
+The expected structural difference should end at identity authorization.
+After canonical CUSIPs are known, downstream behavior must be identical.
+
+STEP 5 — CHECK PERIOD CONTRACT
+
+The production JPM response currently shows quarter 2026-Q1 but zero holder
+counts.
+
+Verify that the service uses the same effective filing/current-period
+selection contract as the accepted remediation/materialization pipeline.
+
+Do not accidentally require a direct ticker match when selecting filings or
+holdings.
+
+STEP 6 — FIX FIRST DIVERGENCE ONLY
+
+Once proven, make the smallest generic correction.
+
+Preserve:
+
+canonical CUSIP identity
+multi-CUSIP support
+fund exclusion
+unsupported-security exclusion
+NO_REPORTED_POSITION
+INSUFFICIENT_HISTORY
+PARTIAL
+UPSTREAM_ERROR semantics
+
+No fallback ticker matching.
+No ticker exceptions.
+No fabricated zero data.
+
+STEP 7 — REGRESSION TESTS
+
+Cover:
+
+direct identity with holders
+mapping-backed identity with holders
+mapping-backed multi-CUSIP identity
+valid identity but no reported position
+insufficient history
+fund
+unsupported security
+genuine dependency failure
+
+Prove:
+
+valid canonical mapping-backed symbol
+→ non-empty CUSIP set
+→ holder query by CUSIP
+→ expected holder/aggregate rows
+→ not UNSUPPORTED
+
+VALIDATION
+
+Run:
+
+focused Stock View tests
+holder-loading tests
+trend tests
+availability tests
+reconciliation tests
+PostgreSQL-backed regression
+institutional suite
+release suite
+production build
+git diff --check
+
+RETURN ONLY
+
+IDENTITY STAGE
+
+FIRST POST-IDENTITY ZERO STAGE
+
+AAPL STAGE COUNTS
+
+MAPPING-BACKED STAGE COUNTS
+
+EXACT QUERY/PREDICATE DIFFERENCE
+
+GENERIC ROOT CAUSE
+
+FIX
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE post-deployment verification procedure using:
+
+AAPL
+JPM
+ORCL
+AVGO
+TSLA
+
+Do not provide an APPLY command.

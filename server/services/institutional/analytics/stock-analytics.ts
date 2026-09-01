@@ -14,6 +14,7 @@ import type {
   CanonicalInstitutionalQuarterAggregate,
   StockInstitutionalAnalyticsSource,
   StockInstitutionalRepository,
+  StockViewPostIdentityDiagnostics,
 } from "./repository";
 import type {
   AnalyticsDataQuality,
@@ -818,5 +819,20 @@ export async function getStockInstitutionalAnalytics(
     options: normalizedOptions,
   });
   if (!source) return null;
-  return computeStockInstitutionalAnalytics(source, normalizedOptions);
+  const result = computeStockInstitutionalAnalytics(source, normalizedOptions);
+  if (source.stockViewDiagnostics) {
+    const diagnostics: StockViewPostIdentityDiagnostics = source.stockViewDiagnostics;
+    diagnostics.finalAvailability = result.availability;
+    if (
+      diagnostics.finalAvailability === "UNSUPPORTED" &&
+      diagnostics.firstPostIdentityZeroStage === null
+    ) {
+      diagnostics.firstPostIdentityZeroStage = "AVAILABILITY_CLASSIFIER";
+    }
+    console.log(JSON.stringify({
+      event: "institutional_stock_view_post_identity",
+      ...diagnostics,
+    }));
+  }
+  return result;
 }

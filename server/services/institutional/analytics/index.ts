@@ -105,6 +105,8 @@ export type {
   StockInstitutionalAnalyticsSource,
   StockInstitutionalRepository,
   StockInstitutionalRepositoryQuery,
+  StockViewPostIdentityDiagnostics,
+  StockViewPostIdentityZeroStage,
 } from "./repository";
 
 export {

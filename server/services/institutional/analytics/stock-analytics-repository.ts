@@ -43,6 +43,7 @@ import type {
   StockInstitutionalAnalyticsSource,
   StockInstitutionalRepository,
   StockInstitutionalRepositoryQuery,
+  StockViewPostIdentityDiagnostics,
 } from "./repository";
 import type {
   EnrichedInstitutionalHolding,
@@ -121,6 +122,11 @@ type EnrichedHoldingsPageLoader = (
 
 export type StockViewRepositoryStage = "IDENTITY" | "HOLDINGS";
 
+export interface StockViewHoldingLoadDiagnostics {
+  holdingRowsByCanonicalCusips: number;
+  eligibleHoldingRows: number;
+}
+
 export class StockViewRepositoryStageError extends Error {
   readonly stage: StockViewRepositoryStage;
   readonly repositoryFunction: string;
@@ -171,8 +177,15 @@ export async function loadAllStockInstitutionalHoldings(
   loadPage: EnrichedHoldingsPageLoader = getEnrichedInstitutionalHoldings,
   pageSize = 5_000,
   candidateCusips?: string[],
+  diagnostics?: StockViewHoldingLoadDiagnostics,
 ): Promise<EnrichedInstitutionalHolding[]> {
-  if (accessionNumbers.length === 0) return [];
+  if (accessionNumbers.length === 0) {
+    if (diagnostics) {
+      diagnostics.holdingRowsByCanonicalCusips = 0;
+      diagnostics.eligibleHoldingRows = 0;
+    }
+    return [];
+  }
   const holdings: EnrichedInstitutionalHolding[] = [];
   let offset = 0;
   while (true) {
@@ -189,14 +202,52 @@ export async function loadAllStockInstitutionalHoldings(
     });
     holdings.push(...page);
     if (page.length < pageSize) {
-      return holdings.filter((holding) =>
+      const eligibleHoldings = holdings.filter((holding) =>
         isEligibleForStockInstitutionalAnalytics({
           assetType: holding.metadata?.assetType,
         }),
       );
+      if (diagnostics) {
+        diagnostics.holdingRowsByCanonicalCusips = holdings.length;
+        diagnostics.eligibleHoldingRows = eligibleHoldings.length;
+      }
+      return eligibleHoldings;
     }
     offset += page.length;
   }
+}
+
+export function classifyStockViewPostIdentityZero(
+  diagnostics: Pick<
+    StockViewPostIdentityDiagnostics,
+    | "canonicalCusipCount"
+    | "currentPeriodSelected"
+    | "effectiveFilingsSelected"
+    | "holdingRowsByCanonicalCusips"
+    | "eligibleHoldingRows"
+    | "aggregateRows"
+    | "signalRows"
+    | "holderDetailRows"
+  >,
+): StockViewPostIdentityDiagnostics["firstPostIdentityZeroStage"] {
+  const stages: Array<
+    [StockViewPostIdentityDiagnostics["firstPostIdentityZeroStage"], number | null]
+  > = [
+    ["CURRENT_PERIOD", diagnostics.currentPeriodSelected],
+    ["EFFECTIVE_FILINGS", diagnostics.effectiveFilingsSelected],
+    ["HOLDINGS_BY_CUSIP", diagnostics.holdingRowsByCanonicalCusips],
+    ["ELIGIBLE_HOLDINGS", diagnostics.eligibleHoldingRows],
+    ["AGGREGATE_LOOKUP", diagnostics.aggregateRows],
+    ["SIGNAL_LOOKUP", diagnostics.signalRows],
+    ["HOLDER_DETAILS", diagnostics.holderDetailRows],
+  ];
+  let previous = diagnostics.canonicalCusipCount;
+  for (const [stage, count] of stages) {
+    if (count === null) continue;
+    if (previous > 0 && count === 0) return stage;
+    previous = count;
+  }
+  return null;
 }
 
 export async function loadStockCandidateIdentity(
@@ -533,6 +584,14 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       canonicalAggregate = null;
     }
     const candidateCusips = candidateIdentity.candidateCusips;
+    const currentHoldingDiagnostics: StockViewHoldingLoadDiagnostics = {
+      holdingRowsByCanonicalCusips: 0,
+      eligibleHoldingRows: 0,
+    };
+    const previousHoldingDiagnostics: StockViewHoldingLoadDiagnostics = {
+      holdingRowsByCanonicalCusips: 0,
+      eligibleHoldingRows: 0,
+    };
     const [currentHoldings, previousHoldings, managerPortfolioValues] =
       await Promise.all([
         runStockViewRepositoryStage(
@@ -545,6 +604,7 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
               getEnrichedInstitutionalHoldings,
               5_000,
               candidateCusips,
+              currentHoldingDiagnostics,
             ),
         ),
         previousAccessions.length > 0
@@ -558,11 +618,32 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
                   getEnrichedInstitutionalHoldings,
                   5_000,
                   candidateCusips,
+                  previousHoldingDiagnostics,
                 ),
             )
           : Promise.resolve([]),
         loadManagerPortfolioValues(selected.currentFilings),
       ]);
+
+    const stockViewDiagnostics: StockViewPostIdentityDiagnostics = {
+      symbol: query.symbol,
+      canonicalCusipCount: candidateCusips.length,
+      canonicalCusipsBoundedCount: candidateCusips.length,
+      currentPeriodSelected: selected.currentQuarter.periodEndDate ? 1 : 0,
+      effectiveFilingsSelected: selected.currentFilings.length,
+      holdingRowsByCanonicalCusips:
+        currentHoldingDiagnostics.holdingRowsByCanonicalCusips,
+      eligibleHoldingRows: currentHoldingDiagnostics.eligibleHoldingRows,
+      aggregateRows: canonicalAggregate ? 1 : 0,
+      // The v1 Stock View service does not consult the materialized signal
+      // table. null distinguishes that fact from a queried zero.
+      signalRows: null,
+      holderDetailRows: currentHoldings.length,
+      finalAvailability: null,
+      firstPostIdentityZeroStage: null,
+    };
+    stockViewDiagnostics.firstPostIdentityZeroStage =
+      classifyStockViewPostIdentityZero(stockViewDiagnostics);
 
     return {
       symbol: query.symbol,
@@ -585,6 +666,7 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
       ),
       comparableManagerIds: selected.comparableManagerIds,
       canonicalAggregate,
+      stockViewDiagnostics,
     };
   },
 };

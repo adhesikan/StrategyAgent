@@ -38,6 +38,36 @@ import type {
   StockInstitutionalAnalyticsOptions,
 } from "./types";
 
+export type StockViewPostIdentityZeroStage =
+  | "CURRENT_PERIOD"
+  | "EFFECTIVE_FILINGS"
+  | "HOLDINGS_BY_CUSIP"
+  | "ELIGIBLE_HOLDINGS"
+  | "AGGREGATE_LOOKUP"
+  | "SIGNAL_LOOKUP"
+  | "HOLDER_DETAILS"
+  | "AVAILABILITY_CLASSIFIER"
+  | "OTHER";
+
+/**
+ * Server-only counters used to trace a valid canonical symbol through the
+ * Stock View repository. These never cross the API response boundary.
+ */
+export interface StockViewPostIdentityDiagnostics {
+  symbol: string;
+  canonicalCusipCount: number;
+  canonicalCusipsBoundedCount: number;
+  currentPeriodSelected: number;
+  effectiveFilingsSelected: number;
+  holdingRowsByCanonicalCusips: number;
+  eligibleHoldingRows: number;
+  aggregateRows: number;
+  signalRows: number | null;
+  holderDetailRows: number;
+  finalAvailability: string | null;
+  firstPostIdentityZeroStage: StockViewPostIdentityZeroStage | null;
+}
+
 /**
  * Repository snapshots are normalized, persisted/precomputed source records.
  * They intentionally match the corresponding domain result except for the
@@ -164,6 +194,8 @@ export interface StockInstitutionalAnalyticsSource {
   comparableManagerIds: string[];
   /** Present only for the unfiltered common-equity universe. */
   canonicalAggregate?: CanonicalInstitutionalQuarterAggregate | null;
+  /** Server-only trace counters; omitted from the public analytics result. */
+  stockViewDiagnostics?: StockViewPostIdentityDiagnostics;
 }
 
 export interface StockInstitutionalRepositoryQuery {

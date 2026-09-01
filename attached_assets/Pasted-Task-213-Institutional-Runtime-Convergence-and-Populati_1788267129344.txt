@@ -1,0 +1,272 @@
+Task #213 — Institutional Runtime Convergence and Population Acceptance
+
+STOP THE ITERATIVE SYMBOL-BY-SYMBOL DEBUGGING CYCLE.
+
+We have repeatedly fixed separate divergences between:
+
+- canonical production analyzer/verifier
+- Stock View identity
+- holder enrichment
+- trend
+- aggregates
+- signals
+- security-master ticker lookup
+- trusted mapping lookup
+
+Each fix exposes another stale implementation of the same institutional
+identity/data-selection contract.
+
+OBJECTIVE
+
+Make the Institutional Intelligence runtime converge on ONE shared canonical
+security context and ONE shared set of downstream data loaders, then prove
+the complete runtime population works with one production-safe acceptance
+harness.
+
+This is an architectural convergence task, not another JPM-specific fix.
+
+DO NOT:
+
+- run remediation
+- run OpenFIGI
+- run ingestion
+- modify production institutional data
+- add ticker allowlists
+- add symbol-specific exceptions
+- create another independent verifier implementation
+- chase symbols one at a time
+
+PART 1 — INVENTORY ACTIVE RUNTIME PATHS
+
+Inventory every ACTIVE Institutional Intelligence endpoint used by the
+current UI, including:
+
+Stock View
+Trend
+Rotation
+Institutional discovery
+Multibagger discovery
+signals or supplemental requests
+Fund Explorer / sector-theme inputs where applicable
+
+For each endpoint report:
+
+route
+service
+repository
+identity source
+holding-selection source
+aggregate source
+signal source
+
+Identify duplicated or legacy identity logic.
+
+PART 2 — CREATE ONE CANONICAL RUNTIME CONTEXT
+
+Introduce/reuse one shared runtime contract, conceptually:
+
+CanonicalInstitutionalSecurityContext
+
+containing at minimum:
+
+requestedSymbol
+normalizedSymbol
+canonicalCusips
+assetType
+stockAnalyticsEligible
+identityProvenance
+currentEffectivePeriod
+
+It must be produced from the already accepted canonical contract:
+
+effective holdings
+→ trusted canonical identity
+→ asset-type eligibility
+→ final symbol selection
+
+The implementation must reuse the existing proven canonical query/predicate.
+Do not create a new interpretation.
+
+PART 3 — DOWNSTREAM RULE
+
+After CanonicalInstitutionalSecurityContext is created:
+
+NO downstream active Institutional Intelligence code may re-resolve identity
+from:
+
+security_master.ticker
+holding ticker
+mapped_symbol
+issuer name
+legacy row-level evidence
+
+Downstream data access must use:
+
+canonical CUSIP set
++
+canonical effective period where required.
+
+Create shared loaders for the active runtime, conceptually:
+
+loadCanonicalHoldings(context)
+loadCanonicalAggregates(context)
+loadCanonicalSignals(context)
+loadCanonicalTrend(context)
+
+Reuse existing implementations where possible; do not over-engineer.
+
+PART 4 — LEGACY PATH QUARANTINE
+
+Find legacy institutional endpoints/services still using old ticker-centric
+semantics.
+
+For each:
+
+A. migrate it to the shared canonical context if the current UI requires it
+
+OR
+
+B. explicitly mark it legacy/deferred and remove it as a dependency of the
+current Institutional Intelligence UI.
+
+There must not be two active meanings of "institutional data for symbol X".
+
+PART 5 — REAL SERVICE-LAYER POPULATION ACCEPTANCE HARNESS
+
+Build ONE bounded, read-only production acceptance script that exercises the
+ACTUAL shared runtime service/repository functions used by production.
+
+Do not reimplement their SQL in the verifier.
+
+For the full canonical runtime-valid stock population, report aggregate counts
+by stage:
+
+canonicalSymbols
+identityResolved
+identityFailed
+
+holdingsLoaded
+holdingsUnavailableLegitimately
+holdingsUnexpectedFailure
+
+aggregatesLoaded
+aggregateMissingUnexpectedly
+
+signalsLoaded
+signalMissingUnexpectedly
+
+trendLoaded
+trendInsufficientHistory
+trendUnexpectedFailure
+
+stockViewAvailable
+stockViewPartial
+stockViewInsufficientHistory
+stockViewNoReportedPosition
+stockViewUnexpectedUnsupported
+stockViewUpstreamError
+
+runtimeExceptions
+
+Also report at most 10 samples for each unexpected failure class.
+
+Hard timeout <= 180 seconds.
+Set-based/batched; no N+1.
+Read-only.
+No writes.
+
+PART 6 — SYSTEMIC FAILURE CLASSIFICATION
+
+Run the acceptance harness against production READ ONLY.
+
+Classify every failure by ROOT CAUSE CLASS, not ticker:
+
+IDENTITY_CONTRACT
+PERIOD_SELECTION
+HOLDING_SELECTION
+AGGREGATE_LOOKUP
+SIGNAL_LOOKUP
+TREND_LOOKUP
+LEGACY_DEPENDENCY
+AVAILABILITY_CLASSIFICATION
+SQL_RUNTIME
+OTHER
+
+Then fix all proven generic root-cause classes in this sprint where doing so
+does not require data mutation.
+
+Do not make one fix per symbol.
+
+PART 7 — ACCEPTANCE CRITERIA
+
+The sprint is complete only when a final production read-only acceptance run
+shows:
+
+- all runtime-valid canonical symbols resolve identity
+- zero unexpected UNSUPPORTED results for canonical stock-eligible symbols
+- zero SQL/runtime exceptions
+- zero aggregate-backed symbols failing aggregate lookup
+- zero signal-backed symbols failing signal lookup
+- trend failures only where legitimately INSUFFICIENT_HISTORY / unavailable
+- no fabricated zero holder counts
+- no active UI route uses a legacy ticker-only identity path
+- malformed/nonstandard symbols may remain explicitly rejected by the
+  existing symbol validator
+- funds/unsupported securities remain excluded
+
+If a legitimate data-quality limitation prevents 100%, report it separately
+from software/runtime failure.
+
+PART 8 — TESTS
+
+Add architectural tests proving active downstream modules cannot silently
+reintroduce ticker-based identity resolution.
+
+Add PostgreSQL-backed tests for:
+
+direct identity
+mapping-backed identity
+multi-CUSIP identity
+no reported position
+insufficient history
+fund
+unsupported security
+genuine database failure
+
+Run:
+
+focused runtime convergence tests
+institutional suite
+release suite
+production build
+git diff --check
+
+RETURN
+
+ACTIVE ROUTE INVENTORY
+
+DUPLICATED/LEGACY CONTRACTS FOUND
+
+SHARED CANONICAL CONTEXT
+
+ACTIVE ROUTES MIGRATED
+
+LEGACY ROUTES QUARANTINED
+
+PRODUCTION ACCEPTANCE COUNTS BEFORE FIX
+
+ROOT CAUSE CLASSES FOUND
+
+GENERIC FIXES APPLIED
+
+PRODUCTION ACCEPTANCE COUNTS AFTER FIX
+
+REMAINING LEGITIMATE DATA LIMITATIONS
+
+TEST RESULTS
+
+COMMIT SHA
+
+INSTITUTIONAL RUNTIME ACCEPTANCE PASS/FAIL
+
+Do not provide any APPLY command.

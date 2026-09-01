@@ -1,0 +1,278 @@
+Task #215 — Fix systemic historical 13F ingestion and rebuild usable history
+
+CURRENT PRODUCTION EVIDENCE
+
+Institutional runtime acceptance now uses the real Stock View and trend
+services and the canonical runtime architecture has been converged.
+
+The remaining platform-wide problem is historical depth.
+
+Production logs repeatedly show historical quarters such as:
+
+2025-Q1
+2025-Q2
+2025-Q3
+2025-Q4
+2024-Q3
+2024-Q4
+
+being processed as:
+
+institutional_13f_archive_inspected
+archiveBytes: 0
+entryCount: 0
+resolvedSubmissionEntry: null
+resolvedCoverPageEntry: null
+resolvedInfoTableEntry: null
+status: empty_not_published
+
+followed by:
+
+institutional_13f_quarter_not_published
+
+This causes widespread INSUFFICIENT_HISTORY.
+
+Do NOT debug symbols individually.
+
+OBJECTIVE
+
+Find and fix the root cause of historical SEC 13F ingestion returning
+zero-byte/empty archives for already-published historical quarters.
+
+Then provide ONE controlled historical backfill path that rebuilds the
+canonical downstream materializations using the already-accepted runtime
+contracts.
+
+PART 1 — TRACE THE SOURCE RETRIEVAL
+
+Trace the complete historical ingestion path:
+
+scheduler/manual ingestion
+→ quarter resolution
+→ SEC endpoint/URL construction
+→ HTTP request
+→ response status/content-type/content-length
+→ archive/body parsing
+→ submission/cover/info-table discovery
+→ filing persistence
+→ effective filing selection
+
+For one historical quarter, report:
+
+requested URL shape
+HTTP status
+content type
+content length
+archiveBytes
+entryCount
+resolution mode
+final classification
+
+Do not log credentials or full sensitive headers.
+
+PART 2 — PROVE WHY archiveBytes = 0
+
+Classify the root cause as exactly one of:
+
+WRONG_SEC_ENDPOINT
+WRONG_ARCHIVE_PATH
+HTTP_REDIRECT_NOT_FOLLOWED
+SEC_REQUEST_HEADERS
+RATE_LIMIT_OR_BLOCK
+CONTENT_TYPE_MISMATCH
+HTML_RESPONSE_TREATED_AS_ARCHIVE
+ZIP_ASSUMPTION_INVALID
+QUARTER_INDEX_DISCOVERY
+PARSER_FAILURE
+NETWORK_FAILURE_MISCLASSIFIED
+OTHER
+
+Do not speculate.
+
+PART 3 — FIX FAILURE CLASSIFICATION
+
+`empty_not_published` must ONLY mean the SEC source genuinely indicates that
+the requested quarter is not yet available.
+
+Do not classify:
+
+HTTP errors
+redirects
+403/429
+HTML error pages
+zero-byte transport failures
+parser errors
+unexpected content types
+archive-format errors
+
+as "not published".
+
+Introduce explicit fail-closed states such as:
+
+SOURCE_UNAVAILABLE
+SOURCE_REJECTED
+RATE_LIMITED
+SOURCE_FORMAT_UNEXPECTED
+PARSE_FAILED
+NOT_YET_PUBLISHED
+
+Use existing project naming conventions where possible.
+
+PART 4 — HISTORICAL INGESTION CONTRACT
+
+Historical ingestion must support already-published prior quarters.
+
+Preserve canonical rules:
+
+- effective filings only
+- amendments supersede originals
+- reported_value persisted in canonical USD
+- QoQ by CUSIP
+- put/call separate
+- PRN excluded from common-equity analytics
+- positive reported shares
+- trusted canonical identity
+- stock/fund eligibility rules
+- no guessed ticker mappings
+
+Do not change identity semantics.
+
+PART 5 — HISTORICAL DEPTH AUDIT
+
+After fixing retrieval, create a READ-ONLY historical coverage report by quarter.
+
+For each quarter available in production, report only:
+
+quarter
+filings
+effectiveFilings
+holdingRows
+canonicalStockCusips
+canonicalStockSymbols
+aggregateSymbols
+signalSymbols
+
+Also classify:
+
+SOURCE_AVAILABLE
+SOURCE_MISSING
+SOURCE_FAILED
+NOT_YET_PUBLISHED
+
+Do not emit individual holdings.
+
+PART 6 — CONTROLLED BACKFILL
+
+Create a guarded resumable historical backfill command.
+
+Requirements:
+
+- production-only guard
+- DATABASE_URL only
+- reject EXTERNAL_DATABASE_URL
+- explicit --from-quarter and --to-quarter
+- dry-run by default
+- explicit --apply
+- advisory lock
+- transactional per quarter or bounded batch
+- resumable
+- idempotent
+- amendments handled correctly
+- do not delete valid newer data
+- downstream materialization runs after each successfully changed quarter
+- no OpenFIGI enrichment automatically
+- use existing trusted mappings/security types
+- compact progress output
+
+Do NOT execute production backfill during this task.
+
+PART 7 — DOWNSTREAM REBUILD
+
+For successfully ingested historical quarters, rebuild using the same
+canonical materialization contract already accepted for:
+
+quarterly aggregates
+signals
+trend history
+sector/theme snapshots where quarter-dependent
+
+Do not create a second analytics implementation.
+
+PART 8 — ACCEPTANCE
+
+After backfill, the real runtime population acceptance harness must be able
+to distinguish:
+
+AVAILABLE
+PARTIAL
+INSUFFICIENT_HISTORY
+
+based on actual historical depth.
+
+The goal is NOT to eliminate legitimate INSUFFICIENT_HISTORY.
+
+The goal is to eliminate INSUFFICIENT_HISTORY caused by missing historical
+ingestion that should exist.
+
+PART 9 — TESTS
+
+Add tests for:
+
+published historical quarter
+not-yet-published quarter
+redirect
+403
+429
+HTML error body
+zero-byte response
+unexpected content type
+malformed archive
+valid archive
+amendment supersession
+idempotent rerun
+resumable backfill
+
+Run:
+
+focused ingestion tests
+historical parser tests
+institutional suite
+release suite
+production build
+git diff --check
+
+NO production backfill in this task.
+NO OpenFIGI.
+NO mapping repair.
+NO ticker-specific work.
+
+RETURN ONLY
+
+ROOT CAUSE
+
+WHY HISTORICAL QUARTERS BECAME empty_not_published
+
+SOURCE RETRIEVAL FIX
+
+FAILURE CLASSIFICATION FIX
+
+HISTORICAL COVERAGE AUDIT
+
+BACKFILL IMPLEMENTATION
+
+DOWNSTREAM REBUILD CONTRACT
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly:
+
+1. ONE production read-only historical coverage command
+2. ONE guarded dry-run backfill command
+
+Do not provide APPLY command yet.

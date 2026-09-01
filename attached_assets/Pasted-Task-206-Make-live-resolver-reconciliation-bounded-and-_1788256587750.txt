@@ -1,0 +1,120 @@
+Task #206 — Make live resolver reconciliation bounded and set-based
+
+PROBLEM
+
+The production read-only command:
+
+npx tsx scripts/reconcile-live-stock-resolver.ts \
+  --expected-commit "<deployed Railway commit SHA>" \
+  --expected-database "railway"
+
+has been running for more than 9 hours.
+
+STOP assuming this is acceptable.
+
+The verifier must remain READ ONLY, but it also must be operationally bounded.
+
+OBJECTIVE
+
+Find the performance bottleneck in the reconciliation verifier and make
+the smallest generic fix so the full production reconciliation completes
+in minutes, not hours.
+
+DO NOT change live resolver semantics.
+DO NOT change canonical identity semantics.
+DO NOT perform production writes.
+DO NOT APPLY.
+DO NOT ingest.
+DO NOT add ticker-specific shortcuts.
+
+TRACE PERFORMANCE
+
+Inspect whether the verifier is doing any of the following:
+
+- one database query per symbol
+- one resolver invocation per symbol with additional nested queries
+- repeated loading of the same mappings/security-master rows
+- repeated current/prior filing queries
+- repeated aggregate/signal existence checks
+- serial processing that can be expressed as set-based SQL
+- unbounded joins
+- missing indexes on verifier-only query paths
+- network calls
+- retry loops
+- per-symbol logging overhead
+- transaction held open while doing unnecessary work
+
+Measure locally with instrumentation if possible.
+
+REQUIRED FIX
+
+Prefer a set-based/batched verifier:
+
+1. Load canonical stock-eligible identities in one query.
+2. Load live-resolver candidate identity data in one query or bounded batches.
+3. Compare canonical/live CUSIP sets in memory.
+4. Load aggregate-backed symbols in one query.
+5. Load signal-backed symbols in one query.
+6. Compare sets in memory.
+7. Perform commit/database identity checks once.
+8. Return compact counts + max 10 mismatch samples.
+
+Do not invoke the entire live HTTP/API route once per symbol if the pure
+identity gate can be evaluated from shared repository data.
+
+Preserve exact runtime resolver semantics by reusing the same predicate or
+shared identity evaluator, not by reimplementing a different rule.
+
+BOUNDING REQUIREMENTS
+
+Add:
+
+- total runtime measurement
+- query count measurement if feasible
+- hard timeout/fail-closed behavior
+- bounded mismatch sample
+- no giant output
+
+Target production runtime:
+preferably under 2 minutes,
+hard upper bound under 5 minutes.
+
+If current production size makes under 5 minutes impossible, explain why
+with measured evidence.
+
+TESTS
+
+Add tests proving:
+
+- no N+1 query pattern
+- canonical/live exact-set comparison still works
+- multi-CUSIP symbols work
+- unresolved/ambiguous/conflicting/fund/unsupported cases remain correct
+- aggregate/signal-backed unresolved counts remain correct
+- timeout fails closed
+- no writes occur
+
+VALIDATION
+
+Run focused reconciliation tests
+full institutional suite
+release suite
+production build
+git diff --check
+
+RETURN ONLY
+
+ROOT PERFORMANCE CAUSE
+QUERY/LOOP PATTERN BEFORE
+GENERIC FIX
+QUERY/LOOP PATTERN AFTER
+EXPECTED PRODUCTION RUNTIME
+TIMEOUT BEHAVIOR
+TEST RESULTS
+COMMIT
+PRODUCTION BLOCKER YES/NO
+
+Then return exactly ONE next production read-only command.
+
+Do not execute it.
+Do not provide any APPLY command.

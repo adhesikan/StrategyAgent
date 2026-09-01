@@ -119,6 +119,48 @@ type EnrichedHoldingsPageLoader = (
   query: EnrichedInstitutionalHoldingsQuery,
 ) => Promise<EnrichedInstitutionalHolding[]>;
 
+export type StockViewRepositoryStage = "IDENTITY" | "HOLDINGS";
+
+export class StockViewRepositoryStageError extends Error {
+  readonly stage: StockViewRepositoryStage;
+  readonly repositoryFunction: string;
+  readonly postgresCode: string | null;
+
+  constructor(
+    stage: StockViewRepositoryStage,
+    repositoryFunction: string,
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : "Unknown repository error", {
+      cause,
+    });
+    this.name = "StockViewRepositoryStageError";
+    this.stage = stage;
+    this.repositoryFunction = repositoryFunction;
+    this.postgresCode =
+      typeof (cause as { code?: unknown } | null)?.code === "string"
+        ? String((cause as { code: string }).code)
+        : null;
+  }
+}
+
+async function runStockViewRepositoryStage<T>(
+  stage: StockViewRepositoryStage,
+  repositoryFunction: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await action();
+  } catch (error) {
+    if (error instanceof StockViewRepositoryStageError) throw error;
+    throw new StockViewRepositoryStageError(
+      stage,
+      repositoryFunction,
+      error,
+    );
+  }
+}
+
 /**
  * Load a symbol candidate set to exhaustion using a deterministic repository
  * order. No safety cap is allowed to silently change analytics totals.
@@ -472,9 +514,14 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
     const previousAccessions = selected.previousFilings.map(
       (filing) => filing.accessionNumber,
     );
-    const candidateIdentity = await loadStockCandidateIdentity(
-      [...currentAccessions, ...previousAccessions],
-      query.symbol,
+    const candidateIdentity = await runStockViewRepositoryStage(
+      "IDENTITY",
+      "loadStockCandidateIdentity",
+      () =>
+        loadStockCandidateIdentity(
+          [...currentAccessions, ...previousAccessions],
+          query.symbol,
+        ),
     );
     // Persisted canonical aggregates are a cache, not identity evidence. Never
     // expose one unless the underlying requested-symbol holdings still resolve
@@ -488,20 +535,30 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
     const candidateCusips = candidateIdentity.candidateCusips;
     const [currentHoldings, previousHoldings, managerPortfolioValues] =
       await Promise.all([
-        loadAllStockInstitutionalHoldings(
-          currentAccessions,
-          query.symbol,
-          getEnrichedInstitutionalHoldings,
-          5_000,
-          candidateCusips,
-        ),
-        previousAccessions.length > 0
-          ? loadAllStockInstitutionalHoldings(
-              previousAccessions,
+        runStockViewRepositoryStage(
+          "HOLDINGS",
+          "loadAllStockInstitutionalHoldings(current)",
+          () =>
+            loadAllStockInstitutionalHoldings(
+              currentAccessions,
               query.symbol,
               getEnrichedInstitutionalHoldings,
               5_000,
               candidateCusips,
+            ),
+        ),
+        previousAccessions.length > 0
+          ? runStockViewRepositoryStage(
+              "HOLDINGS",
+              "loadAllStockInstitutionalHoldings(previous)",
+              () =>
+                loadAllStockInstitutionalHoldings(
+                  previousAccessions,
+                  query.symbol,
+                  getEnrichedInstitutionalHoldings,
+                  5_000,
+                  candidateCusips,
+                ),
             )
           : Promise.resolve([]),
         loadManagerPortfolioValues(selected.currentFilings),

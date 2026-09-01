@@ -42,10 +42,39 @@ import {
   normalizeManagerId,
 } from "../services/institutional/fund-service";
 import { externalApiRequestId } from "../services/external-api-security";
+import { StockViewRepositoryStageError } from "../services/institutional/analytics/stock-analytics-repository";
 
 const SOURCE_LABEL = "SEC Form 13F reported holdings";
 const API_MODEL_VERSION = "institutional-api-v1";
 const SYMBOL_RE = /^[A-Z][A-Z0-9.-]{0,9}$/;
+
+function safeStockViewErrorMessage(error: unknown): string {
+  const message =
+    error instanceof Error ? error.message : "Unknown stock analytics error";
+  return message
+    .replace(/postgres(?:ql)?:\/\/\S+/gi, "[REDACTED_DATABASE_URL]")
+    .slice(0, 500);
+}
+
+function logStockViewFailure(error: unknown): void {
+  const staged =
+    error instanceof StockViewRepositoryStageError ? error : null;
+  const postgresCode =
+    staged?.postgresCode ??
+    (typeof (error as { code?: unknown } | null)?.code === "string"
+      ? String((error as { code: string }).code)
+      : null);
+  console.error(JSON.stringify({
+    event: "institutional_stock_view_failure",
+    stage: staged?.stage ?? "OTHER",
+    errorClass:
+      error instanceof Error ? error.name : typeof error,
+    postgresCode,
+    safeMessage: safeStockViewErrorMessage(error),
+    serviceFunction: "getStockInstitutionalAnalytics",
+    repositoryFunction: staged?.repositoryFunction ?? null,
+  }));
+}
 
 const CACHE_HEADERS = {
   health: "public, max-age=30, stale-while-revalidate=60",
@@ -431,7 +460,8 @@ export function registerInstitutionalApiV1Routes(
           query.quarter as FundPortfolioXRayQuarterSelector,
           options,
         );
-      } catch {
+      } catch (error) {
+        logStockViewFailure(error);
         throw new InstitutionalApiV1Error(
           503,
           "UPSTREAM_ERROR",

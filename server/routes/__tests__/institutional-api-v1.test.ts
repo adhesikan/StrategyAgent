@@ -3,6 +3,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { registerInstitutionalApiV1Routes } from "../institutional-api-v1";
 import { createExternalApiUsageMiddleware } from "../../services/external-api-security";
+import { StockViewRepositoryStageError } from "../../services/institutional/analytics/stock-analytics-repository";
 
 const quarter = {
   year: 2026,
@@ -247,6 +248,40 @@ describe("External Institutional Intelligence API v1", () => {
       },
     });
     expect(JSON.stringify(body)).not.toContain("database connection");
+  });
+
+  it("logs safe internal stage diagnostics without exposing them to the client", async () => {
+    errorSpy.mockClear();
+    const databaseError = Object.assign(
+      new Error("invalid input syntax for type uuid"),
+      { code: "22P02" },
+    );
+    services.getStockInstitutionalAnalytics.mockRejectedValueOnce(
+      new StockViewRepositoryStageError(
+        "HOLDINGS",
+        "loadAllStockInstitutionalHoldings(current)",
+        databaseError,
+      ),
+    );
+
+    const { response, body } = await apiGet(
+      "/api/v1/institutional/stocks/AAPL",
+    );
+
+    expect(response.status).toBe(503);
+    const diagnostic = errorSpy.mock.calls
+      .map(([entry]) => String(entry))
+      .find((entry) => entry.includes("institutional_stock_view_failure"));
+    expect(JSON.parse(diagnostic!)).toMatchObject({
+      stage: "HOLDINGS",
+      errorClass: "StockViewRepositoryStageError",
+      postgresCode: "22P02",
+      safeMessage: "invalid input syntax for type uuid",
+      serviceFunction: "getStockInstitutionalAnalytics",
+      repositoryFunction: "loadAllStockInstitutionalHoldings(current)",
+    });
+    expect(JSON.stringify(body)).not.toContain("22P02");
+    expect(JSON.stringify(body)).not.toContain("invalid input syntax");
   });
 
   it("passes safe ranking filters, pagination, and sorting", async () => {

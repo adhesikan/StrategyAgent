@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalStockIdentityForSymbolQuery,
   canonicalSecurityTypeStateQuery,
   parseCanonicalStockEligibleIdentities,
   reconcileCanonicalStockEligibility,
 } from "../canonical-security-state";
 import { CANONICAL_EFFECTIVE_HOLDINGS_CTE } from "../institutional-effective-holdings";
+import { pool } from "../../../db";
 
 describe("canonical security state", () => {
   it("reconciles verifier and analyzer stock populations", () => {
@@ -53,5 +55,10 @@ describe("canonical security state", () => {
       ["111111111", "ABC"],
       ["222222222", "REIT"],
     ]);
+  });
+
+  it("executes the symbol-scoped canonical identity query against PostgreSQL", async () => {
+    const result = await pool.query(canonicalStockIdentityForSymbolQuery, ["AAPL"]);
+    expect(result.rows).toEqual(expect.any(Array));
   });
 });

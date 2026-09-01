@@ -10,6 +10,7 @@ import {
 
 function buildCanonicalSecurityStateCte(eligibleCusipsCte: string): string {
   return `
+WITH
 ${eligibleCusipsCte},
 evidence AS (
   SELECT cusip, mapped_symbol AS symbol, mapping_status AS status, NULL::text AS asset_type

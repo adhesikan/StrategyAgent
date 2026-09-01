@@ -11,6 +11,10 @@ import {
   type InstitutionalSecurityPositionType,
 } from "../security-position";
 import { stockInstitutionalTrendRepository } from "./stock-trend-repository";
+import {
+  resolveCanonicalInstitutionalSecurityContext,
+  type CanonicalInstitutionalSecurityContext,
+} from "../canonical-institutional-security-context";
 import type {
   CanonicalInstitutionalQuarterAggregate,
   StockInstitutionalTrendQuarterSource,
@@ -509,6 +513,7 @@ export async function getStockInstitutionalTrend(
   symbol: string,
   options: StockInstitutionalTrendOptions = {},
   repository: StockInstitutionalTrendRepository = stockInstitutionalTrendRepository,
+  canonicalContext?: CanonicalInstitutionalSecurityContext | null,
 ): Promise<StockInstitutionalTrendResult | null> {
   const requestedHistory = options.historyQuarters;
   const historyQuarters =
@@ -522,9 +527,18 @@ export async function getStockInstitutionalTrend(
           ),
         );
   const normalizedOptions = { ...options, historyQuarters };
+  const resolvedContext =
+    canonicalContext !== undefined
+      ? canonicalContext
+      : repository === stockInstitutionalTrendRepository
+        ? await resolveCanonicalInstitutionalSecurityContext(symbol)
+        : undefined;
   const source = await repository.getStockInstitutionalTrendSource({
     symbol,
     options: normalizedOptions,
+    ...(resolvedContext !== undefined
+      ? { canonicalContext: resolvedContext }
+      : {}),
   });
   if (!source) return null;
   return computeStockInstitutionalTrend({

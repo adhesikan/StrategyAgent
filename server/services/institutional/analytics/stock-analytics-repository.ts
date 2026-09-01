@@ -19,9 +19,7 @@ import { parseQuarterIdentifier } from "../quarter-utils";
 import { getEnrichedInstitutionalHoldings } from "./security-enrichment-repository";
 import { createInstitutionalQuarter } from "./types";
 import { isEligibleForStockInstitutionalAnalytics } from "../security-type-eligibility";
-import {
-  resolveCanonicalInstitutionalSecurityContext,
-} from "../canonical-institutional-security-context";
+import { resolveCanonicalInstitutionalSecurityContext } from "../canonical-institutional-security-context";
 import {
   type StockCandidateIdentity,
 } from "./stock-candidate-identity";
@@ -547,15 +545,20 @@ export const stockInstitutionalRepository: StockInstitutionalRepository = {
     const previousAccessions = selected.previousFilings.map(
       (filing) => filing.accessionNumber,
     );
-    const candidateIdentity = await runStockViewRepositoryStage(
-      "IDENTITY",
-      "loadStockCandidateIdentity",
-      () =>
-        loadStockCandidateIdentity(
-          [...currentAccessions, ...previousAccessions],
-          query.symbol,
-        ),
-    );
+    const candidateIdentity: StockCandidateIdentity = query.canonicalContext
+      ? {
+          candidateCusips: query.canonicalContext.canonicalCusips,
+          hasReliableSecurityIdentity:
+            query.canonicalContext.stockAnalyticsEligible,
+          hasDisqualifyingCandidateEvidence: false,
+          hasTargetSpecificCandidateEvidence: true,
+        }
+      : {
+          candidateCusips: [],
+          hasReliableSecurityIdentity: false,
+          hasDisqualifyingCandidateEvidence: false,
+          hasTargetSpecificCandidateEvidence: false,
+        };
     // Persisted canonical aggregates are a cache, not identity evidence. Never
     // expose one unless the underlying requested-symbol holdings still resolve
     // through the shared deterministic boundary.

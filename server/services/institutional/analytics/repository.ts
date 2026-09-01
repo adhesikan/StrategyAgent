@@ -37,6 +37,7 @@ import type {
   StockInstitutionalTrendResult,
   StockInstitutionalAnalyticsOptions,
 } from "./types";
+import type { CanonicalInstitutionalSecurityContext } from "../canonical-institutional-security-context";
 
 export type StockViewPostIdentityZeroStage =
   | "CURRENT_PERIOD"
@@ -204,6 +205,8 @@ export interface StockInstitutionalRepositoryQuery {
   symbol: string;
   quarter: FundPortfolioXRayQuarterSelector;
   options: StockInstitutionalAnalyticsOptions;
+  /** Resolved once by the authoritative service boundary. */
+  canonicalContext?: CanonicalInstitutionalSecurityContext | null;
 }
 
 /**
@@ -257,6 +260,8 @@ export interface StockInstitutionalTrendSource {
 export interface StockInstitutionalTrendRepositoryQuery {
   symbol: string;
   options: StockInstitutionalTrendOptions;
+  /** The same canonical context resolved by the top-level trend service. */
+  canonicalContext?: CanonicalInstitutionalSecurityContext | null;
 }
 
 export interface StockInstitutionalTrendRepository {

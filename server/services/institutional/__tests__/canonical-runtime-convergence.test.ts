@@ -35,4 +35,29 @@ describe("canonical institutional runtime convergence architecture", () => {
     expect(source).toContain("holdings.cusip = canonical.cusip");
     expect(source).not.toContain("mapped_symbol");
   });
+
+  it("resolves canonical identity at the service boundary and passes it through", () => {
+    const stockService = readFileSync(
+      new URL("../analytics/stock-analytics.ts", import.meta.url),
+      "utf8",
+    );
+    const stockRepository = readFileSync(
+      new URL("../analytics/stock-analytics-repository.ts", import.meta.url),
+      "utf8",
+    );
+    const trendService = readFileSync(
+      new URL("../analytics/stock-trend.ts", import.meta.url),
+      "utf8",
+    );
+    expect(stockService).toContain("resolveCanonicalInstitutionalSecurityContext");
+    expect(stockService).toContain("canonicalContext: resolvedContext");
+    expect(stockRepository).toContain("query.canonicalContext");
+    expect(
+      stockRepository.slice(
+        stockRepository.indexOf("export const stockInstitutionalRepository"),
+      ),
+    ).not.toContain("loadStockCandidateIdentity(");
+    expect(trendService).toContain("resolveCanonicalInstitutionalSecurityContext");
+    expect(trendService).toContain("canonicalContext: resolvedContext");
+  });
 });

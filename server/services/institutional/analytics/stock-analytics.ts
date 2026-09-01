@@ -10,6 +10,10 @@ import {
   type InstitutionalSecurityPositionType,
 } from "../security-position";
 import { stockInstitutionalRepository } from "./stock-analytics-repository";
+import {
+  resolveCanonicalInstitutionalSecurityContext,
+  type CanonicalInstitutionalSecurityContext,
+} from "../canonical-institutional-security-context";
 import type {
   CanonicalInstitutionalQuarterAggregate,
   StockInstitutionalAnalyticsSource,
@@ -806,6 +810,7 @@ export async function getStockInstitutionalAnalytics(
   quarter: FundPortfolioXRayQuarterSelector = "latest",
   options: StockInstitutionalAnalyticsOptions = {},
   repository: StockInstitutionalRepository = stockInstitutionalRepository,
+  canonicalContext?: CanonicalInstitutionalSecurityContext | null,
 ): Promise<StockInstitutionalAnalytics | null> {
   const normalizedSymbol = normalizeSymbol(symbol);
   if (!normalizedSymbol) return null;
@@ -813,10 +818,19 @@ export async function getStockInstitutionalAnalytics(
     ...options,
     positionType: options.positionType ?? "COMMON_EQUITY",
   };
+  const resolvedContext =
+    canonicalContext !== undefined
+      ? canonicalContext
+      : repository === stockInstitutionalRepository
+        ? await resolveCanonicalInstitutionalSecurityContext(normalizedSymbol)
+        : undefined;
   const source = await repository.getStockInstitutionalSource({
     symbol: normalizedSymbol,
     quarter,
     options: normalizedOptions,
+    ...(resolvedContext !== undefined
+      ? { canonicalContext: resolvedContext }
+      : {}),
   });
   if (!source) return null;
   const result = computeStockInstitutionalAnalytics(source, normalizedOptions);

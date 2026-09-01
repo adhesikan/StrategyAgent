@@ -20,10 +20,7 @@ import {
   filterByCohortManagerIds,
   getActiveManagerIdsForCohort,
 } from "../manager-cohort-service";
-import {
-  loadAllStockInstitutionalHoldings,
-  loadStockCandidateIdentity,
-} from "./stock-analytics-repository";
+import { loadAllStockInstitutionalHoldings } from "./stock-analytics-repository";
 import type {
   CanonicalInstitutionalQuarterAggregate,
   EffectiveFundFiling,
@@ -153,6 +150,7 @@ function holdingsForAccessions(
 async function loadAllCanonicalCandidateHoldings(
   symbol: string,
   periodOfReports: string[],
+  canonicalCusips: readonly string[],
 ): Promise<EnrichedInstitutionalHolding[]> {
   const effectiveRows = await db
     .select({ accessionNumber: institutional13fFilings.accessionNumber })
@@ -168,19 +166,12 @@ async function loadAllCanonicalCandidateHoldings(
   );
   if (effectiveAccessions.size === 0) return [];
   const accessions = Array.from(effectiveAccessions);
-  const identity = await loadStockCandidateIdentity(accessions, symbol);
-  if (
-    !identity.hasReliableSecurityIdentity ||
-    identity.hasDisqualifyingCandidateEvidence
-  ) {
-    return [];
-  }
   const holdings = await loadAllStockInstitutionalHoldings(
     accessions,
     symbol,
     getEnrichedInstitutionalHoldings,
     5_000,
-    identity.candidateCusips,
+    Array.from(canonicalCusips),
   );
   return filterCanonicalCandidatePopulation(holdings, effectiveAccessions);
 }
@@ -244,6 +235,7 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
         (query.options.positionType ?? "COMMON_EQUITY") === "COMMON_EQUITY" &&
         query.options.cohort === undefined;
       if (canonicalMode) {
+        if (!query.canonicalContext) return null;
         const rows = await db
           .select()
           .from(institutionalQuarterlyAggregates)
@@ -279,6 +271,7 @@ export const stockInstitutionalTrendRepository: StockInstitutionalTrendRepositor
         const candidateHoldings = await loadAllCanonicalCandidateHoldings(
           query.symbol,
           evidencePeriods,
+          query.canonicalContext.canonicalCusips,
         );
         const { trustedPeriods, disqualifiedPeriods } =
           classifyCanonicalCandidatePeriods(candidateHoldings, query.symbol);

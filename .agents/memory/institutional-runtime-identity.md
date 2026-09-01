@@ -7,4 +7,4 @@ Active stock Institutional Intelligence must resolve identity once from the cano
 
 **Why:** Independent ticker-based resolvers repeatedly diverged from accepted canonical identity and caused valid symbols to lose holdings, aggregates, or trend data at different runtime stages.
 
-**How to apply:** Pass the canonical CUSIP set and effective period into downstream holdings, aggregate, signal, and trend reads. Population checks must call the same shared loaders in bounded, batched, read-only mode rather than reimplementing their SQL.
+**How to apply:** Resolve context at the top-level service boundary, then pass its CUSIPs and effective period through downstream reads. Population acceptance must call the actual Stock View and trend services; batched loaders may support classification but must not replace service availability semantics.

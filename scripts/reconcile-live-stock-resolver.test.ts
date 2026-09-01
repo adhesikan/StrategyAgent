@@ -2,9 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   buildReconciliationReadOnlyUrl,
+  EVIDENCE_ACCESSION_BATCH_SIZE,
+  RECONCILIATION_TIMEOUT_MS,
   parseReconciliationArguments,
   selectResolverFilingPeriods,
+  selectResolverAccessionsBySymbol,
   validateReconciliationRuntime,
+  withReconciliationTimeout,
 } from "./reconcile-live-stock-resolver";
 
 describe("live Stock View reconciliation CLI safety", () => {
@@ -52,10 +56,46 @@ describe("live Stock View reconciliation CLI safety", () => {
     ]);
   });
 
+  it("groups filing selection so shared periods do not create an N+1 selector loop", () => {
+    const calls: string[] = [];
+    const accessions = selectResolverAccessionsBySymbol(
+      ["ABC", "DEF", "GHI"],
+      new Map([
+        ["ABC", { symbol: "ABC", periodOfReport: "2026-03-31", prevPeriodOfReport: null }],
+        ["DEF", { symbol: "DEF", periodOfReport: "2026-03-31", prevPeriodOfReport: null }],
+        ["GHI", { symbol: "GHI", periodOfReport: "2025-12-31", prevPeriodOfReport: "2025-09-30" }],
+      ]),
+      "2026-03-31",
+      [
+        { accessionNumber: "a", managerId: "1", managerName: "One", periodOfReport: "2026-03-31", filingDate: "2026-05-01", isEffective: true },
+        { accessionNumber: "b", managerId: "1", managerName: "One", periodOfReport: "2025-12-31", filingDate: "2026-02-01", isEffective: true },
+      ],
+      (rows, requestedQuarter, aggregate) => {
+        calls.push(`${requestedQuarter}:${aggregate?.quarter.periodEndDate ?? "latest"}:${rows.length}`);
+        return rows.length
+          ? { currentFilings: [{ accessionNumber: rows[0].accessionNumber }], previousFilings: [] }
+          : null;
+      },
+    );
+    expect(calls).toHaveLength(2);
+    expect(accessions).toEqual({ ABC: ["a"], DEF: ["a"], GHI: ["b"] });
+  });
+
+  it("fails closed at the hard timeout without changing the timeout contract", async () => {
+    await expect(withReconciliationTimeout(
+      () => new Promise<never>(() => {}),
+      1,
+    )).rejects.toThrow("RECONCILIATION_TIMEOUT");
+    expect(RECONCILIATION_TIMEOUT_MS).toBeLessThan(5 * 60 * 1000);
+    expect(EVIDENCE_ACCESSION_BATCH_SIZE).toBeGreaterThan(0);
+  });
+
   it("contains no write SQL or mutation/ingestion imports", () => {
     const source = readFileSync(new URL("./reconcile-live-stock-resolver.ts", import.meta.url), "utf8");
     expect(source).toContain("SET TRANSACTION READ ONLY");
     expect(source).toContain("assertReadOnlySql(statement)");
+    expect(source).toContain("EVIDENCE_ACCESSION_BATCH_SIZE");
+    expect(source).toContain("statement_timeout");
     expect(source).not.toContain("DATABASE_RUNTIME_REJECTED:COMMIT_MISMATCH");
     expect(source).not.toContain("DATABASE_RUNTIME_REJECTED:DATABASE_MISMATCH");
     expect(source).not.toMatch(/\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|CREATE|COPY|CALL|DO|GRANT|REVOKE|VACUUM)\b/);

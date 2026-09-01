@@ -32,6 +32,12 @@ export interface LiveStockResolverReconciliationInput {
   runtimeSchema: string;
   analyzerDatabase: string;
   analyzerSchema: string;
+  performance?: {
+    runtimeMs: number;
+    queryCount: number;
+    maxQueryMs: number;
+    timedOut: boolean;
+  };
 }
 
 export interface LiveStockResolverMismatch {
@@ -42,6 +48,12 @@ export interface LiveStockResolverMismatch {
 }
 
 export interface LiveStockResolverReconciliationReport {
+  performance: {
+    runtimeMs: number;
+    queryCount: number;
+    maxQueryMs: number;
+    timedOut: boolean;
+  };
   metadata: {
     runningCommit: string | null;
     expectedCommit: string | null;
@@ -211,6 +223,7 @@ export function reconcileLiveStockResolver(
   const malformedSymbols =
     symbols.filter((symbol) => !isValidLiveStockSymbol(symbol)).length;
   const liveResolverReconciled =
+    !input.performance?.timedOut &&
     sameCommit &&
     runtimeDatabaseMatchesExpected &&
     sameDatabaseIdentity &&
@@ -226,6 +239,12 @@ export function reconcileLiveStockResolver(
               : unresolvable.length > 0 ? "LIVE_IDENTITY_RESOLVER" as const
                 : "NONE" as const;
   return {
+    performance: input.performance ?? {
+      runtimeMs: 0,
+      queryCount: 0,
+      maxQueryMs: 0,
+      timedOut: false,
+    },
     metadata: {
       runningCommit: input.runtimeCommit,
       expectedCommit: input.expectedCommit,

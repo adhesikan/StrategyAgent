@@ -32,3 +32,9 @@ Canonical coverage reconciliation must compare the complete CUSIP→symbol popul
 **Why:** Count-equal populations can still disagree symbol-for-symbol, while persisted aggregates and signals can make an incompatible runtime resolver look complete. Derived rows are presence evidence only, never identity authority.
 
 **How to apply:** Reuse the live resolver's pure gate in population verifiers, report bounded set mismatches, and establish commit plus non-secret database identity before diagnosing code, cache, deployment, or configuration drift.
+
+Population-wide resolver reconciliation must batch database evidence reads, group shared filing-period selection, measure query/runtime cost, and enforce a database statement timeout while preserving the pure per-symbol gate.
+
+**Why:** A semantically correct verifier can still run for hours when it repeats filing work or loads an unnecessarily broad evidence population; a fail-closed timeout is safer than an unbounded diagnostic.
+
+**How to apply:** Keep canonical identity loading set-based, bound accession batches, compare sets in memory, emit compact metrics, and treat timeout as a failed reconciliation rather than partial success.

@@ -1,0 +1,304 @@
+Task #211 — Fix canonical Stock View empty-candidate regression for mapping-backed symbols
+
+PRODUCTION EVIDENCE
+
+Task #210 successfully fixed the PostgreSQL 42601 canonical CTE syntax
+error.
+
+AAPL now works again in production:
+
+GET /api/institutional/v1/stocks/AAPL
+→ successful Stock View
+→ 189 reported holders
+→ 356.1M reported shares
+→ 100% mapping coverage
+
+However JPM still fails semantically.
+
+ACTUAL JPM PRODUCTION RESPONSE:
+
+GET /api/institutional/v1/stocks/JPM
+→ HTTP 200
+→ availability: UNSUPPORTED
+→ reportedManagerCount: 0
+→ reportedHolderCount: 0
+→ mappingCoverage.candidateHoldingCount: 0
+→ mappingCoverage.reliablyMappedHoldingCount: 0
+
+UI displays:
+
+"JPM is not in the institutional security master"
+"No canonical CUSIP identity is available for this symbol."
+
+Also:
+
+GET /api/institutional/v1/stocks/JPM/trend
+→ 404 DATA_UNAVAILABLE
+→ "No stock trend data is available for the requested parameters."
+
+GET /api/institutional/signals/JPM
+→ no institutional 13F data available for this symbol
+
+IMPORTANT EXISTING PRODUCTION EVIDENCE
+
+The bounded production reconciliation previously proved:
+
+canonicalStockEligibleCusips: 1466
+canonicalStockEligibleSymbols: 1465
+liveResolverResolvableSymbols: 1453
+aggregateBackedSymbols: 1465
+signalBackedSymbols: 1465
+trustedMappingSymbols: 1465
+identitySetMismatches: 0
+
+Only 12 malformed/nonstandard symbols were unresolved.
+
+JPM is a normal symbol and previously reconciled as canonical/resolvable.
+
+Therefore DO NOT reopen:
+
+- institutional remediation
+- OpenFIGI
+- mappings
+- security-type population
+- ingestion
+- canonical production repair
+
+OBJECTIVE
+
+Find why the ACTUAL Stock View canonical symbol-scoped query produces an
+empty candidate identity/holding set for a valid mapping-backed symbol
+while the production reconciliation resolves the same symbol.
+
+This is now a semantic query-contract reconciliation problem, not a SQL
+syntax problem.
+
+STEP 1 — TRACE JPM THROUGH THE ACTUAL FIXED QUERY
+
+Trace:
+
+GET /api/institutional/v1/stocks/JPM
+
+through:
+
+loadStockCandidateIdentity
+→ canonicalStockIdentityForSymbolQuery
+→ buildCanonicalSecurityStateCte
+→ trusted mapping selection
+→ asset-type eligibility
+→ candidate identity
+→ canonical CUSIP set
+
+Report these boolean/count stages:
+
+requestedSymbolNormalized
+trustedMappingRows
+canonicalCusipsBeforeEligibility
+canonicalCusipsAfterEligibility
+canonicalCusipsReturned
+candidateHoldingsReturned
+availability
+
+Do not dump sensitive data.
+
+Use JPM only to expose the generic defect.
+Do not hardcode JPM.
+
+STEP 2 — COMPARE EXACTLY WITH TASK #206 VERIFIER
+
+For the same mapping-backed synthetic/production-safe case, compare:
+
+A. canonical identity input used by:
+   reconcile-live-stock-resolver.ts
+
+B. canonical identity input used by:
+   canonicalStockIdentityForSymbolQuery
+
+These MUST produce the same canonical CUSIP set.
+
+Identify the FIRST predicate/query difference.
+
+Check specifically for differences involving:
+
+- mapping symbol versus security_master.ticker
+- JOIN type
+- WHERE placement
+- asset_type source
+- mapping reliability/trust status
+- effective filing requirement
+- holding eligibility
+- positive shares
+- put/call exclusion
+- PRN exclusion
+- symbol normalization
+- canonical symbol validation
+- multi-CUSIP grouping
+
+Do not assume which one is wrong. Prove it.
+
+STEP 3 — RECONCILE THE CONTRACT
+
+There must be ONE canonical symbol→CUSIP authorization contract shared by:
+
+- production reconciliation verifier
+- Stock View
+- trend
+- downstream holder loading
+
+Do not maintain a verifier-specific version and a runtime-specific version.
+
+Extract/reuse the shared query/predicate if necessary, but make the smallest
+change possible.
+
+For every canonical stock-eligible normal symbol:
+
+runtime canonical CUSIP set
+MUST equal
+verifier canonical CUSIP set.
+
+Fail closed on genuine ambiguity/conflict/unsupported evidence.
+
+STEP 4 — CHECK MATERIALIZED DATA LOOKUP
+
+Once canonical CUSIPs are returned, verify downstream holdings are selected
+by the canonical CUSIP set.
+
+Do NOT require:
+
+security_master.ticker = requestedSymbol
+holding ticker = requestedSymbol
+
+The requested symbol is presentation/search identity after authorization.
+
+CUSIP is the institutional holding identity.
+
+STEP 5 — TREND
+
+The JPM trend 404 may be downstream of the same empty canonical candidate
+set.
+
+If the same canonical identity defect causes it, fix through the shared
+contract.
+
+Do not independently invent a trend fallback.
+
+STEP 6 — LEGACY SIGNAL ENDPOINT
+
+The log also shows:
+
+GET /api/institutional/signals/JPM
+→ no institutional 13F data available
+
+Determine whether this endpoint is used by the current Stock View UI.
+
+If NOT used by Stock View, report it as legacy/deferred and do not expand
+this task.
+
+If it IS required by the current Institutional UI, identify whether it
+uses the same stale ticker-based identity assumption.
+
+Do not redesign signals in this task unless required for the current UI.
+
+STEP 7 — POSTGRESQL-BACKED REGRESSION
+
+The regression test must execute the exact production query shape against
+PostgreSQL.
+
+Cover:
+
+direct security-master identity
+mapping-only identity
+mapping-only multi-CUSIP identity
+fund exclusion
+unsupported security
+unknown identity
+malformed symbol
+
+Most importantly prove:
+
+mapping-backed canonical symbol
+→ non-empty canonical CUSIP set
+→ same CUSIP set as verifier
+→ holder query by CUSIP succeeds
+→ Stock View does NOT return UNSUPPORTED
+
+STEP 8 — POPULATION CONTRACT TEST
+
+Add a read-only reconciliation assertion/tool/test that compares runtime
+canonical identity with verifier canonical identity population-wide.
+
+It must report:
+
+canonicalSymbols
+runtimeResolvableSymbols
+mismatchedSymbols
+identitySetMismatches
+
+The acceptance condition is:
+
+mismatchedSymbols = 0
+
+for symbols admitted by the canonical runtime symbol validator.
+
+Do not perform writes.
+
+VALIDATION
+
+Run:
+
+PostgreSQL-backed canonical identity regression
+focused Stock View tests
+trend tests
+holder-enrichment tests
+Task #187 availability tests
+Task #206 reconciliation tests
+Task #207/#208/#209/#210 regressions
+full institutional suite
+release suite
+production build
+git diff --check
+
+NO production writes.
+NO APPLY.
+NO ingestion.
+NO OpenFIGI.
+
+RETURN ONLY
+
+AAPL STATUS
+
+JPM FIRST DIVERGENCE
+
+VERIFIER CANONICAL CUSIP SET
+
+STOCK VIEW CANONICAL CUSIP SET
+
+EXACT PREDICATE DIFFERENCE
+
+GENERIC ROOT CAUSE
+
+FIX
+
+TREND SAME ROOT CAUSE YES/NO
+
+LEGACY SIGNAL ENDPOINT USED BY STOCK VIEW YES/NO
+
+POPULATION RECONCILIATION RESULT
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE post-deployment verification procedure using:
+
+AAPL
+JPM
+ORCL
+AVGO
+TSLA
+
+Do not provide an APPLY command.

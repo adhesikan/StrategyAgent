@@ -1,0 +1,229 @@
+Task #210 — Fix proven PostgreSQL syntax error in canonical Stock View query
+
+PRODUCTION FAILURE IS NOW PROVEN.
+
+Do not perform additional diagnostics before inspecting the failing SQL.
+
+Production diagnostic event:
+
+event: institutional_stock_view_failure
+stage: IDENTITY
+errorClass: StockViewRepositoryStageError
+postgresCode: 42601
+safeMessage: syntax error at or near "target_cusips"
+serviceFunction: getStockInstitutionalAnalytics
+repositoryFunction: loadStockCandidateIdentity
+
+Actual production behavior:
+
+GET /api/institutional/v1/stocks/AAPL
+→ HTTP 503 UPSTREAM_ERROR
+
+At the same time the existing legacy institutional endpoint succeeds:
+
+GET /api/institutional/AAPL
+→ status: available
+→ managerCount: 189
+
+Therefore:
+
+- institutional production data exists
+- AAPL identity/data exists
+- database connectivity works
+- this is not remediation
+- this is not OpenFIGI
+- this is not ingestion
+- this is not missing institutional population
+
+The immediate defect is PostgreSQL syntax in the new canonical Stock View
+identity query.
+
+There is also:
+
+GET /api/institutional/v1/stocks/AAPL/trend
+→ HTTP 500 INTERNAL_ERROR
+
+Task #208 changed canonical authorization propagation for both Stock View
+and canonical trend holder loading, so inspect whether the trend failure
+shares the same SQL construction defect.
+
+OBJECTIVE
+
+Fix ONLY the proven SQL/runtime defect while preserving the canonical
+identity architecture established by Tasks #207/#208.
+
+STEP 1 — INSPECT FAILING SQL
+
+Inspect:
+
+loadStockCandidateIdentity
+
+and the exact SQL generated/executed by that function.
+
+Locate `target_cusips`.
+
+PostgreSQL reports:
+
+42601 syntax error at or near "target_cusips"
+
+Determine the exact syntax defect.
+
+Check specifically for malformed CTE construction such as:
+
+WITH ...
+target_cusips AS (...)
+
+where a comma is missing between CTEs,
+
+or incorrect placement of:
+
+target_cusips AS (...)
+VALUES
+unnest
+ANY
+IN
+
+Do not assume the example above is the cause.
+Inspect the actual generated SQL and prove the exact syntax error.
+
+STEP 2 — EXECUTE THE QUERY AGAINST REAL POSTGRESQL IN TEST
+
+The prior unit tests passed while production PostgreSQL rejected the SQL.
+
+Add a PostgreSQL-backed regression test that executes the exact query
+shape, not merely mocked repository behavior.
+
+The regression must fail with the current SQL and pass after correction.
+
+Test:
+
+single canonical CUSIP
+multiple canonical CUSIPs
+mapping-only canonical identity
+direct security-master identity
+
+STEP 3 — FIX THE SQL ONLY
+
+Make the smallest correction to the SQL construction.
+
+Do NOT:
+
+- revert canonical CUSIP authorization
+- restore ticker-only identity lookup
+- add AAPL/JPM/ORCL exceptions
+- modify institutional data
+- change mapping rules
+- change security-type rules
+- run remediation
+- run ingestion
+- run OpenFIGI
+- run APPLY
+
+Canonical Stock View identity must remain:
+
+requested symbol
+→ trusted canonical identity
+→ bounded canonical CUSIP set
+→ downstream institutional analytics
+
+STEP 4 — CHECK TREND QUERY
+
+Trace:
+
+GET /api/institutional/v1/stocks/:symbol/trend
+
+Determine whether its HTTP 500 is caused by the same malformed canonical
+CUSIP SQL contract.
+
+If YES:
+fix the shared SQL construction once so both paths are corrected.
+
+If NO:
+report the separate first proven trend failure, but do not expand this
+task into unrelated redesign.
+
+STEP 5 — PRESERVE ERROR SEMANTICS
+
+Real database/query failures must continue to produce sanitized
+UPSTREAM_ERROR/INTERNAL_ERROR responses as appropriate.
+
+Do not turn SQL failures into empty holdings, zero holders, UNMAPPED,
+NO_REPORTED_POSITION, or INSUFFICIENT_HISTORY.
+
+Keep the new server-only diagnostics.
+
+STEP 6 — REGRESSION COVERAGE
+
+Prove:
+
+direct security-master stock works
+mapping-only stock works
+multi-CUSIP stock works
+fund remains excluded
+unsupported remains excluded
+unknown identity fails closed
+genuine database failure remains an error
+canonical trend path works if affected by the same defect
+
+VALIDATION
+
+Run:
+
+PostgreSQL-backed regression test
+focused Stock View tests
+holder enrichment tests
+trend tests
+Task #187 availability tests
+Task #205/#207 resolver tests
+Task #206 reconciliation tests
+Task #208/#209 regression tests
+full institutional suite
+release suite
+production build
+git diff --check
+
+No production writes.
+No APPLY.
+No ingestion.
+
+RETURN ONLY
+
+EXACT SQL DEFECT
+
+WHY UNIT TESTS MISSED IT
+
+POSTGRESQL REGRESSION TEST
+
+STOCK VIEW FIX
+
+TREND FAILURE SAME ROOT CAUSE YES/NO
+
+TREND FIX if applicable
+
+CANONICAL CUSIP CONTRACT PRESERVED YES/NO
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then give exactly ONE post-deployment verification procedure:
+
+1. AAPL
+2. JPM
+3. ORCL
+4. AVGO
+5. TSLA
+
+Verify both:
+
+GET /api/institutional/v1/stocks/{symbol}?topN=20
+
+and, where applicable:
+
+GET /api/institutional/v1/stocks/{symbol}/trend
+
+Do not provide an APPLY command.

@@ -1,0 +1,248 @@
+Task #208 — Fix post-identity Stock View UPSTREAM_ERROR
+
+CURRENT PRODUCTION EVIDENCE
+
+Task #207 fixed the canonical identity divergence between the verifier
+and the actual Stock View runtime path.
+
+Before Task #207, ORCL returned:
+
+"ORCL is not in the institutional security master"
+"No canonical CUSIP identity is available for this symbol."
+
+After deployment, ORCL no longer returns that identity error.
+
+It now returns:
+
+"Institutional source data is temporarily unavailable.
+No holder counts are shown because the upstream result could not be verified."
+
+This proves ORCL is now getting past canonical identity resolution and is
+failing at a later Stock View stage.
+
+OBJECTIVE
+
+Trace the ACTUAL Stock View request after successful identity resolution
+and find the exact first downstream failure causing UPSTREAM_ERROR.
+
+Do not change canonical identity.
+Do not modify institutional mappings.
+Do not run remediation.
+Do not run OpenFIGI.
+Do not run ingestion.
+Do not perform production writes.
+Do not add ticker-specific fixes.
+
+ACTUAL ROUTE
+
+Frontend:
+
+GET /api/institutional/v1/stocks/{symbol}?topN=20
+
+Backend:
+
+GET /api/institutional/v1/stocks/:symbol
+
+Trace:
+
+route
+→ getStockInstitutionalAnalytics
+→ canonical identity resolution
+→ holdings
+→ quarterly aggregates
+→ prior-quarter comparison
+→ signal/trend
+→ holder detail
+→ availability classifier
+→ response serializer
+
+STEP 1 — FIND EXACT FAILURE
+
+Locate the exact backend branch that produces the UI state:
+
+"Institutional source data is temporarily unavailable"
+
+and/or availability:
+
+UPSTREAM_ERROR
+
+Determine the precise condition causing ORCL to reach that branch.
+
+Do not infer.
+
+Instrument/test the actual service/repository path.
+
+Report the first failing stage as exactly one of:
+
+IDENTITY
+CURRENT_PERIOD
+HOLDINGS
+AGGREGATES
+PRIOR_PERIOD
+SIGNAL
+TREND
+HOLDER_DETAILS
+DATA_QUALITY_VALIDATION
+SERIALIZATION
+OTHER
+
+STEP 2 — COMPARE WORKING VS FAILING PATH
+
+Compare one working normal symbol (AAPL) against one mapping-backed symbol
+that now passes identity but produces UPSTREAM_ERROR (ORCL).
+
+Compare only structural behavior:
+
+canonical CUSIPs
+current effective period selected
+current holdings query success
+aggregate lookup success
+signal lookup success
+prior-period lookup success
+holder-detail query success
+availability classification
+response serialization
+
+Do not create ticker-specific runtime behavior.
+
+STEP 3 — CHECK MULTI-CUSIP / MAPPING-ONLY ASSUMPTIONS
+
+Task #207 changed Stock View so canonical identity may come from trusted
+mapping-backed identity instead of direct security_master.ticker.
+
+Inspect every downstream query for an old assumption such as:
+
+security_master.ticker = requestedSymbol
+
+or:
+
+single security_master row
+single CUSIP
+direct ticker identity
+holding ticker = requestedSymbol
+
+After identity resolution, downstream institutional analytics must operate
+from the resolved canonical CUSIP identity set.
+
+The requested symbol is presentation/search identity.
+
+CUSIP identity is the institutional holdings identity.
+
+For a multi-CUSIP canonical symbol, downstream queries must use the full
+trusted canonical CUSIP set.
+
+STEP 4 — VERIFY MATERIALIZED DATA CONTRACT
+
+Production reconciliation already proved:
+
+canonicalStockEligibleSymbols = 1465
+aggregateBackedSymbols = 1465
+signalBackedSymbols = 1465
+
+Therefore do NOT classify a normal canonical aggregate/signal-backed
+symbol as UPSTREAM_ERROR merely because a downstream query still expects
+a direct security_master ticker match.
+
+Reconcile the actual Stock View downstream query with the same canonical
+CUSIP set used by production materialization.
+
+STEP 5 — FIX FIRST DIVERGENCE ONLY
+
+Once proven, make the smallest generic fix.
+
+Requirements:
+
+- canonical CUSIP set drives downstream institutional lookup
+- mapping-only identities work
+- direct security-master identities continue working
+- multi-CUSIP symbols work
+- common stock / REIT rules preserved
+- funds/unsupported securities remain excluded
+- no synthetic data
+- no guessed identity
+- no fallback to ticker matching
+- no ticker allowlist
+- no manual ORCL/JPM/AVGO special cases
+
+Preserve availability semantics:
+
+AVAILABLE
+PARTIAL
+INSUFFICIENT_HISTORY
+UNMAPPED
+UNSUPPORTED
+NO_REPORTED_POSITION
+UPSTREAM_ERROR
+
+UPSTREAM_ERROR must remain reserved for a genuine runtime/upstream
+verification failure, not a normal mapping-backed identity.
+
+STEP 6 — REGRESSION TEST
+
+Create synthetic fixtures for:
+
+A. direct security-master stock
+B. mapping-only stock
+C. mapping-only multi-CUSIP stock
+D. insufficient history
+E. no reported position
+F. fund
+G. unsupported security
+H. genuinely failing repository/upstream dependency
+
+Prove:
+
+mapping-only canonical stock does NOT become UPSTREAM_ERROR.
+
+Genuine dependency failure DOES become UPSTREAM_ERROR.
+
+VALIDATION
+
+Run:
+
+focused Stock View tests
+Task #187 availability tests
+Task #205/#207 resolver tests
+Task #206 reconciliation tests
+full institutional suite
+release suite
+production build
+git diff --check
+
+No production writes.
+No APPLY.
+No ingestion.
+
+RETURN ONLY
+
+IDENTITY RESOLUTION: PASS/FAIL
+
+FIRST FAILING STAGE
+
+EXACT FAILURE CONDITION
+
+WHY AAPL WORKED
+
+WHY MAPPING-BACKED SYMBOL FAILED
+
+GENERIC ROOT CAUSE
+
+FIX
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE post-deployment verification procedure using:
+
+AAPL
+JPM
+ORCL
+AVGO
+TSLA
+
+Do not provide an APPLY command.

@@ -243,6 +243,16 @@ export interface SecMetadataLoadOptions {
   onProgress?: (progress: { processedCiks: number; totalCiks: number; batchNumber: number }) => void;
 }
 
+export interface SecMetadataVerificationStatus {
+  unverifiedCiks: Set<string>;
+  secNotFoundCiks: Set<string>;
+  failures: SecSubmissionsFailureDetails[];
+}
+
+export function createSecMetadataVerificationStatus(): SecMetadataVerificationStatus {
+  return { unverifiedCiks: new Set(), secNotFoundCiks: new Set(), failures: [] };
+}
+
 export class HistoricalAuditBoundError extends Error {
   constructor(
     public readonly details: {
@@ -329,9 +339,17 @@ function buildSecSubmissionsFailure(cik: string, error: unknown): SecSubmissions
   });
 }
 
+function recordSecFailure(
+  status: SecMetadataVerificationStatus | undefined,
+  failure: SecSubmissionsFailureError,
+): void {
+  if (!status || status.failures.length >= MAX_EXAMPLES) return;
+  status.failures.push(failure.details);
+}
+
 export async function loadAuthoritativeSecMetadata(
   storedRows: StoredFilingMetadata[],
-  options: SecMetadataLoadOptions = {},
+  options: SecMetadataLoadOptions & { status?: SecMetadataVerificationStatus } = {},
 ): Promise<Map<string, AuthoritativeFilingMetadata[]>> {
   const maxCiks = options.maxCiks ?? HISTORICAL_AUDIT_DEFAULTS.maxCiks;
   const cikBatchSize = options.cikBatchSize ?? HISTORICAL_AUDIT_DEFAULTS.cikBatchSize;
@@ -371,7 +389,18 @@ export async function loadAuthoritativeSecMetadata(
       try {
         body = await fetchSec(request.url);
       } catch (error) {
-        throw buildSecSubmissionsFailure(request.cik, error);
+        const failure = buildSecSubmissionsFailure(request.cik, error);
+        if (failure.details.httpStatus === 404) {
+          // A missing filer endpoint is record-level source unavailability.
+          // Continue the bounded batch; the absent map entries classify those
+          // accessions as SOURCE_IDENTITY_NOT_VERIFIED.
+          options.status?.unverifiedCiks.add(request.cik);
+          options.status?.secNotFoundCiks.add(request.cik);
+          recordSecFailure(options.status, failure);
+          processedCiks++;
+          continue;
+        }
+        throw failure;
       }
       let payload: SecSubmissionsPayload;
       try {
@@ -393,7 +422,15 @@ export async function loadAuthoritativeSecMetadata(
         try {
           historyText = await fetchSec(submissionsHistoryUrl(fileName));
         } catch (error) {
-          throw buildSecSubmissionsFailure(cik, error);
+          const failure = buildSecSubmissionsFailure(cik, error);
+          if (failure.details.httpStatus === 404) {
+            // No alternate URL is invented. Remaining accessions are left
+            // without metadata and therefore fail closed during classification.
+            options.status?.unverifiedCiks.add(cik);
+            recordSecFailure(options.status, failure);
+            break;
+          }
+          throw failure;
         }
         let history: SecSubmissionsPayload;
         try {
@@ -408,6 +445,7 @@ export async function loadAuthoritativeSecMetadata(
           unresolved.delete(filing.canonicalAccession);
         }
       }
+      if (unresolved.size > 0) options.status?.unverifiedCiks.add(cik);
       processedCiks++;
     }
     options.onProgress?.({ processedCiks, totalCiks: byCik.size, batchNumber: batchNumber + 1 });
@@ -570,23 +608,29 @@ function sanitizedExamples(classified: ReturnType<typeof classifyStoredFilings>)
     .slice(0, MAX_EXAMPLES)
     .map((row) => ({
       accession: row.canonicalAccession,
+      canonicalCik: row.canonicalAccession.slice(0, 10),
       classification: row.classification,
       storedPeriodOfReport: row.periodOfReport,
       secPeriodOfReport: row.authoritative?.periodOfReport ?? null,
       storedFilingDate: row.filingDate,
       secFilingDate: row.authoritative?.filingDate ?? null,
       mismatches: row.mismatches,
+      reason: row.authoritative ? row.classification : "SEC_SUBMISSIONS_NOT_FOUND_OR_UNVERIFIED",
     }));
 }
 
 export async function runHistoricalPeriodAudit(
   executor: Executor,
-  authoritativeLoader: (rows: StoredFilingMetadata[]) => Promise<Map<string, AuthoritativeFilingMetadata[]>>,
+  authoritativeLoader: (
+    rows: StoredFilingMetadata[],
+    status: SecMetadataVerificationStatus,
+  ) => Promise<Map<string, AuthoritativeFilingMetadata[]>>,
   limits: Pick<HistoricalPeriodAuditArgs, "maxFilings" | "maxCiks" | "cikBatchSize"> =
     HISTORICAL_AUDIT_DEFAULTS,
 ) {
   const storedRows = await readStoredFilings(executor, limits);
-  const authoritative = await authoritativeLoader(storedRows);
+  const verificationStatus = createSecMetadataVerificationStatus();
+  const authoritative = await authoritativeLoader(storedRows, verificationStatus);
   const classified = classifyStoredFilings(storedRows, authoritative);
   const summary = summarizeFilingAudit(classified);
   const plan = buildHistoricalFilingRepairPlan(storedRows, authoritative);
@@ -608,7 +652,12 @@ export async function runHistoricalPeriodAudit(
       currentPathAffected: false,
       evidence: "Legacy per-filing XML ingestion assigned targetPeriodOfReport to filing and holding rows; current bulk ingestion derives PERIODOFREPORT from accession-scoped SEC submission rows.",
     },
-    audit: summary,
+    audit: {
+      ...summary,
+      unverifiedCiks: verificationStatus.unverifiedCiks.size,
+      secNotFoundCiks: verificationStatus.secNotFoundCiks.size,
+      secSubmissionFailures: verificationStatus.failures,
+    },
     downstreamImpact: impact,
     repairPlan: {
       planHash: plan.planHash,
@@ -786,9 +835,10 @@ async function main(args = process.argv.slice(2)): Promise<void> {
     }
     const result = await runHistoricalPeriodAudit(
       db as unknown as Executor,
-      (rows) => loadAuthoritativeSecMetadata(rows, {
+      (rows, status) => loadAuthoritativeSecMetadata(rows, {
         maxCiks: options.maxCiks,
         cikBatchSize: options.cikBatchSize,
+        status,
         onProgress: (progress) => {
           if (process.env.HISTORICAL_AUDIT_PROGRESS === "1") {
             console.error(JSON.stringify(progress));

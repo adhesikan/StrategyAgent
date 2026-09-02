@@ -3,18 +3,23 @@ import {
   buildHistoricalAuditReadOnlyUrl,
   buildSecSubmissionsRequest,
   chunkCanonicalCiks,
+  createSecMetadataVerificationStatus,
   extractAuthoritativeSecFilings,
   getHistoricalRepairApplyGuardIssues,
   HistoricalAuditBoundError,
   loadAuthoritativeSecMetadata,
   parseHistoricalPeriodAuditArgs,
   runHistoricalPeriodAudit,
+  SecSubmissionsFailureError,
   validateHistoricalAuditBounds,
   validateHistoricalPeriodAuditEnvironment,
-  SecSubmissionsFailureError,
 } from "./audit-repair-production-13f-periods";
 import { SecHttpError, submissionsHistoryUrl, submissionsUrl } from "../server/services/institutional/sec-client";
-import { buildHistoricalFilingRepairPlan } from "../server/services/institutional/historical-filing-period-repair";
+import {
+  buildHistoricalFilingRepairPlan,
+  classifyStoredFilings,
+  summarizeFilingAudit,
+} from "../server/services/institutional/historical-filing-period-repair";
 
 describe("historical filing-period production audit", () => {
   it("defaults to dry-run and requires explicit apply arguments", () => {
@@ -183,6 +188,91 @@ describe("historical filing-period production audit", () => {
     expect(progress).toEqual(Array.from({ length: 11 }, (_, index) => index + 1));
   });
 
+  it("continues after one CIK 404 and preserves later CIK metadata", async () => {
+    const rows = ["000000000126000001", "000000000226000001"].map((accession, index) => ({
+      id: `row-${index}`,
+      rawAccession: accession,
+      filerCik: accession.slice(0, 10),
+      filingDate: "2026-05-15",
+      periodOfReport: "2026-03-31",
+      filingType: "13F-HR",
+      amendmentFlag: false,
+      isEffective: true,
+    }));
+    const status = createSecMetadataVerificationStatus();
+    const fetchSec = vi.fn(async (url: string) => {
+      if (url.includes("CIK0000000001")) {
+        throw new SecHttpError(404, url);
+      }
+      return JSON.stringify({
+        filings: {
+          recent: {
+            accessionNumber: ["0000000002-26-000001"],
+            filingDate: ["2026-05-15"],
+            reportDate: ["2026-03-31"],
+            form: ["13F-HR"],
+          },
+          files: [],
+        },
+      });
+    });
+    const metadata = await loadAuthoritativeSecMetadata(rows, {
+      fetchSec,
+      status,
+      cikBatchSize: 100,
+    });
+    const classified = classifyStoredFilings(rows, metadata);
+    expect(metadata.has("000000000226000001")).toBe(true);
+    expect(classified.find((row) => row.canonicalAccession === "000000000126000001")?.classification)
+      .toBe("SOURCE_IDENTITY_NOT_VERIFIED");
+    expect(classified.find((row) => row.canonicalAccession === "000000000226000001")?.classification)
+      .toBe("VALID_SEC_IDENTITY_AND_PERIOD");
+    expect(status.unverifiedCiks).toEqual(new Set(["0000000001"]));
+    expect(status.secNotFoundCiks).toEqual(new Set(["0000000001"]));
+  });
+
+  it("counts multiple SEC 404 CIKs as unverified without discarding the audit", async () => {
+    const rows = ["000000000126000001", "000000000226000001", "000000000326000001"].map((accession, index) => ({
+      id: `row-${index}`,
+      rawAccession: accession,
+      filerCik: accession.slice(0, 10),
+      filingDate: "2026-05-15",
+      periodOfReport: "2026-03-31",
+      filingType: "13F-HR",
+      amendmentFlag: false,
+      isEffective: true,
+    }));
+    const status = createSecMetadataVerificationStatus();
+    const result = await loadAuthoritativeSecMetadata(rows, {
+      fetchSec: vi.fn(async (url: string) => {
+        throw new SecHttpError(404, url);
+      }),
+      status,
+    });
+    const summary = summarizeFilingAudit(classifyStoredFilings(rows, result));
+    expect(summary.unverifiedAccessions).toBe(3);
+    expect(status.unverifiedCiks.size).toBe(3);
+    expect(status.secNotFoundCiks.size).toBe(3);
+  });
+
+  it("keeps malformed URL and non-404 transport failures fatal", async () => {
+    expect(() => buildSecSubmissionsRequest("not-a-cik")).toThrow(SecSubmissionsFailureError);
+    await expect(loadAuthoritativeSecMetadata([{
+      id: "row-1",
+      rawAccession: "000000000126000001",
+      filerCik: "0000000001",
+      filingDate: "2026-05-15",
+      periodOfReport: "2026-03-31",
+      filingType: "13F-HR",
+      amendmentFlag: false,
+      isEffective: true,
+    }], {
+      fetchSec: vi.fn(async () => {
+        throw new Error("transport unavailable");
+      }),
+    })).rejects.toBeInstanceOf(SecSubmissionsFailureError);
+  });
+
   it("returns structured population details when the CIK cap is exceeded", async () => {
     const rows = Array.from({ length: 1001 }, (_, index) => {
       const cik = String(index + 1).padStart(10, "0");
@@ -210,7 +300,7 @@ describe("historical filing-period production audit", () => {
     } satisfies Partial<HistoricalAuditBoundError["details"]>);
   });
 
-  it("distinguishes a genuine SEC 404 from URL construction failure", async () => {
+  it("records a genuine SEC 404 structurally without aborting the audit", async () => {
     const row = {
       id: "row-1",
       rawAccession: "000000000126000001",
@@ -221,13 +311,15 @@ describe("historical filing-period production audit", () => {
       amendmentFlag: false,
       isEffective: true,
     };
-    const failure = await loadAuthoritativeSecMetadata([row], {
+    const status = createSecMetadataVerificationStatus();
+    const metadata = await loadAuthoritativeSecMetadata([row], {
       fetchSec: vi.fn(async () => {
         throw new SecHttpError(404, "https://data.sec.gov/submissions/CIK0000000001.json");
       }),
-    }).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(SecSubmissionsFailureError);
-    expect((failure as SecSubmissionsFailureError).details).toEqual({
+      status,
+    });
+    expect(metadata.size).toBe(0);
+    expect(status.failures[0]).toEqual({
       error: "SEC_SUBMISSIONS_FETCH_FAILED",
       stage: "SEC_SUBMISSIONS_FETCH",
       cik: "0000000001",

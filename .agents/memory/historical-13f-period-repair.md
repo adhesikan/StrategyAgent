@@ -12,3 +12,5 @@ Historical filing identity and period corrections must be derived from a unique 
 For production-wide verification, count the filing population before loading rows, enforce finite filing/CIK/batch ceilings, sort and deduplicate CIKs, and process SEC submissions serially in bounded batches. A cap failure must report actual filings and unique CIKs without exposing rows or secrets.
 
 SEC errors must be sanitized structurally, not by splitting messages on punctuation: URLs contain colons, so message splitting can falsely make a valid request appear truncated.
+
+A genuine SEC submissions 404 is record-level source unavailability: preserve successful CIK metadata, leave missing accessions unverified, record bounded sanitized status, and continue. Transport, parsing, malformed URL, and cancellation failures remain fatal.

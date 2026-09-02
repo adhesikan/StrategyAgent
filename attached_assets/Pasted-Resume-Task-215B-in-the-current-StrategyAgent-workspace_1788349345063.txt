@@ -1,0 +1,106 @@
+Resume Task #215B in the current StrategyAgent workspace.
+
+Context:
+The production historical 13F dry-run correctly found a very large data gap, but the process crashed with Node heap OOM while parsing ~3,026,705 holding rows for 2024-Q1.
+
+Do not restart prior diagnostics.
+Do not investigate SVM/FLYW or public-dashboard.tsx.
+Do not change unrelated UI code.
+Do not run production APPLY.
+Do not increase Node heap as the primary fix.
+
+Continue only the memory-bounded historical backfill work.
+
+OBJECTIVE
+
+Refactor the existing SEC 13F historical backfill path so DRY_RUN and APPLY can process multi-million-row quarterly archives within the current Railway memory allocation.
+
+REQUIREMENTS
+
+1. Preserve the existing accepted pipeline:
+SEC catalog
+→ archive retrieval
+→ parser
+→ persistence
+→ effective filing selection
+→ canonical materialization
+
+2. Do not create a parallel ingestion path.
+
+3. The INFOTABLE parser must not retain the complete quarter’s holdings in memory.
+
+4. Use streaming or bounded chunk processing.
+
+5. Avoid unbounded arrays, maps, Promise.all, or buffering of all parsed holdings.
+
+6. Dry-run should compute only bounded counters/state:
+- sourceFilings
+- sourceHoldingRows
+- filingsAlreadyPresent
+- filingsToInsert
+- filingsPotentiallyUpdated
+- amendmentsToReconcile
+- estimatedHoldingRowsToProcess
+
+7. APPLY must use the same bounded parsing mechanism and persist in bounded batches.
+
+8. Existing production data comparisons should use database-side queries or bounded lookups rather than loading the entire production holding population into memory.
+
+9. Preserve:
+- amendment semantics
+- effective filings
+- canonical USD
+- CUSIP-based comparisons
+- put/call separation
+- PRN exclusion
+- positive-share eligibility
+- trusted identity
+- stock eligibility
+- idempotency
+- resumability
+- advisory locking
+
+10. Add CLI-only memory instrumentation per quarter:
+- heapUsedMBStart
+- heapUsedMBPeak
+- heapUsedMBEnd
+- batchCount
+
+11. The target is that this command completes for all seven quarters without OOM under the current Railway memory allocation:
+
+NODE_ENV=production RAILWAY_ENVIRONMENT_NAME=production npx tsx scripts/run-institutional-backfill.ts --from-quarter 2024-Q1 --to-quarter 2025-Q3
+
+12. Do not run that production command yourself if the environment is not available.
+Do not provide or execute an APPLY command.
+
+TESTS
+
+Add tests for:
+- very large synthetic holding population handled in bounded batches
+- no complete holding-array accumulation
+- dry-run count correctness
+- partial existing quarter
+- fully missing quarter
+- no-change quarter
+- amendments
+- malformed archive fail-closed behavior
+- resources released between quarters
+- APPLY and DRY_RUN sharing the same bounded parser
+
+RETURN ONLY
+
+ROOT CAUSE OF OOM
+
+MEMORY-BOUNDED FIX
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE command for me to rerun the production dry-run for 2024-Q1 through 2025-Q3.
+
+Do not provide an APPLY command.

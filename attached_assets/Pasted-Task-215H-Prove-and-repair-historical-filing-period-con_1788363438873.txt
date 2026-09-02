@@ -1,0 +1,213 @@
+Task #215H — Prove and repair historical filing-period contamination
+
+Continue from implementation commit:
+
+9e481a9c20b8e4892dbf91b92fdf0f214e1f8171
+
+Production reconciliation has now shown:
+
+existingRows: 308
+existingCanonicalAccessions: 218
+sourceCanonicalAccessions for 2024-Q1..2025-Q3: 59,375
+normalizedOverlap: 0
+
+Existing production examples include records such as:
+
+accession year: 2026
+filingDate: 2026-02 / 2026-05
+periodOfReport: 2024-03-31
+
+There are also:
+
+90 canonical collision groups
+all classified DASHED_VS_UNDASHED
+
+DO NOT RUN HISTORICAL BACKFILL APPLY.
+
+OBJECTIVE
+
+Determine exactly how 2026 SEC filings/accessions became associated with
+2024/2025 historical reporting periods in institutional_13f_filings, then
+prepare the smallest safe generic production repair.
+
+This is NOT another accession-format investigation.
+
+PART 1 — TRACE THE WRITE PATH
+
+Trace every code path that can persist:
+
+institutional_13f_filings.period_of_report
+institutional_13f_filings.filing_date
+institutional_13f_filings.accession_number
+
+Determine whether any current or historical-compatible path:
+
+- substitutes the requested quarter/report period for parsed PERIODOFREPORT
+- overwrites parsed report period
+- joins SUBMISSION rows to the wrong filing/accession
+- carries a period value across batches
+- reuses stale quarter context
+- mismatches accession/header/coverpage rows
+- mutates period during amendment reconciliation
+
+Identify the exact proven cause if it remains present in current code.
+
+PART 2 — PRODUCTION-WIDE READ-ONLY CONTAMINATION AUDIT
+
+Build/run a bounded read-only audit over institutional_13f_filings.
+
+Do not restrict diagnosis to individual tickers.
+
+For every production filing, classify into:
+
+VALID_SEC_IDENTITY_AND_PERIOD
+CANONICAL_DUPLICATE
+PERIOD_MISMATCH
+SOURCE_IDENTITY_NOT_VERIFIED
+OTHER_INVALID
+
+Where feasible, verify the existing accession against authoritative SEC
+metadata using accession identity and obtain its actual:
+
+accession
+CIK
+filing date
+form
+PERIODOFREPORT
+amendment status
+
+There are only a few hundred current production filing rows, so this should
+remain bounded.
+
+Return counts only plus at most 10 sanitized examples.
+
+Specifically report:
+
+totalRows
+canonicalUniqueAccessions
+canonicalDuplicateRows
+verifiedAgainstSEC
+periodMatchesSEC
+periodMismatchesSEC
+filingDateMismatchesSEC
+managerCikMismatchesSEC
+unverifiedAccessions
+
+Also report mismatches grouped by currently stored report quarter.
+
+PART 3 — DETERMINE IMPACT
+
+For contaminated filing rows, report read-only counts of dependent:
+
+holdings
+effective filings
+quarterly aggregates
+signals
+sector snapshots
+theme snapshots
+
+Determine whether those downstream rows were generated from contaminated
+filings.
+
+Do not modify anything.
+
+PART 4 — FIX CURRENT INGESTION FIRST
+
+If a current code path can still produce incorrect period assignments, fix
+that generic bug before designing data repair.
+
+The authoritative reporting period must come from the filing's SEC
+PERIODOFREPORT.
+
+The requested catalog quarter may select which archive to process but must
+never overwrite filing-level SEC report-period identity.
+
+Preserve amendment and effective-filing semantics.
+
+PART 5 — GUARDED LEGACY DATA REPAIR PLAN
+
+If production contamination is proven, create ONE guarded migration/repair
+planner.
+
+DRY_RUN by default.
+
+It must:
+
+- operate from canonical SEC accession identity
+- correct a filing only when authoritative SEC metadata uniquely proves the
+  correct values
+- canonicalize dashed/undashed duplicate accessions safely
+- preserve one canonical filing identity
+- preserve/reassociate valid holdings when provably safe
+- otherwise quarantine/replay the affected accession through the existing
+  canonical ingestion path
+- recompute effectiveness after repair
+- rebuild downstream materialization only for affected report periods
+- remain idempotent and resumable
+- use advisory locking
+- require explicit --apply
+- never guess metadata
+- never touch rows that cannot be uniquely verified
+
+Do NOT execute the repair.
+
+Do NOT execute historical backfill.
+
+PART 6 — ACCEPTANCE
+
+After the proposed repair, the expected state must be:
+
+- no canonical accession duplicates
+- stored filing metadata agrees with authoritative SEC metadata
+- no requested-quarter substitution
+- contaminated downstream data identified for deterministic rebuild
+- historical backfill can subsequently ingest the genuine
+  2024-Q1..2025-Q3 SEC population without collision
+
+TESTS
+
+Add focused tests for:
+
+- requested quarter cannot override PERIODOFREPORT
+- 2026 filing cannot silently inherit a 2024 requested period
+- accession/header joins remain accession-scoped
+- batch context cannot leak periods
+- dashed/undashed legacy duplicate repair
+- authoritative metadata correction
+- ambiguous/unverified records fail closed
+- downstream rebuild scope
+- repair idempotency
+- dry-run performs zero writes
+
+Do not reopen:
+
+OpenFIGI
+security mappings
+asset-type repair
+Stock View
+trend runtime
+ticker-specific debugging
+
+RETURN ONLY
+
+ROOT CAUSE
+
+PRODUCTION CONTAMINATION AUDIT
+
+DOWNSTREAM IMPACT
+
+CURRENT INGESTION FIX
+
+LEGACY REPAIR DESIGN
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+Then provide exactly ONE read-only production audit/dry-run command.
+
+Do not provide an APPLY command.

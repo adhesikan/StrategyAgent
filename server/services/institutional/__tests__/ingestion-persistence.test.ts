@@ -257,6 +257,55 @@ describe("Institutional 13F — Persistence Waterfall", () => {
       expect(classifyAccessionPersistence(true, 2_001, 2_000)).toBe("write");
       expect(classifyAccessionPersistence(false, 0, 2_000)).toBe("write");
     });
+
+    it("stops after the current persistence batch and releases the advisory lock on cancellation", async () => {
+      const parser = await import("../sec-13f-bulk-parser");
+      const streamMock = vi.mocked(parser.streamPreparedBulkArchive);
+      const defaultImplementation = streamMock.getMockImplementation()!;
+      const source = makeSuccess(1);
+      mockParseBulkFromDescriptor.mockResolvedValue(source);
+      setupSelectReturning([]);
+      setupInsertReturning();
+      const capturedUpdates: any[] = [];
+      setupUpdateCapture(capturedUpdates);
+
+      streamMock
+        .mockImplementationOnce(async (_archive, _descriptor, options) => {
+          await options.onBatch(source.holdings, {
+            accessionNumber: source.holdings[0].accessionNumber,
+            accessionComplete: true,
+          });
+          const { holdings: _holdings, ...result } = source;
+          return result;
+        })
+        .mockImplementationOnce(async (_archive, _descriptor, options) => {
+          await options.onBatch(source.holdings, {
+            accessionNumber: source.holdings[0].accessionNumber,
+            accessionComplete: false,
+          });
+          return {
+            status: "failed",
+            failureCode: "CANCELLED",
+            reason: "CANCELLED",
+            diagnostics: source.diagnostics,
+          };
+        });
+
+      try {
+        const { runInstitutionalIngestion } = await import("../ingestion-service");
+        const result = await runInstitutionalIngestion({
+          initiatedBy: "test",
+          specificDescriptors: [makeDescriptor("2026-Q1")],
+        });
+
+        expect(result.status).toBe("partial");
+        expect(streamMock).toHaveBeenCalledTimes(2);
+        expect(db.execute).toHaveBeenCalledTimes(2);
+        expect(capturedUpdates.some((update) => update.errorCode === "INGESTION_ABORTED_TIMEOUT")).toBe(true);
+      } finally {
+        streamMock.mockImplementation(defaultImplementation);
+      }
+    });
   });
 
   afterEach(() => {

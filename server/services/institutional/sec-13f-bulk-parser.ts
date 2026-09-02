@@ -2288,12 +2288,23 @@ function zipEntryTextStream(
     },
   });
   const result = decompressed.pipe(integrity);
+  const forwardError = (error: Error) => result.destroy(error);
+  source.on("error", forwardError);
+  if (decompressed !== source) decompressed.on("error", forwardError);
   if (signal) {
-    const abort = () => result.destroy(cancellationError());
+    const abort = () => {
+      source.destroy();
+      if (decompressed !== source) decompressed.destroy();
+      result.destroy();
+    };
     if (signal.aborted) abort();
     else {
       signal.addEventListener("abort", abort, { once: true });
-      result.once("close", () => signal.removeEventListener("abort", abort));
+      result.once("close", () => {
+        signal.removeEventListener("abort", abort);
+        source.removeListener("error", forwardError);
+        if (decompressed !== source) decompressed.removeListener("error", forwardError);
+      });
     }
   }
   return result;
@@ -2402,6 +2413,7 @@ export async function streamBulkQuarterFromBuffer(
       const emitted = batch;
       batch = [];
       await options.onBatch(emitted, { accessionNumber: currentAccession, accessionComplete });
+      if (options.signal?.aborted) throw cancellationError();
     };
     const infoStream = zipEntryTextStream(buffer, infoResolve.entry, options.signal);
     const lineReader = createInterface({ input: infoStream, crlfDelay: Infinity });
@@ -2443,6 +2455,7 @@ export async function streamBulkQuarterFromBuffer(
       lineReader.close();
       infoStream.destroy();
     }
+    if (options.signal?.aborted) throw cancellationError();
     await flush(true);
     const coverJoins = subRows.reduce((count, row) => count + (cover.has(row.accessionNumber) ? 1 : 0), 0);
     const diagnostics: BulkParseDiagnostics = {

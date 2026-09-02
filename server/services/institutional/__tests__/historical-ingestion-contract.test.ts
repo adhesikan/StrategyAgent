@@ -74,6 +74,24 @@ describe("bounded historical INFOTABLE streaming", () => {
     return zip.toBuffer();
   }
 
+  function mutateCentralEntry(
+    archive: Buffer,
+    entryName: string,
+    mutate: (buffer: Buffer, centralOffset: number, localOffset: number) => void,
+  ): Buffer {
+    const buffer = Buffer.from(archive);
+    for (let offset = 0; offset <= buffer.length - 46; offset++) {
+      if (buffer.readUInt32LE(offset) !== 0x02014b50) continue;
+      const nameLength = buffer.readUInt16LE(offset + 28);
+      const name = buffer.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+      if (name === entryName) {
+        mutate(buffer, offset, buffer.readUInt32LE(offset + 42));
+        return buffer;
+      }
+    }
+    throw new Error(`Missing central entry ${entryName}`);
+  }
+
   it("processes high-volume-like input with serial bounded batches and no full population result", async () => {
     const accessions = Array.from({ length: 250 }, (_, index) =>
       `${String(index + 1).padStart(10, "0")}-24-${String(index + 1).padStart(6, "0")}`,
@@ -106,6 +124,83 @@ describe("bounded historical INFOTABLE streaming", () => {
     expect(maxActive).toBe(1);
     expect("holdings" in result).toBe(false);
   }, 20_000);
+
+  it("validates streamed CRC and uncompressed size for a valid archive", async () => {
+    const result = await streamBulkQuarterFromBuffer(
+      makeArchive(["0000000001-24-000001"], 3),
+      2024,
+      1,
+      { onBatch() {} },
+    );
+    expect(result.status).toBe("success");
+  });
+
+  it("fails closed on a streamed CRC mismatch", async () => {
+    const archive = mutateCentralEntry(
+      makeArchive(["0000000001-24-000001"], 3),
+      "INFOTABLE.tsv",
+      (buffer, centralOffset) => buffer.writeUInt32LE((buffer.readUInt32LE(centralOffset + 16) ^ 0xffffffff) >>> 0, centralOffset + 16),
+    );
+    const result = await streamBulkQuarterFromBuffer(archive, 2024, 1, { onBatch() {} });
+    expect(result).toMatchObject({ status: "failed", failureCode: "SOURCE_INTEGRITY_FAILURE" });
+  });
+
+  it("fails closed when declared uncompressed size is wrong", async () => {
+    const archive = mutateCentralEntry(
+      makeArchive(["0000000001-24-000001"], 3),
+      "INFOTABLE.tsv",
+      (buffer, centralOffset) => buffer.writeUInt32LE(buffer.readUInt32LE(centralOffset + 24) + 1, centralOffset + 24),
+    );
+    const result = await streamBulkQuarterFromBuffer(archive, 2024, 1, { onBatch() {} });
+    expect(result).toMatchObject({ status: "failed", failureCode: "SOURCE_INTEGRITY_FAILURE" });
+  });
+
+  it("fails closed on truncated or malformed compressed entry data", async () => {
+    const archive = mutateCentralEntry(
+      makeArchive(["0000000001-24-000001"], 100),
+      "INFOTABLE.tsv",
+      (buffer, centralOffset) => buffer.writeUInt32LE(buffer.readUInt32LE(centralOffset + 20) - 2, centralOffset + 20),
+    );
+    const result = await streamBulkQuarterFromBuffer(archive, 2024, 1, { onBatch() {} });
+    expect(result).toMatchObject({ status: "failed", failureCode: "SOURCE_INTEGRITY_FAILURE" });
+  });
+
+  it("fails closed when compressed entry bytes are malformed", async () => {
+    const archive = mutateCentralEntry(
+      makeArchive(["0000000001-24-000001"], 100),
+      "INFOTABLE.tsv",
+      (buffer, centralOffset, localOffset) => {
+        const nameLength = buffer.readUInt16LE(localOffset + 26);
+        const extraLength = buffer.readUInt16LE(localOffset + 28);
+        const dataOffset = localOffset + 30 + nameLength + extraLength;
+        const compressedSize = buffer.readUInt32LE(centralOffset + 20);
+        const mutationOffset = dataOffset + Math.floor(compressedSize / 2);
+        buffer[mutationOffset] ^= 0xff;
+      },
+    );
+    const result = await streamBulkQuarterFromBuffer(archive, 2024, 1, { onBatch() {} });
+    expect(result).toMatchObject({ status: "failed", failureCode: "SOURCE_INTEGRITY_FAILURE" });
+  });
+
+  it("stops emitting batches when cancellation occurs during parsing", async () => {
+    const controller = new AbortController();
+    let batches = 0;
+    const result = await streamBulkQuarterFromBuffer(
+      makeArchive(["0000000001-24-000001"], 5_000),
+      2024,
+      1,
+      {
+        batchSize: 100,
+        signal: controller.signal,
+        onBatch() {
+          batches++;
+          controller.abort();
+        },
+      },
+    );
+    expect(result).toMatchObject({ status: "failed", failureCode: "CANCELLED" });
+    expect(batches).toBe(1);
+  });
 
   it("fails closed when an accession reappears after another accession", async () => {
     const a = "0000000001-24-000001";

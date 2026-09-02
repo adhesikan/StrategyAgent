@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { secFetch, secFetchDetailed } from "../sec-client";
+import { secFetch, secFetchBufferDetailed, secFetchDetailed } from "../sec-client";
 
 const originalAgent = process.env.SEC_USER_AGENT;
 afterEach(() => {
@@ -42,5 +42,28 @@ describe("SEC detailed byte decoding", () => {
     expect(await secFetchDetailed("https://www.sec.gov/unsupported")).toMatchObject({
       detectedEncoding: "ISO-8859-1", decodingError: true,
     });
+  });
+
+  it("cancels an in-flight archive download without retrying", async () => {
+    process.env.SEC_USER_AGENT = "Diagnostic test@example.com";
+    const controller = new AbortController();
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        if (init?.signal?.aborted) {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+          return;
+        }
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        }, { once: true });
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const download = secFetchBufferDetailed("https://www.sec.gov/archive.zip", controller.signal);
+    controller.abort();
+
+    await expect(download).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

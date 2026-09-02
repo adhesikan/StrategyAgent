@@ -1,0 +1,120 @@
+Task #215G — Fix SEC source failure in production accession reconciler
+
+Continue from commit:
+
+ea9f35bd40dd5949445e3655bd935c6c898e68cc
+
+Production execution of:
+
+npx tsx scripts/reconcile-production-13f-accessions.ts \
+  --from-quarter 2024-Q1 \
+  --to-quarter 2025-Q3
+
+returned only:
+
+{"error":"SEC_SOURCE_FAILED"}
+
+DO NOT:
+- modify production data
+- run APPLY
+- redesign ingestion
+- reopen mapping/OpenFIGI/identity/Stock View work
+- create a second SEC retrieval implementation
+
+OBJECTIVE
+
+Find and fix the exact reason the new production accession reconciler fails to
+read SEC source metadata while the existing historical backfill dry-run can
+successfully resolve/download/parse the same seven SEC catalog archives.
+
+The reconciler MUST reuse the same proven SEC catalog/retrieval/parser path
+used by:
+
+scripts/run-institutional-backfill.ts
+
+Do not independently reconstruct URLs or source behavior.
+
+FIRST
+
+Trace the failure to one exact stage:
+
+CATALOG_RESOLUTION
+DOWNLOAD
+HTTP_RESPONSE
+ARCHIVE_OPEN
+SUBMISSION_PARSE
+METADATA_JOIN
+CANCELLATION
+OTHER
+
+Expose a safe structured error containing only:
+
+error
+stage
+quarter
+httpStatus if available
+contentType if available
+safeMessage
+
+Never print credentials, DATABASE_URL, tokens, hosts containing secrets, or
+raw response bodies.
+
+THEN
+
+If the reconciler is using a different source-loading path than the accepted
+historical backfill, replace that code with the existing shared catalog /
+retrieval / streaming parser APIs.
+
+The reconciler needs filing metadata only. It must not parse or retain
+22+ million holding rows.
+
+Use SUBMISSION/COVERPAGE metadata needed for:
+
+accession
+manager CIK
+report period
+filing date
+form/amendment status
+
+Do not process INFOTABLE holdings unless an existing shared parser contract
+requires it; if so, add/use a bounded metadata-only mode rather than loading
+holdings.
+
+Preserve:
+- catalog-only SEC source resolution
+- canonical 18-digit accession normalization
+- read-only production behavior
+- bounded memory
+- production guards
+
+TESTS
+
+Add focused tests proving:
+
+- reconciler uses the same catalog/source resolver as historical backfill
+- metadata-only SEC parsing succeeds
+- SEC failure reports exact safe stage
+- no holdings are materialized for reconciliation
+- canonical accession comparison still works
+- no production write statements are possible
+
+Run focused tests, institutional suite, build, git diff --check.
+
+RETURN ONLY
+
+ROOT CAUSE
+
+FIX
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+If blocker is NO, provide exactly ONE command to rerun the production
+accession reconciler for 2024-Q1 through 2025-Q3.
+
+Do not provide an APPLY command.

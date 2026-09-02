@@ -39,7 +39,7 @@ const MCP_SYSTEM_RULES = `Live-data tools:
 - Never invent current market prices, VCP scores, or portfolio positions.
 - Never claim a tool was called unless you actually received a successful tool result.
 - If a tool result contains an error code (e.g. MCP_TOOL_ERROR), tell the user that live data is temporarily unavailable — do not substitute stale knowledge for the requested live data and do not fabricate values.
-- Trading execution is not available through these tools. Never claim an order was placed; actual trading is user-directed through InstaTrade.`;
+- Trading execution is not available through these tools. Never claim an order was placed; actual trading is user-directed through InstaTrade®.`;
 
 // Compact, human-readable trade ticket returned alongside the AI prose so
 // users see real strikes/expiry/credit instead of a vague suggestion. Every
@@ -776,7 +776,7 @@ function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): A
   if (intent === "growth") {
     return {
       headline: "Grow Mode walks you through a goal-based plan.",
-      answer: "Tell us your starting capital, time horizon, and risk tolerance. The Strategy Agent ranks candidate scenarios with a probability grade, R/R, and a plain-English why. Every order is reviewed by you before it leaves InstaTrade™.",
+      answer: "Tell us your starting capital, time horizon, and risk tolerance. The Strategy Agent ranks candidate scenarios with a probability grade, R/R, and a plain-English why. Every order is reviewed by you before it leaves InstaTrade®.",
       keyPoints: ["Set capital and goal", "Pick risk per trade", "Review every order before sending"],
       riskNote: "Past performance does not predict future results.",
       confidence: "medium",

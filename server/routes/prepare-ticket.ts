@@ -4,8 +4,8 @@
 // Flow contract (do not weaken):
 //   - Only runs when the USER explicitly clicks the card action.
 //   - Output only prefills the Trade Builder; the user must review all
-//     fields, edit if desired, explicitly continue (Send to InstaTrade),
-//     and explicitly confirm inside the InstaTrade ticket.
+//     fields, edit if desired, explicitly continue (Send to InstaTrade®),
+//     and explicitly confirm inside the InstaTrade® ticket.
 //   - Nothing here submits an order, and nothing opens the Trade Builder
 //     automatically — navigation happens client-side on the user's click.
 //

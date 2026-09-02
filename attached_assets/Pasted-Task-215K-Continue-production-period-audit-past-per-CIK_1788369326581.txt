@@ -1,0 +1,156 @@
+Task #215K — Continue production period audit past per-CIK SEC 404s
+
+Continue from clean commit:
+
+3f29922bc05fbbb33407b82053a7d8ae9ae7be4f
+
+Production audit now runs the correct deployed code and returned:
+
+{
+  "error":"SEC_SUBMISSIONS_FETCH_FAILED",
+  "stage":"SEC_SUBMISSIONS_FETCH",
+  "cik":"0000891836",
+  "httpStatus":404,
+  "safeMessage":"SEC_SUBMISSIONS_NOT_FOUND"
+}
+
+DO NOT:
+- modify production data
+- run repair APPLY
+- run historical backfill
+- change SEC networking or User-Agent
+- reopen URL construction
+- reopen accession normalization
+- reopen mappings/OpenFIGI/Stock View work
+
+OBJECTIVE
+
+Make the production-wide filing-period contamination audit complete even when
+an individual filer CIK has no SEC submissions metadata endpoint result.
+
+A genuine per-CIK SEC 404 is a record-level verification outcome, not a
+population-wide fatal error.
+
+REQUIRED SEMANTICS
+
+For an individual canonical CIK:
+
+HTTP 404 / SEC_SUBMISSIONS_NOT_FOUND:
+- do not abort the entire audit
+- classify filings for that CIK as SOURCE_IDENTITY_NOT_VERIFIED
+- increment unverifiedAccessions / unverified filing counts
+- continue with remaining CIK batches
+
+Preserve fail-closed behavior for systemic failures.
+
+Examples that SHOULD still abort the audit:
+- malformed URL
+- invalid canonical CIK generated internally
+- rate-limit exhaustion after bounded retries if existing policy treats this as fatal
+- network/transport failure that prevents reliable audit completion
+- SEC response format/parsing failure
+- cancellation
+- database failure
+
+Do not silently downgrade all SEC errors to unverified.
+
+PART 1 — CHECK HISTORICAL SUBMISSIONS FALLBACK
+
+Before classifying a CIK as unverified, determine whether the canonical SEC
+submissions metadata response references historical submission files that
+must also be consulted for older filings.
+
+Reuse the existing SEC submissions helpers.
+
+If the main submissions endpoint genuinely returns 404, there may be no
+historical-file index to follow; in that case classify the CIK as unverified.
+
+Do not invent alternate SEC URLs.
+
+PART 2 — AUDIT OUTPUT
+
+The final audit must still report:
+
+totalRows
+canonicalUniqueAccessions
+canonicalDuplicateRows
+verifiedAgainstSEC
+periodMatchesSEC
+periodMismatchesSEC
+filingDateMismatchesSEC
+managerCikMismatchesSEC
+unverifiedAccessions
+
+Also add, if not already present:
+
+unverifiedCiks
+secNotFoundCiks
+
+At most 10 sanitized examples.
+
+For an unverified example include only safe fields such as:
+- canonical accession
+- canonical CIK
+- stored report period
+- reason
+
+PART 3 — BATCH BEHAVIOR
+
+One 404 inside a batch must not discard successful metadata already fetched
+for other CIKs.
+
+Continue serial/bounded batching from #215I.
+
+No unbounded concurrency.
+
+PART 4 — REPAIR SAFETY
+
+The repair planner must remain fail-closed:
+- unverified filings must NEVER be automatically corrected
+- they must not receive inferred SEC metadata
+- they should require replay/quarantine/manual authoritative verification
+  depending on existing repair semantics
+
+Do not change deterministic repair eligibility for verified records.
+
+PART 5 — TESTS
+
+Add focused tests for:
+
+- one CIK returning 404 while later CIKs still process
+- multiple 404 CIKs counted as unverified
+- 404 filings classified SOURCE_IDENTITY_NOT_VERIFIED
+- successful CIKs in same batch remain verified
+- malformed URL remains fatal
+- parser/transport failure remains fatal
+- unverified filings are excluded from automatic repair
+- final counts stable across batch sizes
+- dry-run remains zero-write
+
+VALIDATION
+
+Run:
+- focused SEC/audit tests
+- period repair tests
+- git diff --check
+- changed-file TypeScript validation
+
+RETURN ONLY:
+
+ROOT CAUSE
+
+FIX
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+If blocker is NO, provide exactly ONE command to rerun the read-only
+production audit.
+
+Do not provide a repair APPLY command.
+Do not provide a historical backfill command.

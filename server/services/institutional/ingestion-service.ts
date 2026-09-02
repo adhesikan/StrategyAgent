@@ -69,6 +69,7 @@ import { resolveInstitutionalSecurity } from "./security-resolver";
 import { isEligibleForStockInstitutionalAnalytics } from "./security-type-eligibility";
 import { rebuildInstitutionalSignalForSymbol } from "./signal-engine";
 import { runIntelligencePrecomputation } from "../intelligence-orchestrator";
+import { deriveParsedFilingIdentity } from "./filing-metadata-integrity";
 import { OpenFigiClient } from "./openfigi-client";
 import {
   DrizzleInstitutionalSecurityReferenceRepository,
@@ -1293,7 +1294,7 @@ async function ingestQuarter(
       continue;
     }
 
-    const first = holdings[0];
+    const first = deriveParsedFilingIdentity(accession, holdings);
 
     await upsertFiling({
       accessionNumber: accession,
@@ -1757,7 +1758,7 @@ async function ingestFromDescriptor(
             return;
           }
 
-          const first = holdings[0];
+          const first = deriveParsedFilingIdentity(accession, holdings);
           let disposition = accessionDisposition.get(accession);
           if (!disposition) {
             const existing = await db

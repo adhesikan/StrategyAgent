@@ -116,3 +116,4 @@
 - [Historical 13F source retrieval](historical-13f-source-retrieval.md) — explicit and scheduled quarters resolve through the SEC catalog; transport/format failures never mean not published.
 - [Institutional accession identity](institutional-accession-identity.md) — SEC filing identity is canonical 18-digit undashed accession across parsing, reconciliation, persistence, and replay.
 - [Institutional reconciliation source status](institutional-reconciliation-source-status.md) — `partial_success` is usable source data; only failed/parse-failure statuses should block reconciliation.
+- [Historical 13F period repair](historical-13f-period-repair.md) — verify accession metadata against SEC submissions; repair only unique authority, and fail closed on conflicting duplicate holdings.

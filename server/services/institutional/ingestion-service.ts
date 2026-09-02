@@ -350,10 +350,11 @@ async function upsertFiling(filing: InsertInstitutional13fFiling): Promise<void>
 // Holdings upsert (idempotent)
 // ---------------------------------------------------------------------------
 
-async function upsertHoldings(holdings: InsertInstitutional13fHolding[]): Promise<void> {
+async function upsertHoldings(holdings: InsertInstitutional13fHolding[], signal?: AbortSignal): Promise<void> {
   if (holdings.length === 0) return;
   // Insert in batches of 500 to avoid oversized queries
   for (let i = 0; i < holdings.length; i += 500) {
+    if (signal?.aborted) throw new Error("CANCELLED");
     const batch = holdings.slice(i, i + 500);
     await db
       .insert(institutional13fHoldings)
@@ -1740,6 +1741,7 @@ async function ingestFromDescriptor(
   if (!("status" in prepared)) {
     const persistenceResult = await streamPreparedBulkArchive(prepared, descriptor, {
       batchSize: 2_000,
+      signal,
       async onBatch(batch, context) {
         if (abortedEarly || chunkLimitReached) return;
         const byAccession = new Map<string, ParsedBulkHolding[]>();
@@ -1839,7 +1841,7 @@ async function ingestFromDescriptor(
       mappingStatus: "unmapped",
           }));
 
-          await upsertHoldings(holdingRows);
+          await upsertHoldings(holdingRows, signal);
           holdingCount += holdingRows.length;
           if (context.accessionComplete) {
             const { mappedCount: mc, unmappedCount: uc } = await applyMappingsToHoldings(accession);

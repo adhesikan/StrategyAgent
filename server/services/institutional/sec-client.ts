@@ -73,6 +73,12 @@ async function rateLimit(): Promise<void> {
   lastRequestAt = Date.now();
 }
 
+function cancellationError(): Error {
+  const error = new Error("CANCELLED");
+  error.name = "AbortError";
+  return error;
+}
+
 // ---------------------------------------------------------------------------
 // In-memory cache for quarterly index files (they are immutable once a quarter closes)
 // ---------------------------------------------------------------------------
@@ -134,6 +140,7 @@ export async function secFetchDetailed(
   let lastErr: unknown;
 
   for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
+    if (signal?.aborted) throw cancellationError();
     if (attempt > 0) {
       const backoffMs = Math.min(1000 * 2 ** (attempt - 1), 10_000);
       await new Promise<void>((r) => setTimeout(r, backoffMs));
@@ -190,6 +197,7 @@ export async function secFetchDetailed(
         text, legacyText, status: res.status, contentType, byteLength: bytes.byteLength, decodingError, detectedEncoding,
       };
     } catch (err: any) {
+      if (signal?.aborted) throw err;
       if (err instanceof SecHttpError && err.status >= 400 && err.status < 500 && err.status !== 429) {
         // Non-retryable client error (404, 403, etc.)
         throw err;
@@ -215,6 +223,7 @@ export async function secFetchBufferDetailed(url: string, signal?: AbortSignal):
   let lastErr: unknown;
 
   for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
+    if (signal?.aborted) throw cancellationError();
     if (attempt > 0) {
       const backoffMs = Math.min(1000 * 2 ** (attempt - 1), 10_000);
       await new Promise<void>((r) => setTimeout(r, backoffMs));
@@ -246,6 +255,7 @@ export async function secFetchBufferDetailed(url: string, signal?: AbortSignal):
         redirected: false,
       };
     } catch (err: any) {
+      if (signal?.aborted) throw err;
       if (err instanceof SecHttpError && err.status >= 400 && err.status < 500 && err.status !== 429) {
         throw err;
       }

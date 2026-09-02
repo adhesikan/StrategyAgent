@@ -29,7 +29,7 @@
 //   - Never log raw holding data, credentials, or full archive contents.
 
 import AdmZip from "adm-zip";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { createInflateRaw } from "node:zlib";
 import { createInterface } from "node:readline";
 import { secFetchBuffer, secFetchBufferDetailed, SecHttpError } from "./sec-client";
@@ -61,7 +61,9 @@ export type BulkSourceFailureCode =
   | "SOURCE_REJECTED"
   | "RATE_LIMITED"
   | "SOURCE_FORMAT_UNEXPECTED"
+  | "SOURCE_INTEGRITY_FAILURE"
   | "PARSE_FAILED"
+  | "CANCELLED"
   | "NOT_YET_PUBLISHED";
 
 /** Resolution tier used to locate a required archive entry. */
@@ -232,6 +234,8 @@ export interface BulkStreamResult {
 export interface BulkHoldingStreamOptions {
   /** Hard maximum holdings per emitted batch. Defaults to 2,000. */
   batchSize?: number;
+  /** One cancellation signal for the complete download/parse/persist pipeline. */
+  signal?: AbortSignal;
   /**
    * Called serially. The caller must finish persisting/inspecting a batch before
    * the inflater is allowed to produce the next one.
@@ -257,6 +261,7 @@ const ZIP_CONTENT_TYPES = new Set([
 ]);
 
 export function classifySecArchiveFailure(error: unknown): BulkSourceFailureCode {
+  if (isCancellationError(error)) return "CANCELLED";
   if (error instanceof SecHttpError) {
     if (error.status === 403) return "SOURCE_REJECTED";
     if (error.status === 429) return "RATE_LIMITED";
@@ -264,6 +269,27 @@ export function classifySecArchiveFailure(error: unknown): BulkSourceFailureCode
     return "SOURCE_UNAVAILABLE";
   }
   return "SOURCE_UNAVAILABLE";
+}
+
+function cancellationError(): Error {
+  const error = new Error("CANCELLED");
+  error.name = "AbortError";
+  return error;
+}
+
+export function isCancellationError(error: unknown): boolean {
+  return error instanceof Error &&
+    (error.name === "AbortError" || error.message === "CANCELLED" || error.message === "Aborted");
+}
+
+function integrityError(code: string): Error {
+  const error = new Error(code);
+  error.name = "ArchiveIntegrityError";
+  return error;
+}
+
+function isIntegrityError(error: unknown): boolean {
+  return error instanceof Error && error.name === "ArchiveIntegrityError";
 }
 
 export function validateSecArchiveResponse(
@@ -2166,22 +2192,108 @@ export function parseBulkQuarterFromBuffer(
  * still used for its central directory (and therefore retains the existing
  * entry-resolution rules), but its eager inflater is deliberately bypassed.
  */
-function zipEntryTextStream(archive: Buffer, entry: AdmZip.IZipEntry): Readable {
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < table.length; index++) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit++) value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+    table[index] = value >>> 0;
+  }
+  return table;
+})();
+
+function updateCrc32(crc: number, chunk: Buffer): number {
+  let value = crc;
+  for (const byte of chunk) value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  return value;
+}
+
+function metadataNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function validateEntryBuffer(entry: AdmZip.IZipEntry, data: Buffer): void {
+  const expectedSize = metadataNumber(entry.header.size);
+  if (expectedSize !== null && data.length !== expectedSize) {
+    throw integrityError("ARCHIVE_ENTRY_SIZE_MISMATCH");
+  }
+  const expectedCrc = metadataNumber(entry.header.crc);
+  if (expectedCrc !== null) {
+    const actualCrc = (~updateCrc32(0xffffffff, data)) >>> 0;
+    if (actualCrc !== expectedCrc) throw integrityError("ARCHIVE_ENTRY_CRC_MISMATCH");
+  }
+}
+
+function zipEntryTextStream(
+  archive: Buffer,
+  entry: AdmZip.IZipEntry,
+  signal?: AbortSignal,
+): Readable {
   const header = entry.header;
   if (header.encrypted) throw new Error("ENCRYPTED_ARCHIVE_ENTRY_UNSUPPORTED");
   const dataOffset = header.realDataOffset || (
     header.offset + 30 + archive.readUInt16LE(header.offset + 26) + archive.readUInt16LE(header.offset + 28)
   );
+  const expectedCompressedSize = metadataNumber(header.compressedSize);
+  if (expectedCompressedSize !== null && dataOffset + expectedCompressedSize > archive.length) {
+    throw integrityError("ARCHIVE_ENTRY_COMPRESSED_SIZE_MISMATCH");
+  }
   const compressed = archive.subarray(dataOffset, dataOffset + header.compressedSize);
   async function* chunks(): AsyncGenerator<Buffer> {
     // Do not hand a multi-hundred MB compressed buffer to a stream as one chunk.
     for (let offset = 0; offset < compressed.length; offset += 64 * 1024) {
+      if (signal?.aborted) throw cancellationError();
       yield compressed.subarray(offset, Math.min(offset + 64 * 1024, compressed.length));
     }
   }
-  if (header.method === 0) return Readable.from(chunks());
-  if (header.method === 8) return Readable.from(chunks()).pipe(createInflateRaw());
-  throw new Error(`UNSUPPORTED_ARCHIVE_COMPRESSION:${header.method}`);
+  const source = Readable.from(chunks());
+  const decompressed = header.method === 0
+    ? source
+    : header.method === 8
+      ? source.pipe(createInflateRaw())
+      : null;
+  if (!decompressed) throw new Error(`UNSUPPORTED_ARCHIVE_COMPRESSION:${header.method}`);
+
+  const expectedSize = metadataNumber(header.size);
+  const expectedCrc = metadataNumber(header.crc);
+  let outputBytes = 0;
+  let crc = 0xffffffff;
+  const integrity = new Transform({
+    transform(chunk, _encoding, callback) {
+      if (signal?.aborted) {
+        callback(cancellationError());
+        return;
+      }
+      outputBytes += chunk.length;
+      if (expectedSize !== null && outputBytes > expectedSize) {
+        callback(integrityError("ARCHIVE_ENTRY_SIZE_MISMATCH"));
+        return;
+      }
+      crc = updateCrc32(crc, chunk);
+      callback(null, chunk);
+    },
+    flush(callback) {
+      if (expectedSize !== null && outputBytes !== expectedSize) {
+        callback(integrityError("ARCHIVE_ENTRY_SIZE_MISMATCH"));
+        return;
+      }
+      if (expectedCrc !== null && ((~crc) >>> 0) !== expectedCrc) {
+        callback(integrityError("ARCHIVE_ENTRY_CRC_MISMATCH"));
+        return;
+      }
+      callback();
+    },
+  });
+  const result = decompressed.pipe(integrity);
+  if (signal) {
+    const abort = () => result.destroy(cancellationError());
+    if (signal.aborted) abort();
+    else {
+      signal.addEventListener("abort", abort, { once: true });
+      result.once("close", () => signal.removeEventListener("abort", abort));
+    }
+  }
+  return result;
 }
 
 function infoTableRowFromCells(
@@ -2224,9 +2336,17 @@ export async function streamBulkQuarterFromBuffer(
   buffer: Buffer, _year: number, _q: 1 | 2 | 3 | 4, options: BulkHoldingStreamOptions,
 ): Promise<BulkStreamResult> {
   const startMs = Date.now();
+  if (options.signal?.aborted) {
+    return { status: "failed", diagnostics: { ...EMPTY_DIAGNOSTICS, archiveBytes: buffer.length }, reason: "CANCELLED", failureCode: "CANCELLED" };
+  }
   let zip: AdmZip;
   try { zip = new AdmZip(buffer); } catch {
-    return { status: "failed", diagnostics: { ...EMPTY_DIAGNOSTICS, archiveBytes: buffer.length }, reason: "Could not open archive as a ZIP file" };
+    return {
+      status: "failed",
+      diagnostics: { ...EMPTY_DIAGNOSTICS, archiveBytes: buffer.length },
+      reason: "Could not open archive as a ZIP file",
+      failureCode: "SOURCE_INTEGRITY_FAILURE",
+    };
   }
   const entries = zip.getEntries();
   const subResolve = resolveRequiredArchiveEntry(entries, "SUBMISSION.tsv");
@@ -2245,7 +2365,9 @@ export async function streamBulkQuarterFromBuffer(
   }
   try {
     // These two tables are bounded by the filing population, not holding rows.
-    const submissionText = subResolve.entry.getData().toString("utf8");
+    const submissionData = subResolve.entry.getData();
+    validateEntryBuffer(subResolve.entry, submissionData);
+    const submissionText = submissionData.toString("utf8");
     const submission = parseSubmissionTsv(submissionText);
     const subHasName = hasAnyAlias(buildHeaderLookup(parseTsv(submissionText).headers), SUB_NAME_ALIASES);
     let subRows = submission.rows.slice();
@@ -2253,7 +2375,9 @@ export async function streamBulkQuarterFromBuffer(
     let cpRows = 0, parsedCpRows = 0, duplicateCpRows = 0;
     let cpMapping: Record<string, string | null> = {};
     if (cpResolve.found) {
-      const parsed = parseCoverPageTsv(cpResolve.entry.getData().toString("utf8"));
+      const coverData = cpResolve.entry.getData();
+      validateEntryBuffer(cpResolve.entry, coverData);
+      const parsed = parseCoverPageTsv(coverData.toString("utf8"));
       cover = parsed.byAccession; cpRows = parsed.totalRows; parsedCpRows = parsed.parsedRows;
       duplicateCpRows = parsed.duplicateAccessionCount; cpMapping = parsed.canonicalMapping;
       if (parsed.missingHeaders.length && !subHasName) throw new Error("MANAGER_IDENTITY_SOURCE_MISSING");
@@ -2276,8 +2400,11 @@ export async function streamBulkQuarterFromBuffer(
       batch = [];
       await options.onBatch(emitted, { accessionNumber: currentAccession, accessionComplete });
     };
-    const lineReader = createInterface({ input: zipEntryTextStream(buffer, infoResolve.entry), crlfDelay: Infinity });
+    const infoStream = zipEntryTextStream(buffer, infoResolve.entry, options.signal);
+    const lineReader = createInterface({ input: infoStream, crlfDelay: Infinity });
+    try {
     for await (const rawLine of lineReader) {
+      if (options.signal?.aborted) throw cancellationError();
       if (!rawLine.trim()) continue;
       if (!infoHeaders) {
         infoHeaders = stripBom(rawLine).split("\t").map((cell) => cell.trim().toUpperCase());
@@ -2309,6 +2436,10 @@ export async function streamBulkQuarterFromBuffer(
       if (batch.length >= batchSize) await flush(false);
       batch.push({ ...row, filerCik: sub.cik, filerName, filingType: sub.formType, filingDate: sub.filingDate, periodOfReport: sub.periodOfReport, isAmendment: sub.isAmendment || (cp?.isAmendment ?? false) });
     }
+    } finally {
+      lineReader.close();
+      infoStream.destroy();
+    }
     await flush(true);
     const coverJoins = subRows.reduce((count, row) => count + (cover.has(row.accessionNumber) ? 1 : 0), 0);
     const diagnostics: BulkParseDiagnostics = {
@@ -2335,6 +2466,22 @@ export async function streamBulkQuarterFromBuffer(
     }
     return { status: rejected ? "partial_success" : "success", diagnostics };
   } catch (error) {
+    if (isCancellationError(error)) {
+      return {
+        status: "failed",
+        diagnostics: { ...EMPTY_DIAGNOSTICS, ...resolutionDiag, durationMs: Date.now() - startMs },
+        reason: "CANCELLED",
+        failureCode: "CANCELLED",
+      };
+    }
+    if (isIntegrityError(error) || (error instanceof Error && /crc|checksum|unexpected end|unexpected EOF|invalid distance|invalid stored block/i.test(error.message))) {
+      return {
+        status: "failed",
+        diagnostics: { ...EMPTY_DIAGNOSTICS, ...resolutionDiag, durationMs: Date.now() - startMs },
+        reason: error instanceof Error ? error.message : "ARCHIVE_ENTRY_INTEGRITY_FAILURE",
+        failureCode: "SOURCE_INTEGRITY_FAILURE",
+      };
+    }
     const reason = error instanceof Error ? error.message : "PARSE_FAILED";
     return { status: "empty_parse_failure", diagnostics: { ...EMPTY_DIAGNOSTICS, ...resolutionDiag, durationMs: Date.now() - startMs }, reason };
   }
@@ -2461,7 +2608,10 @@ export async function streamBulkFromDescriptor(
 ): Promise<BulkStreamResult> {
   const prepared = await prepareBulkArchiveFromDescriptor(descriptor, signal);
   if ("status" in prepared) return prepared;
-  const result = await streamBulkQuarterFromBuffer(prepared.buffer, descriptor.year, descriptor.q, options);
+  const result = await streamBulkQuarterFromBuffer(prepared.buffer, descriptor.year, descriptor.q, {
+    ...options,
+    signal: signal ?? options.signal,
+  });
   return { ...result, diagnostics: { ...result.diagnostics, ...prepared.transportDiagnostics } };
 }
 

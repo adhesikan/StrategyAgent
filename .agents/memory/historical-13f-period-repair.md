@@ -8,3 +8,5 @@ Historical filing identity and period corrections must be derived from a unique 
 **Why:** A legacy per-filing XML path copied its requested target quarter into both filing and holding rows. Dashed/undashed accession duplicates can also hide conflicting holding sets, so canonicalization alone is not enough evidence for a safe merge.
 
 **How to apply:** Keep production audits read-only and Railway-identity-bound. Correct a verified accession atomically; merge duplicates only when one holding set is empty or both fingerprints match. Otherwise roll back and require source replay. Recompute only affected periods and symbols.
+
+For production-wide verification, count the filing population before loading rows, enforce finite filing/CIK/batch ceilings, sort and deduplicate CIKs, and process SEC submissions serially in bounded batches. A cap failure must report actual filings and unique CIKs without exposing rows or secrets.

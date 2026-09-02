@@ -26,8 +26,16 @@ import {
   type StoredFilingMetadata,
 } from "../server/services/institutional/historical-filing-period-repair";
 
-const MAX_FILINGS = 5_000;
-const MAX_CIKS = 1_000;
+export const HISTORICAL_AUDIT_DEFAULTS = {
+  maxFilings: 5_000,
+  maxCiks: 5_000,
+  cikBatchSize: 100,
+} as const;
+export const HISTORICAL_AUDIT_HARD_CEILINGS = {
+  maxFilings: 10_000,
+  maxCiks: 10_000,
+  cikBatchSize: 500,
+} as const;
 const MAX_SEC_HISTORY_FILES_PER_CIK = 30;
 const MAX_EXAMPLES = 10;
 const STATEMENT_TIMEOUT_MS = 120_000;
@@ -41,6 +49,9 @@ export interface HistoricalPeriodAuditArgs {
   apply: boolean;
   planHash: string | null;
   confirm: string | null;
+  maxFilings: number;
+  maxCiks: number;
+  cikBatchSize: number;
 }
 
 export function parseHistoricalPeriodAuditArgs(args: string[]): HistoricalPeriodAuditArgs {
@@ -50,13 +61,38 @@ export function parseHistoricalPeriodAuditArgs(args: string[]): HistoricalPeriod
       apply: { type: "boolean", default: false },
       "plan-hash": { type: "string" },
       confirm: { type: "string" },
+      "max-filings": { type: "string" },
+      "max-ciks": { type: "string" },
+      "cik-batch-size": { type: "string" },
     },
     strict: true,
   });
+  const positiveInteger = (value: string | undefined, fallback: number, name: string) => {
+    const parsedValue = value === undefined ? fallback : Number(value);
+    if (!Number.isSafeInteger(parsedValue) || parsedValue < 1) {
+      throw new Error(`${name}_MUST_BE_POSITIVE_INTEGER`);
+    }
+    return parsedValue;
+  };
   return {
     apply: Boolean(parsed.values.apply),
     planHash: parsed.values["plan-hash"] ? String(parsed.values["plan-hash"]) : null,
     confirm: parsed.values.confirm ? String(parsed.values.confirm) : null,
+    maxFilings: positiveInteger(
+      parsed.values["max-filings"] as string | undefined,
+      HISTORICAL_AUDIT_DEFAULTS.maxFilings,
+      "MAX_FILINGS",
+    ),
+    maxCiks: positiveInteger(
+      parsed.values["max-ciks"] as string | undefined,
+      HISTORICAL_AUDIT_DEFAULTS.maxCiks,
+      "MAX_CIKS",
+    ),
+    cikBatchSize: positiveInteger(
+      parsed.values["cik-batch-size"] as string | undefined,
+      HISTORICAL_AUDIT_DEFAULTS.cikBatchSize,
+      "CIK_BATCH_SIZE",
+    ),
   };
 }
 
@@ -92,6 +128,23 @@ export function buildHistoricalAuditReadOnlyUrl(databaseUrl: string): string {
   const url = new URL(databaseUrl);
   url.searchParams.set("options", `-c default_transaction_read_only=on -c statement_timeout=${STATEMENT_TIMEOUT_MS}`);
   return url.toString();
+}
+
+export function validateHistoricalAuditBounds(options: Pick<
+  HistoricalPeriodAuditArgs,
+  "maxFilings" | "maxCiks" | "cikBatchSize"
+>): string[] {
+  const issues: string[] = [];
+  if (options.maxFilings > HISTORICAL_AUDIT_HARD_CEILINGS.maxFilings) {
+    issues.push("MAX_FILINGS_HARD_CEILING_EXCEEDED");
+  }
+  if (options.maxCiks > HISTORICAL_AUDIT_HARD_CEILINGS.maxCiks) {
+    issues.push("MAX_CIKS_HARD_CEILING_EXCEEDED");
+  }
+  if (options.cikBatchSize > HISTORICAL_AUDIT_HARD_CEILINGS.cikBatchSize) {
+    issues.push("CIK_BATCH_SIZE_HARD_CEILING_EXCEEDED");
+  }
+  return issues;
 }
 
 export function getHistoricalRepairApplyGuardIssues(
@@ -136,6 +189,16 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => String(item ?? "")) : [];
 }
 
+export function chunkCanonicalCiks(ciks: Iterable<string>, batchSize: number): string[][] {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1) throw new Error("CIK_BATCH_SIZE_INVALID");
+  const sorted = Array.from(new Set(ciks)).sort();
+  const batches: string[][] = [];
+  for (let index = 0; index < sorted.length; index += batchSize) {
+    batches.push(sorted.slice(index, index + batchSize));
+  }
+  return batches;
+}
+
 export function extractAuthoritativeSecFilings(
   payload: SecColumnarFilings,
   targetAccessions: ReadonlySet<string>,
@@ -168,9 +231,35 @@ export function extractAuthoritativeSecFilings(
   return output;
 }
 
-async function loadAuthoritativeSecMetadata(
+export interface SecMetadataLoadOptions {
+  maxCiks?: number;
+  cikBatchSize?: number;
+  fetchSec?: (url: string) => Promise<string>;
+  onProgress?: (progress: { processedCiks: number; totalCiks: number; batchNumber: number }) => void;
+}
+
+export class HistoricalAuditBoundError extends Error {
+  constructor(
+    public readonly details: {
+      error: "PRODUCTION_POPULATION_EXCEEDS_HARD_CAP";
+      actualFilings: number;
+      actualUniqueCiks: number;
+      maxFilings: number;
+      maxCiks: number;
+    },
+  ) {
+    super(details.error);
+    this.name = "HistoricalAuditBoundError";
+  }
+}
+
+export async function loadAuthoritativeSecMetadata(
   storedRows: StoredFilingMetadata[],
+  options: SecMetadataLoadOptions = {},
 ): Promise<Map<string, AuthoritativeFilingMetadata[]>> {
+  const maxCiks = options.maxCiks ?? HISTORICAL_AUDIT_DEFAULTS.maxCiks;
+  const cikBatchSize = options.cikBatchSize ?? HISTORICAL_AUDIT_DEFAULTS.cikBatchSize;
+  const fetchSec = options.fetchSec ?? secFetch;
   const targets = new Set(
     storedRows
       .map((row) => normalizeAccession(row.rawAccession))
@@ -183,50 +272,100 @@ async function loadAuthoritativeSecMetadata(
     if (group) group.add(accession);
     else byCik.set(cik, new Set([accession]));
   }
-  if (byCik.size > MAX_CIKS) throw new Error("SEC_CIK_BOUND_EXCEEDED");
+  if (byCik.size > maxCiks) {
+    throw new HistoricalAuditBoundError({
+      error: "PRODUCTION_POPULATION_EXCEEDS_HARD_CAP",
+      actualFilings: storedRows.length,
+      actualUniqueCiks: byCik.size,
+      maxFilings: storedRows.length,
+      maxCiks,
+    });
+  }
 
   const output = new Map<string, AuthoritativeFilingMetadata[]>();
-  for (const [cik, cikTargets] of byCik) {
-    const body = await secFetch(`https://data.sec.gov/submissions/CIK${cik}.json`);
-    let payload: SecSubmissionsPayload;
-    try {
-      payload = JSON.parse(body) as SecSubmissionsPayload;
-    } catch {
-      throw new Error("SEC_SUBMISSIONS_JSON_INVALID");
-    }
-    const found = extractAuthoritativeSecFilings(payload.filings?.recent ?? {}, cikTargets);
-    for (const filing of found) output.set(filing.canonicalAccession, [filing]);
-
-    const unresolved = new Set(Array.from(cikTargets).filter((accession) => !output.has(accession)));
-    const historyFiles = (payload.filings?.files ?? [])
-      .map((item) => typeof item.name === "string" ? item.name : "")
-      .filter((name) => /^CIK\d+-submissions-\d{3}\.json$/.test(name))
-      .slice(0, MAX_SEC_HISTORY_FILES_PER_CIK);
-    for (const fileName of historyFiles) {
-      if (unresolved.size === 0) break;
-      const historyText = await secFetch(`https://data.sec.gov/submissions/${fileName}`);
-      let history: SecSubmissionsPayload;
+  const batches = chunkCanonicalCiks(byCik.keys(), cikBatchSize);
+  let processedCiks = 0;
+  for (let batchNumber = 0; batchNumber < batches.length; batchNumber++) {
+    // Deliberately serial: SEC request state and each batch are bounded before
+    // the next batch is allocated. No Promise.all over the production CIK set.
+    for (const cik of batches[batchNumber]) {
+      const cikTargets = byCik.get(cik)!;
+      const body = await fetchSec(`https://data.sec.gov/submissions/CIK${cik}.json`);
+      let payload: SecSubmissionsPayload;
       try {
-        history = JSON.parse(historyText) as SecSubmissionsPayload;
+        payload = JSON.parse(body) as SecSubmissionsPayload;
       } catch {
-        throw new Error("SEC_SUBMISSIONS_HISTORY_JSON_INVALID");
+        throw new Error("SEC_SUBMISSIONS_JSON_INVALID");
       }
-      for (const filing of extractAuthoritativeSecFilings(history, unresolved)) {
-        const existing = output.get(filing.canonicalAccession);
-        if (existing) existing.push(filing);
-        else output.set(filing.canonicalAccession, [filing]);
-        unresolved.delete(filing.canonicalAccession);
+      const found = extractAuthoritativeSecFilings(payload.filings?.recent ?? {}, cikTargets);
+      for (const filing of found) output.set(filing.canonicalAccession, [filing]);
+
+      const unresolved = new Set(Array.from(cikTargets).filter((accession) => !output.has(accession)));
+      const historyFiles = (payload.filings?.files ?? [])
+        .map((item) => typeof item.name === "string" ? item.name : "")
+        .filter((name) => /^CIK\d+-submissions-\d{3}\.json$/.test(name))
+        .slice(0, MAX_SEC_HISTORY_FILES_PER_CIK);
+      for (const fileName of historyFiles) {
+        if (unresolved.size === 0) break;
+        const historyText = await fetchSec(`https://data.sec.gov/submissions/${fileName}`);
+        let history: SecSubmissionsPayload;
+        try {
+          history = JSON.parse(historyText) as SecSubmissionsPayload;
+        } catch {
+          throw new Error("SEC_SUBMISSIONS_HISTORY_JSON_INVALID");
+        }
+        for (const filing of extractAuthoritativeSecFilings(history, unresolved)) {
+          const existing = output.get(filing.canonicalAccession);
+          if (existing) existing.push(filing);
+          else output.set(filing.canonicalAccession, [filing]);
+          unresolved.delete(filing.canonicalAccession);
+        }
       }
+      processedCiks++;
     }
+    options.onProgress?.({ processedCiks, totalCiks: byCik.size, batchNumber: batchNumber + 1 });
   }
   return output;
 }
 
-async function readStoredFilings(executor: Executor): Promise<StoredFilingMetadata[]> {
+interface FilingPopulation {
+  actualFilings: number;
+  actualUniqueCiks: number;
+}
+
+async function readFilingPopulation(executor: Executor): Promise<FilingPopulation> {
   const tableResult = await executor.execute(sql`
     SELECT to_regclass('public.institutional_13f_filings')::text AS table_name
   `);
   if (!rowsOf(tableResult)[0]?.table_name) throw new Error("INSTITUTIONAL_FILINGS_TABLE_REQUIRED");
+  const result = await executor.execute(sql`
+    SELECT COUNT(*)::int AS "actualFilings",
+           COUNT(DISTINCT LPAD(regexp_replace(filer_cik, '[^0-9]', '', 'g'), 10, '0'))::int AS "actualUniqueCiks"
+      FROM institutional_13f_filings
+  `);
+  const row = rowsOf(result)[0] ?? {};
+  return {
+    actualFilings: Number(row.actualFilings ?? 0),
+    actualUniqueCiks: Number(row.actualUniqueCiks ?? 0),
+  };
+}
+
+async function readStoredFilings(
+  executor: Executor,
+  limits: Pick<HistoricalPeriodAuditArgs, "maxFilings" | "maxCiks"> = HISTORICAL_AUDIT_DEFAULTS,
+): Promise<StoredFilingMetadata[]> {
+  const population = await readFilingPopulation(executor);
+  if (
+    population.actualFilings > limits.maxFilings ||
+    population.actualUniqueCiks > limits.maxCiks
+  ) {
+    throw new HistoricalAuditBoundError({
+      error: "PRODUCTION_POPULATION_EXCEEDS_HARD_CAP",
+      ...population,
+      maxFilings: limits.maxFilings,
+      maxCiks: limits.maxCiks,
+    });
+  }
   const result = await executor.execute(sql`
     SELECT id::text AS id,
            accession_number AS "rawAccession",
@@ -238,10 +377,18 @@ async function readStoredFilings(executor: Executor): Promise<StoredFilingMetada
            is_effective AS "isEffective"
       FROM institutional_13f_filings
      ORDER BY regexp_replace(accession_number, '[^0-9]', '', 'g'), id
-     LIMIT ${MAX_FILINGS + 1}
+     LIMIT ${limits.maxFilings + 1}
   `);
   const rows = rowsOf(result);
-  if (rows.length > MAX_FILINGS) throw new Error("FILING_BOUND_EXCEEDED");
+  if (rows.length > limits.maxFilings) {
+    throw new HistoricalAuditBoundError({
+      error: "PRODUCTION_POPULATION_EXCEEDS_HARD_CAP",
+      actualFilings: population.actualFilings,
+      actualUniqueCiks: population.actualUniqueCiks,
+      maxFilings: limits.maxFilings,
+      maxCiks: limits.maxCiks,
+    });
+  }
   return rows.map((row) => ({
     id: String(row.id),
     rawAccession: String(row.rawAccession),
@@ -348,8 +495,10 @@ function sanitizedExamples(classified: ReturnType<typeof classifyStoredFilings>)
 export async function runHistoricalPeriodAudit(
   executor: Executor,
   authoritativeLoader: (rows: StoredFilingMetadata[]) => Promise<Map<string, AuthoritativeFilingMetadata[]>>,
+  limits: Pick<HistoricalPeriodAuditArgs, "maxFilings" | "maxCiks" | "cikBatchSize"> =
+    HISTORICAL_AUDIT_DEFAULTS,
 ) {
-  const storedRows = await readStoredFilings(executor);
+  const storedRows = await readStoredFilings(executor, limits);
   const authoritative = await authoritativeLoader(storedRows);
   const classified = classifyStoredFilings(storedRows, authoritative);
   const summary = summarizeFilingAudit(classified);
@@ -422,7 +571,7 @@ async function applyHistoricalFilingRepair(
       sql`SELECT pg_try_advisory_xact_lock(${REPAIR_LOCK_KEY}::bigint) AS locked`,
     ));
     if (lock[0]?.locked !== true) throw new Error("HISTORICAL_PERIOD_REPAIR_LOCK_HELD");
-    const currentRows = await readStoredFilings(tx);
+    const currentRows = await readStoredFilings(tx, HISTORICAL_AUDIT_DEFAULTS);
     const currentPlan = buildHistoricalFilingRepairPlan(currentRows, authoritative);
     if (currentPlan.planHash !== expectedPlan.planHash) throw new Error("HISTORICAL_PERIOD_REPAIR_PLAN_DRIFT");
     if (currentPlan.blocked.length > 0) throw new Error("HISTORICAL_PERIOD_REPAIR_BLOCKED");
@@ -535,8 +684,9 @@ async function applyHistoricalFilingRepair(
 async function main(args = process.argv.slice(2)): Promise<void> {
   const options = parseHistoricalPeriodAuditArgs(args);
   const environmentIssues = validateHistoricalPeriodAuditEnvironment(process.env, options.apply);
-  if (environmentIssues.length > 0) {
-    throw new Error(`PRODUCTION_RUNTIME_REJECTED:${environmentIssues.join(",")}`);
+  const boundIssues = validateHistoricalAuditBounds(options);
+  if (environmentIssues.length > 0 || boundIssues.length > 0) {
+    throw new Error(`PRODUCTION_RUNTIME_REJECTED:${[...environmentIssues, ...boundIssues].join(",")}`);
   }
   if (!options.apply) process.env.DATABASE_URL = buildHistoricalAuditReadOnlyUrl(process.env.DATABASE_URL!);
 
@@ -547,7 +697,19 @@ async function main(args = process.argv.slice(2)): Promise<void> {
         ?.default_transaction_read_only;
       if (mode !== "on") throw new Error("READ_ONLY_SESSION_REQUIRED");
     }
-    const result = await runHistoricalPeriodAudit(db as unknown as Executor, loadAuthoritativeSecMetadata);
+    const result = await runHistoricalPeriodAudit(
+      db as unknown as Executor,
+      (rows) => loadAuthoritativeSecMetadata(rows, {
+        maxCiks: options.maxCiks,
+        cikBatchSize: options.cikBatchSize,
+        onProgress: (progress) => {
+          if (process.env.HISTORICAL_AUDIT_PROGRESS === "1") {
+            console.error(JSON.stringify(progress));
+          }
+        },
+      }),
+      options,
+    );
     const publicReport = {
       mode: options.apply ? "APPLY_REQUESTED" : result.mode,
       rootCause: result.rootCause,
@@ -591,9 +753,13 @@ async function main(args = process.argv.slice(2)): Promise<void> {
 
 if (process.argv[1]?.includes("audit-repair-production-13f-periods")) {
   main().catch((error) => {
-    console.error(JSON.stringify({
-      error: error instanceof Error ? error.message.split(":")[0] : "HISTORICAL_PERIOD_AUDIT_FAILED",
-    }));
+    if (error instanceof HistoricalAuditBoundError) {
+      console.error(JSON.stringify(error.details));
+    } else {
+      console.error(JSON.stringify({
+        error: error instanceof Error ? error.message.split(":")[0] : "HISTORICAL_PERIOD_AUDIT_FAILED",
+      }));
+    }
     process.exitCode = 1;
   });
 }

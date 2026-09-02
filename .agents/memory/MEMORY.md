@@ -115,3 +115,4 @@
 - [Institutional runtime identity](institutional-runtime-identity.md) — active stock runtime resolves identity once from canonical effective holdings; downstream reads receive CUSIPs, never ticker evidence.
 - [Historical 13F source retrieval](historical-13f-source-retrieval.md) — explicit and scheduled quarters resolve through the SEC catalog; transport/format failures never mean not published.
 - [Institutional accession identity](institutional-accession-identity.md) — SEC filing identity is canonical 18-digit undashed accession across parsing, reconciliation, persistence, and replay.
+- [Institutional reconciliation source status](institutional-reconciliation-source-status.md) — `partial_success` is usable source data; only failed/parse-failure statuses should block reconciliation.

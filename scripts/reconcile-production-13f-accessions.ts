@@ -32,6 +32,32 @@ type FilingMetadata = {
 
 type SourceFiling = Omit<FilingMetadata, "sourceKind" | "checksumPresent">;
 
+type SourceFailureStage =
+  | "CATALOG_RESOLUTION"
+  | "DOWNLOAD"
+  | "HTTP_RESPONSE"
+  | "ARCHIVE_OPEN"
+  | "SUBMISSION_PARSE"
+  | "METADATA_JOIN"
+  | "CANCELLATION"
+  | "OTHER";
+
+export type SafeSourceFailure = {
+  error: "SEC_SOURCE_FAILED";
+  stage: SourceFailureStage;
+  quarter: string;
+  httpStatus: number | null;
+  contentType: string | null;
+  safeMessage: string;
+};
+
+class ReconciliationSourceError extends Error {
+  constructor(readonly report: SafeSourceFailure) {
+    super(report.error);
+    this.name = "ReconciliationSourceError";
+  }
+}
+
 export type ReconciliationArgs = {
   fromQuarter: string;
   toQuarter: string;
@@ -58,6 +84,12 @@ export type CrossMatchSummary = {
   noDeterministicMatch: number;
   matchingSourceExamples: Array<SanitizedSourceExample>;
 };
+
+export function isUsableSourceStatus(status: string): boolean {
+  // Keep this in lockstep with the historical backfill dry-run contract:
+  // rejected rows do not invalidate the bounded source metadata population.
+  return status === "success" || status === "partial_success";
+}
 
 type SanitizedExistingExample = Pick<
   FilingMetadata,
@@ -214,6 +246,81 @@ function sanitizeSource(source: SourceFiling): SanitizedSourceExample {
   };
 }
 
+function sourceFailureStage(result: {
+  reason?: string;
+  failureCode?: string;
+  diagnostics?: { httpStatus?: number | null };
+}): SourceFailureStage {
+  if (result.failureCode === "CANCELLED" || result.reason === "CANCELLED") return "CANCELLATION";
+  if (typeof result.diagnostics?.httpStatus === "number") return "HTTP_RESPONSE";
+  if (
+    result.failureCode === "SOURCE_REJECTED" ||
+    result.failureCode === "RATE_LIMITED" ||
+    result.failureCode === "SOURCE_FORMAT_UNEXPECTED"
+  ) return "HTTP_RESPONSE";
+  if (result.failureCode === "SOURCE_INTEGRITY_FAILURE" || result.reason === "REQUIRED_ARCHIVE_ENTRY_MISSING") {
+    return "ARCHIVE_OPEN";
+  }
+  if (result.failureCode === "PARSE_FAILED") return "SUBMISSION_PARSE";
+  const reason = result.reason ?? "";
+  if (/MANAGER_IDENTITY|Join rate|join rate|INFOTABLE_ACCESSION_ORDER/i.test(reason)) return "METADATA_JOIN";
+  if (/SUBMISSION|INFOTABLE_HEADERS|INVALID_SUBMISSION|NO_HOLDINGS|ALL_HOLDINGS/i.test(reason)) {
+    return "SUBMISSION_PARSE";
+  }
+  if (/SOURCE_UNAVAILABLE|DOWNLOAD|retrieval failed/i.test(reason) || result.failureCode === "SOURCE_UNAVAILABLE") {
+    return "DOWNLOAD";
+  }
+  return "OTHER";
+}
+
+function safeSourceMessage(stage: SourceFailureStage): string {
+  switch (stage) {
+    case "CATALOG_RESOLUTION": return "SEC_DATASET_CATALOG_RESOLUTION_FAILED";
+    case "DOWNLOAD": return "SEC_ARCHIVE_DOWNLOAD_FAILED";
+    case "HTTP_RESPONSE": return "SEC_ARCHIVE_HTTP_RESPONSE_REJECTED";
+    case "ARCHIVE_OPEN": return "SEC_ARCHIVE_OPEN_OR_INTEGRITY_FAILED";
+    case "SUBMISSION_PARSE": return "SEC_SUBMISSION_METADATA_PARSE_FAILED";
+    case "METADATA_JOIN": return "SEC_METADATA_JOIN_FAILED";
+    case "CANCELLATION": return "SEC_SOURCE_RECONCILIATION_CANCELLED";
+    default: return "SEC_SOURCE_RECONCILIATION_FAILED";
+  }
+}
+
+function safeContentType(contentType: string | null | undefined): string | null {
+  if (!contentType) return null;
+  return contentType.split(";", 1)[0].trim().slice(0, 100) || null;
+}
+
+function throwSourceFailure(
+  quarter: string,
+  result: {
+    reason?: string;
+    failureCode?: string;
+    diagnostics?: { httpStatus?: number | null; contentType?: string | null };
+  },
+): never {
+  throw new ReconciliationSourceError(buildSafeSourceFailure(quarter, result));
+}
+
+export function buildSafeSourceFailure(
+  quarter: string,
+  result: {
+    reason?: string;
+    failureCode?: string;
+    diagnostics?: { httpStatus?: number | null; contentType?: string | null };
+  },
+): SafeSourceFailure {
+  const stage = sourceFailureStage(result);
+  return {
+    error: "SEC_SOURCE_FAILED",
+    stage,
+    quarter,
+    httpStatus: typeof result.diagnostics?.httpStatus === "number" ? result.diagnostics.httpStatus : null,
+    contentType: safeContentType(result.diagnostics?.contentType),
+    safeMessage: safeSourceMessage(stage),
+  };
+}
+
 export function parseReconciliationArgs(args: string[]): ReconciliationArgs {
   const parsed = parseArgs({
     args,
@@ -343,8 +450,8 @@ async function collectSourceFilings(descriptors: DatasetDescriptor[]): Promise<S
         }
       },
     });
-    if (result.status !== "success") {
-      throw new Error(`SEC_SOURCE_FAILED:${descriptor.year}-Q${descriptor.q}`);
+    if (!isUsableSourceStatus(result.status)) {
+      throwSourceFailure(`${descriptor.year}-Q${descriptor.q}`, result);
     }
   }
   return Array.from(sourceByAccession.values());
@@ -413,10 +520,41 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       return;
     }
 
-    const catalog = await fetchDatasetCatalog(config.secUserAgent);
-    const range = resolveCatalogQuarterRange(options.fromQuarter, options.toQuarter, catalog);
+    let catalog: Awaited<ReturnType<typeof fetchDatasetCatalog>>;
+    try {
+      catalog = await fetchDatasetCatalog(config.secUserAgent);
+    } catch {
+      throw new ReconciliationSourceError({
+        error: "SEC_SOURCE_FAILED",
+        stage: "CATALOG_RESOLUTION",
+        quarter: `${options.fromQuarter}..${options.toQuarter}`,
+        httpStatus: null,
+        contentType: null,
+        safeMessage: safeSourceMessage("CATALOG_RESOLUTION"),
+      });
+    }
+    let range: ReturnType<typeof resolveCatalogQuarterRange>;
+    try {
+      range = resolveCatalogQuarterRange(options.fromQuarter, options.toQuarter, catalog);
+    } catch {
+      throw new ReconciliationSourceError({
+        error: "SEC_SOURCE_FAILED",
+        stage: "CATALOG_RESOLUTION",
+        quarter: `${options.fromQuarter}..${options.toQuarter}`,
+        httpStatus: null,
+        contentType: null,
+        safeMessage: safeSourceMessage("CATALOG_RESOLUTION"),
+      });
+    }
     if (range.missingQuarterLabels.length > 0) {
-      throw new Error("CATALOG_QUARTERS_MISSING");
+      throw new ReconciliationSourceError({
+        error: "SEC_SOURCE_FAILED",
+        stage: "CATALOG_RESOLUTION",
+        quarter: range.missingQuarterLabels[0],
+        httpStatus: null,
+        contentType: null,
+        safeMessage: "SEC_DATASET_QUARTER_NOT_FOUND",
+      });
     }
     const periods = quarterPeriods(range.descriptors);
     const [existingRows, sourceRows] = await Promise.all([
@@ -480,6 +618,11 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
 
 if (import.meta.url.endsWith(process.argv[1] ?? "")) {
   main().catch((error: unknown) => {
+    if (error instanceof ReconciliationSourceError) {
+      console.log(JSON.stringify(error.report));
+      process.exitCode = 1;
+      return;
+    }
     const code = error instanceof Error ? error.message.split(":")[0] : "RECONCILIATION_FAILED";
     console.log(JSON.stringify({ error: code }));
     process.exitCode = 1;

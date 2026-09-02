@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import AdmZip from "adm-zip";
 import {
   buildHistoricalAuditReadOnlyUrl,
   buildSecSubmissionsRequest,
@@ -9,6 +10,7 @@ import {
   HistoricalAuditBoundError,
   loadAuthoritativeSecMetadata,
   parseHistoricalPeriodAuditArgs,
+  readDownstreamImpact,
   runHistoricalPeriodAudit,
   SecSubmissionsFailureError,
   validateHistoricalAuditBounds,
@@ -326,6 +328,76 @@ describe("historical filing-period production audit", () => {
       httpStatus: 404,
       safeMessage: "SEC_SUBMISSIONS_NOT_FOUND",
     });
+  });
+
+  it("recovers an accession from bulk SUBMISSION metadata after a submissions 404", async () => {
+    const row = {
+      id: "row-1",
+      rawAccession: "000000000126000001",
+      filerCik: "0000000001",
+      filingDate: "2026-05-15",
+      periodOfReport: "2024-12-31",
+      filingType: "13F-HR",
+      amendmentFlag: false,
+      isEffective: true,
+    };
+    const zip = new AdmZip();
+    zip.addFile("SUBMISSION.tsv", Buffer.from(
+      "ACCESSION_NUMBER\tCIK\tSUBMISSIONTYPE\tPERIODOFREPORT\tFILING_DATE\n" +
+      "0000000001-26-000001\t1\t13F-HR\t31-DEC-2024\t15-MAY-2026\n",
+    ));
+    zip.addFile("INFOTABLE.tsv", Buffer.from("this must never be parsed"));
+    const status = createSecMetadataVerificationStatus();
+    const metadata = await loadAuthoritativeSecMetadata([row], {
+      status,
+      fetchSec: vi.fn(async (url: string) => {
+        throw new SecHttpError(404, url);
+      }),
+      catalog: [{
+        downloadUrl: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/test_form13f.zip",
+        fileName: "01mar2026-31may2026_form13f.zip",
+        displayLabel: "Mar-May 2026",
+        windowStart: "2026-03-01",
+        windowEnd: "2026-05-31",
+        publicationModel: "three_month_window",
+        canonicalPeriodLabel: "2026Q1",
+        expectedPeriodOfReport: "2026-03-31",
+      }],
+      fetchArchive: vi.fn(async () => zip.toBuffer()),
+    });
+    expect(metadata.get(row.rawAccession)).toEqual([{
+      canonicalAccession: row.rawAccession,
+      filerCik: "0000000001",
+      filingDate: "2026-05-15",
+      periodOfReport: "2024-12-31",
+      filingType: "13F-HR",
+      amendmentFlag: false,
+    }]);
+    expect(classifyStoredFilings(
+      [row],
+      metadata,
+      status.accessionOutcomes,
+    )[0].accessionClassification).toBe("VERIFIED_VALID");
+  });
+
+  it("keeps downstream duplicate and unverified impacts separate from contamination", async () => {
+    const executor = {
+      execute: vi.fn(async () => ({
+        rows: [
+          { category: "canonicalDuplicates", holdings: 4, effectiveFilings: 1, aggregates: 2, signals: 2, affectedSymbols: 2 },
+          { category: "unverifiedFilings", holdings: 3, effectiveFilings: 1, aggregates: 1, signals: 1, affectedSymbols: 1 },
+        ],
+      })),
+    };
+    const result = await readDownstreamImpact(executor, {
+      verifiedMetadataMismatches: [],
+      canonicalDuplicates: ["000000000126000001"],
+      unverifiedFilings: ["000000000226000001"],
+    });
+    expect(result.downstreamGeneratedFromContaminatedFilings).toBe(false);
+    expect(result.downstreamRowsLinkedToCanonicalDuplicates).toMatchObject({ holdings: 4 });
+    expect(result.downstreamRowsLinkedToUnverifiedFilings).toMatchObject({ holdings: 3 });
+    expect(result.downstreamRowsLinkedToVerifiedMetadataMismatches).toMatchObject({ holdings: 0 });
   });
 
   it("keeps the dry-run audit on SELECT-only SQL", async () => {

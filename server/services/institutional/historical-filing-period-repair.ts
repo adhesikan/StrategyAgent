@@ -119,9 +119,45 @@ export function classifyStoredFilings(
   verificationOutcomes: ReadonlyMap<string, AccessionVerificationOutcome> = new Map(),
 ): ClassifiedFiling[] {
   const canonicalCounts = new Map<string, number>();
+  const rowsByAccession = new Map<string, StoredFilingMetadata[]>();
   for (const row of storedRows) {
     const canonical = normalizeAccession(row.rawAccession);
     canonicalCounts.set(canonical, (canonicalCounts.get(canonical) ?? 0) + 1);
+    const group = rowsByAccession.get(canonical);
+    if (group) group.push(row);
+    else rowsByAccession.set(canonical, [row]);
+  }
+  const accessionClassifications = new Map<string, FilingAccessionClassification>();
+  for (const [canonicalAccession, rows] of Array.from(rowsByAccession.entries())) {
+    const authoritativeMatches = authoritativeByAccession.get(canonicalAccession) ?? [];
+    const validAccession = /^\d{18}$/.test(canonicalAccession);
+    if (!validAccession) {
+      accessionClassifications.set(canonicalAccession, "VERIFICATION_UNAVAILABLE");
+      continue;
+    }
+    if (authoritativeMatches.length > 1) {
+      accessionClassifications.set(canonicalAccession, "AMBIGUOUS_CONFLICTING_EVIDENCE");
+      continue;
+    }
+    if (authoritativeMatches.length === 0) {
+      accessionClassifications.set(
+        canonicalAccession,
+        verificationOutcomes.get(canonicalAccession) ?? "VERIFICATION_UNAVAILABLE",
+      );
+      continue;
+    }
+    const groupMismatches = rows.flatMap((row) => metadataMismatches(row, authoritativeMatches[0]));
+    if (groupMismatches.includes("PERIOD")) {
+      accessionClassifications.set(canonicalAccession, "VERIFIED_PERIOD_MISMATCH");
+    } else if (groupMismatches.includes("FILING_DATE")) {
+      accessionClassifications.set(canonicalAccession, "VERIFIED_FILING_DATE_MISMATCH");
+    } else if (groupMismatches.includes("MANAGER_CIK")) {
+      accessionClassifications.set(canonicalAccession, "VERIFIED_CIK_MISMATCH");
+    } else if (rows.length > 1) {
+      accessionClassifications.set(canonicalAccession, "VERIFIED_CANONICAL_DUPLICATE");
+    } else {
+      accessionClassifications.set(canonicalAccession, "VERIFIED_VALID");
+    }
   }
 
   return storedRows.map((row) => {
@@ -130,17 +166,8 @@ export function classifyStoredFilings(
     const validAccession = /^\d{18}$/.test(canonicalAccession);
     const authoritative = authoritativeMatches.length === 1 ? authoritativeMatches[0] : null;
     const mismatches = authoritative ? metadataMismatches(row, authoritative) : [];
-    let accessionClassification: FilingAccessionClassification;
-    if (!validAccession) accessionClassification = "VERIFICATION_UNAVAILABLE";
-    else if (authoritativeMatches.length > 1) accessionClassification = "AMBIGUOUS_CONFLICTING_EVIDENCE";
-    else if (authoritativeMatches.length === 0) {
-      accessionClassification = verificationOutcomes.get(canonicalAccession)
-        ?? "VERIFICATION_UNAVAILABLE";
-    } else if (mismatches.includes("PERIOD")) accessionClassification = "VERIFIED_PERIOD_MISMATCH";
-    else if (mismatches.includes("FILING_DATE")) accessionClassification = "VERIFIED_FILING_DATE_MISMATCH";
-    else if (mismatches.includes("MANAGER_CIK")) accessionClassification = "VERIFIED_CIK_MISMATCH";
-    else if ((canonicalCounts.get(canonicalAccession) ?? 0) > 1) accessionClassification = "VERIFIED_CANONICAL_DUPLICATE";
-    else accessionClassification = "VERIFIED_VALID";
+    const accessionClassification =
+      accessionClassifications.get(canonicalAccession) ?? "VERIFICATION_UNAVAILABLE";
     let classification: FilingAuditClassification;
 
     if (!validAccession) classification = "OTHER_INVALID";
@@ -239,7 +266,18 @@ export function buildHistoricalFilingRepairPlan(
     const duplicateIds = sorted.slice(1).map((row) => row.id);
     if (!needsMetadataCorrection && !canonicalizeAccession && duplicateIds.length === 0) continue;
 
-    if (duplicateIds.length > 0 && options.duplicateDispositions?.get(canonicalAccession) === "REPLAY_REQUIRED") {
+    const duplicateMetadataAgrees = rows.every(
+      (row) => metadataMismatches(row, authoritative).length === 0,
+    );
+    const duplicateDisposition = options.duplicateDispositions?.get(canonicalAccession);
+    if (duplicateIds.length > 0 && !duplicateMetadataAgrees) {
+      replayRequiredOperations.push({
+        canonicalAccession,
+        reason: "DOWNSTREAM_OWNERSHIP_CONFLICT",
+      });
+      continue;
+    }
+    if (duplicateIds.length > 0 && (!duplicateDisposition || duplicateDisposition === "REPLAY_REQUIRED")) {
       replayRequiredOperations.push({
         canonicalAccession,
         reason: "CONFLICTING_HOLDINGS",
@@ -258,7 +296,7 @@ export function buildHistoricalFilingRepairPlan(
       canonicalizeAccession,
     };
     operations.push(operation);
-    if (duplicateIds.length > 0) duplicateCleanupOperations.push(operation);
+    if (duplicateIds.length > 0 || canonicalizeAccession) duplicateCleanupOperations.push(operation);
     if (needsMetadataCorrection) metadataCorrectionOperations.push(operation);
   }
 
@@ -300,7 +338,6 @@ export function summarizeFilingAudit(
   const duplicateGroups = new Map<string, ClassifiedFiling[]>();
   for (const row of classified) {
     counts[row.classification]++;
-    canonicalClassificationCounts[row.accessionClassification]++;
     const group = duplicateGroups.get(row.canonicalAccession);
     if (group) group.push(row);
     else duplicateGroups.set(row.canonicalAccession, [row]);
@@ -323,9 +360,11 @@ export function summarizeFilingAudit(
   let emptyHoldingDuplicateGroups = 0;
   let safeDuplicateCleanupGroups = 0;
   let blockedDuplicateGroups = 0;
-  for (const [accession, rows] of duplicateGroups) {
+  for (const [, rows] of Array.from(duplicateGroups.entries())) {
+    canonicalClassificationCounts[rows[0].accessionClassification]++;
     if (rows.length < 2) continue;
     const verified = rows.every((row) => row.authoritative !== null);
+    const verifiedDuplicate = rows[0].accessionClassification === "VERIFIED_CANONICAL_DUPLICATE";
     if (verified) verifiedDuplicateGroups++;
     else unverifiedDuplicateGroups++;
     const sets = rows.map((row) => fingerprints.get(row.rawAccession)).filter(Boolean) as HoldingFingerprint[];
@@ -333,13 +372,16 @@ export function summarizeFilingAudit(
       blockedDuplicateGroups++;
       continue;
     }
-    if (sets.some((set) => set.count === 0)) emptyHoldingDuplicateGroups++;
-    else if (sets.every((set) => set.count === sets[0].count && set.digest === sets[0].digest)) {
+    const nonEmptySets = sets.filter((set) => set.count > 0);
+    const nonEmptyIdentical = nonEmptySets.length <= 1 ||
+      nonEmptySets.every((set) =>
+        set.count === nonEmptySets[0].count && set.digest === nonEmptySets[0].digest);
+    if (!nonEmptyIdentical) conflictingHoldingDuplicateGroups++;
+    else if (sets.some((set) => set.count === 0)) emptyHoldingDuplicateGroups++;
+    else {
       identicalHoldingDuplicateGroups++;
-    } else conflictingHoldingDuplicateGroups++;
-    if (verified && !sets.some((set) => set.count > 0) ||
-      verified && (sets.some((set) => set.count === 0) ||
-        sets.every((set) => set.count === sets[0].count && set.digest === sets[0].digest))) {
+    }
+    if (verifiedDuplicate && nonEmptyIdentical) {
       safeDuplicateCleanupGroups++;
     } else {
       blockedDuplicateGroups++;

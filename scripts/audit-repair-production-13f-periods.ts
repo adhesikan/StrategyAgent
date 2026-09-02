@@ -176,6 +176,7 @@ export function getHistoricalRepairApplyGuardIssues(
   else if (args.planHash !== plan.planHash) issues.push("PLAN_HASH_MISMATCH");
   if (args.confirm !== APPLY_CONFIRMATION) issues.push("CONFIRMATION_REQUIRED");
   if (plan.blocked.length > 0) issues.push("UNVERIFIED_OR_AMBIGUOUS_FILINGS_PRESENT");
+  if (plan.replayRequiredOperations.length > 0) issues.push("REPLAY_REQUIRED_OPERATIONS_PRESENT");
   if (plan.operations.length === 0) issues.push("NO_REPAIR_OPERATIONS");
   return issues;
 }
@@ -468,20 +469,18 @@ async function recoverAccessionsFromBulkMetadata(
 
   const unavailable = new Set<string>();
   const scanned = new Set<string>();
-  const archiveCache = new Map<string, Buffer>();
   for (const descriptor of descriptors) {
     const targets = targetsByDescriptor.get(descriptor.downloadUrl) ?? new Set<string>();
     if (targets.size === 0) continue;
     let buffer: Buffer;
     try {
-      buffer = archiveCache.get(descriptor.downloadUrl) ?? await (options.fetchArchive
+      buffer = await (options.fetchArchive
         ? options.fetchArchive(descriptor)
         : (async () => {
           const prepared = await prepareBulkArchiveFromDescriptor(descriptor);
           if ("status" in prepared) throw new Error(prepared.failureCode ?? "SEC_ARCHIVE_UNAVAILABLE");
           return prepared.buffer;
         })());
-      archiveCache.set(descriptor.downloadUrl, buffer);
     } catch {
       for (const accession of targets) unavailable.add(accession);
       continue;
@@ -722,13 +721,56 @@ async function readDuplicateHoldingFingerprints(
      WHERE accession_number IN (${values})
      GROUP BY accession_number
   `);
-  return new Map(rowsOf(result).map((row) => [
-    String(row.rawAccession),
-    { count: Number(row.row_count ?? 0), digest: String(row.digest ?? "") },
-  ]));
+  const fingerprints = new Map<string, HoldingFingerprint>(
+    rawAccessions.map((accession) => [accession, { count: 0, digest: "" }]),
+  );
+  for (const row of rowsOf(result)) {
+    fingerprints.set(
+      String(row.rawAccession),
+      { count: Number(row.row_count ?? 0), digest: String(row.digest ?? "") },
+    );
+  }
+  return fingerprints;
 }
 
-async function readDownstreamImpact(
+export function buildDuplicateDispositions(
+  rows: StoredFilingMetadata[],
+  fingerprints: ReadonlyMap<string, HoldingFingerprint>,
+): Map<string, ReturnType<typeof decideDuplicateHoldingDisposition>> {
+  const dispositions = new Map<string, ReturnType<typeof decideDuplicateHoldingDisposition>>();
+  const grouped = new Map<string, StoredFilingMetadata[]>();
+  for (const row of rows) {
+    const accession = normalizeAccession(row.rawAccession);
+    const group = grouped.get(accession);
+    if (group) group.push(row);
+    else grouped.set(accession, [row]);
+  }
+  for (const [accession, groupRows] of Array.from(grouped.entries())) {
+    if (groupRows.length < 2) continue;
+    const sorted = [...groupRows].sort((a, b) => {
+      const aCanonical = a.rawAccession === accession ? 0 : 1;
+      const bCanonical = b.rawAccession === accession ? 0 : 1;
+      return aCanonical - bCanonical || a.id.localeCompare(b.id);
+    });
+    let survivor = fingerprints.get(sorted[0].rawAccession);
+    if (!survivor) continue;
+    let disposition: ReturnType<typeof decideDuplicateHoldingDisposition> = "NOOP_EMPTY_DUPLICATE";
+    for (const duplicate of sorted.slice(1)) {
+      const duplicateFingerprint = fingerprints.get(duplicate.rawAccession);
+      if (!duplicateFingerprint) {
+        disposition = "REPLAY_REQUIRED";
+        break;
+      }
+      disposition = decideDuplicateHoldingDisposition(survivor, duplicateFingerprint);
+      if (disposition === "REPLAY_REQUIRED") break;
+      if (disposition === "MOVE_DUPLICATE_TO_EMPTY_SURVIVOR") survivor = duplicateFingerprint;
+    }
+    dispositions.set(accession, disposition);
+  }
+  return dispositions;
+}
+
+export async function readDownstreamImpact(
   executor: Executor,
   categories: {
     verifiedMetadataMismatches: string[];
@@ -773,14 +815,16 @@ async function readDownstreamImpact(
           ON regexp_replace(h.accession_number, '[^0-9]', '', 'g') = ca.accession
     ),
     affected_symbols AS (
-      SELECT DISTINCT category, mapped_symbol AS symbol
+      SELECT DISTINCT category, mapped_symbol AS symbol, period_of_report
         FROM affected_holdings
        WHERE mapped_symbol IS NOT NULL
     ),
     affected_aggregates AS (
       SELECT s.category, a.*
         FROM institutional_quarterly_aggregates a
-        JOIN affected_symbols s ON s.symbol = a.symbol
+        JOIN affected_symbols s
+          ON s.symbol = a.symbol
+         AND s.period_of_report = a.period_of_report
     ),
     affected_signals AS (
       SELECT i.category, s.*
@@ -853,18 +897,19 @@ function totalsForCategory(category: {
 
 function sanitizedExamples(classified: ReturnType<typeof classifyStoredFilings>) {
   return classified
-    .filter((row) => row.classification !== "VALID_SEC_IDENTITY_AND_PERIOD")
+    .filter((row) => row.accessionClassification !== "VERIFIED_VALID")
     .slice(0, MAX_EXAMPLES)
     .map((row) => ({
       accession: row.canonicalAccession,
       canonicalCik: row.canonicalAccession.slice(0, 10),
       classification: row.classification,
+      accessionClassification: row.accessionClassification,
       storedPeriodOfReport: row.periodOfReport,
       secPeriodOfReport: row.authoritative?.periodOfReport ?? null,
       storedFilingDate: row.filingDate,
       secFilingDate: row.authoritative?.filingDate ?? null,
       mismatches: row.mismatches,
-      reason: row.authoritative ? row.classification : "SEC_SUBMISSIONS_NOT_FOUND_OR_UNVERIFIED",
+      reason: row.accessionClassification,
     }));
 }
 
@@ -880,20 +925,65 @@ export async function runHistoricalPeriodAudit(
   const storedRows = await readStoredFilings(executor, limits);
   const verificationStatus = createSecMetadataVerificationStatus();
   const authoritative = await authoritativeLoader(storedRows, verificationStatus);
-  const classified = classifyStoredFilings(storedRows, authoritative);
-  const summary = summarizeFilingAudit(classified);
-  const plan = buildHistoricalFilingRepairPlan(storedRows, authoritative);
-  const contaminated = classified.filter((row) =>
-    row.classification === "PERIOD_MISMATCH" || row.classification === "CANONICAL_DUPLICATE",
+  const classified = classifyStoredFilings(
+    storedRows,
+    authoritative,
+    verificationStatus.accessionOutcomes,
   );
-  const impact = await readDownstreamImpact(
-    executor,
-    Array.from(new Set(contaminated.map((row) => row.canonicalAccession))).sort(),
-    Array.from(new Set(contaminated.flatMap((row) => [
-      row.periodOfReport,
-      row.authoritative?.periodOfReport ?? row.periodOfReport,
-    ]))).sort(),
-  );
+  const fingerprints = await readDuplicateHoldingFingerprints(executor, storedRows);
+  const summary = summarizeFilingAudit(classified, fingerprints);
+  const duplicateDispositions = buildDuplicateDispositions(storedRows, fingerprints);
+  const plan = buildHistoricalFilingRepairPlan(storedRows, authoritative, {
+    duplicateDispositions,
+  });
+  const canonicalClassifications = new Map<string, string>();
+  for (const row of classified) {
+    if (!canonicalClassifications.has(row.canonicalAccession)) {
+      canonicalClassifications.set(row.canonicalAccession, row.accessionClassification);
+    }
+  }
+  const impact = await readDownstreamImpact(executor, {
+    verifiedMetadataMismatches: Array.from(canonicalClassifications)
+      .filter(([, classification]) => [
+        "VERIFIED_PERIOD_MISMATCH",
+        "VERIFIED_FILING_DATE_MISMATCH",
+        "VERIFIED_CIK_MISMATCH",
+      ].includes(classification))
+      .map(([accession]) => accession)
+      .sort(),
+    canonicalDuplicates: Array.from(canonicalClassifications)
+      .filter(([, classification]) => classification === "VERIFIED_CANONICAL_DUPLICATE")
+      .map(([accession]) => accession)
+      .sort(),
+    unverifiedFilings: Array.from(canonicalClassifications)
+      .filter(([, classification]) => [
+        "AUTHORITATIVE_ACCESSION_NOT_FOUND",
+        "VERIFICATION_UNAVAILABLE",
+        "AMBIGUOUS_CONFLICTING_EVIDENCE",
+      ].includes(classification))
+      .map(([accession]) => accession)
+      .sort(),
+  });
+  const exactMetadataMismatchAccessions = [
+    "VERIFIED_PERIOD_MISMATCH",
+    "VERIFIED_FILING_DATE_MISMATCH",
+    "VERIFIED_CIK_MISMATCH",
+  ].reduce((count, classification) =>
+    count + (summary.canonicalClassificationCounts[
+      classification as keyof typeof summary.canonicalClassificationCounts
+    ] ?? 0), 0);
+  const impossibleToVerifyAccessions = [
+    "AUTHORITATIVE_ACCESSION_NOT_FOUND",
+    "VERIFICATION_UNAVAILABLE",
+    "AMBIGUOUS_CONFLICTING_EVIDENCE",
+  ].reduce((count, classification) =>
+    count + (summary.canonicalClassificationCounts[
+      classification as keyof typeof summary.canonicalClassificationCounts
+    ] ?? 0), 0);
+  const historicalBackfillBlockers = [
+    ...(impossibleToVerifyAccessions > 0 ? ["UNRESOLVED_AUTHORITATIVE_IDENTITIES"] : []),
+    ...(plan.replayRequiredOperations.length > 0 ? ["DUPLICATE_REPLAY_REQUIRED"] : []),
+  ];
   return {
     mode: "DRY_RUN",
     rootCause: {
@@ -908,10 +998,23 @@ export async function runHistoricalPeriodAudit(
       secSubmissionFailures: verificationStatus.failures,
     },
     downstreamImpact: impact,
+    conclusions: {
+      productionPeriodContaminationProven: summary.periodMismatchesSEC > 0,
+      exactSecMetadataMismatchAccessions: exactMetadataMismatchAccessions,
+      canonicalDuplicateRows: summary.canonicalDuplicateRows,
+      impossibleToVerifyAccessions,
+      safeDuplicateCleanupGroups: summary.safeDuplicateCleanupGroups,
+      historicalBackfillBlocked: historicalBackfillBlockers.length > 0,
+      historicalBackfillBlockers,
+    },
     repairPlan: {
       planHash: plan.planHash,
       operationCount: plan.operations.length,
       blockedCount: plan.blocked.length,
+      duplicateCleanupOperations: plan.duplicateCleanupOperations.length,
+      metadataCorrectionOperations: plan.metadataCorrectionOperations.length,
+      replayRequiredOperations: plan.replayRequiredOperations.length,
+      blockedOperations: plan.blockedOperations.length,
       canonicalDuplicateGroups: plan.operations.filter((operation) => operation.duplicateIds.length > 0).length,
       affectedPeriods: plan.affectedPeriods,
       blockedReasons: Object.fromEntries(
@@ -957,7 +1060,10 @@ async function applyHistoricalFilingRepair(
     ));
     if (lock[0]?.locked !== true) throw new Error("HISTORICAL_PERIOD_REPAIR_LOCK_HELD");
     const currentRows = await readStoredFilings(tx, HISTORICAL_AUDIT_DEFAULTS);
-    const currentPlan = buildHistoricalFilingRepairPlan(currentRows, authoritative);
+    const currentFingerprints = await readDuplicateHoldingFingerprints(tx, currentRows);
+    const currentPlan = buildHistoricalFilingRepairPlan(currentRows, authoritative, {
+      duplicateDispositions: buildDuplicateDispositions(currentRows, currentFingerprints),
+    });
     if (currentPlan.planHash !== expectedPlan.planHash) throw new Error("HISTORICAL_PERIOD_REPAIR_PLAN_DRIFT");
     if (currentPlan.blocked.length > 0) throw new Error("HISTORICAL_PERIOD_REPAIR_BLOCKED");
 
@@ -1088,6 +1194,7 @@ async function main(args = process.argv.slice(2)): Promise<void> {
         maxCiks: options.maxCiks,
         cikBatchSize: options.cikBatchSize,
         status,
+        fetchCatalog: () => fetchDatasetCatalog(process.env.SEC_USER_AGENT!),
         onProgress: (progress) => {
           if (process.env.HISTORICAL_AUDIT_PROGRESS === "1") {
             console.error(JSON.stringify(progress));
@@ -1101,6 +1208,7 @@ async function main(args = process.argv.slice(2)): Promise<void> {
       rootCause: result.rootCause,
       productionContaminationAudit: result.audit,
       downstreamImpact: result.downstreamImpact,
+      conclusions: result.conclusions,
       legacyRepairDesign: result.repairPlan,
       examples: result.examples,
     };

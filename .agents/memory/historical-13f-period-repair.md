@@ -14,3 +14,7 @@ For production-wide verification, count the filing population before loading row
 SEC errors must be sanitized structurally, not by splitting messages on punctuation: URLs contain colons, so message splitting can falsely make a valid request appear truncated.
 
 A genuine SEC submissions 404 is record-level source unavailability: preserve successful CIK metadata, leave missing accessions unverified, record bounded sanitized status, and continue. Transport, parsing, malformed URL, and cancellation failures remain fatal.
+
+Accession recovery may use catalog-resolved SEC bulk archives, but must read SUBMISSION metadata only, select archives from filing-date windows, process one archive at a time, and never infer identity from issuer/manager similarity.
+
+Duplicates and unverified identities are not contamination. The contamination flag requires an exact SEC-verified metadata mismatch plus dependent downstream rows; report duplicate, unverified, and mismatch impact separately.

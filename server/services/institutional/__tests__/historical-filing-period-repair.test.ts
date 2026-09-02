@@ -97,12 +97,21 @@ describe("historical filing-period integrity", () => {
 
   it("plans dashed/undashed duplicate repair around one canonical survivor", () => {
     const rows = [
-      stored({ id: "dashed", rawAccession: "0000000001-26-000001" }),
-      stored({ id: "canonical", rawAccession: "000000000126000001" }),
+      stored({
+        id: "dashed",
+        rawAccession: "0000000001-26-000001",
+        periodOfReport: authoritative.periodOfReport,
+      }),
+      stored({
+        id: "canonical",
+        rawAccession: "000000000126000001",
+        periodOfReport: authoritative.periodOfReport,
+      }),
     ];
     const plan = buildHistoricalFilingRepairPlan(
       rows,
       new Map([[authoritative.canonicalAccession, [authoritative]]]),
+      { duplicateDispositions: new Map([[authoritative.canonicalAccession, "NOOP_EMPTY_DUPLICATE"]]) },
     );
     expect(plan.operations).toHaveLength(1);
     expect(plan.operations[0]).toMatchObject({
@@ -155,5 +164,64 @@ describe("historical filing-period integrity", () => {
     expect(plan.operations).toEqual([]);
     expect(plan.affectedPeriods).toEqual([]);
     expect(plan.planHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("classifies canonical accessions into exact authoritative outcomes", () => {
+    const lateValid = stored({
+      filingDate: "2026-05-15",
+      periodOfReport: "2024-12-31",
+    });
+    const lateEvidence = {
+      ...authoritative,
+      filingDate: "2026-05-15",
+      periodOfReport: "2024-12-31",
+    };
+    expect(classifyStoredFilings(
+      [lateValid],
+      new Map([[authoritative.canonicalAccession, [lateEvidence]]]),
+    )[0].accessionClassification).toBe("VERIFIED_VALID");
+
+    expect(classifyStoredFilings(
+      [stored()],
+      new Map([[authoritative.canonicalAccession, [authoritative]]]),
+    )[0].accessionClassification).toBe("VERIFIED_PERIOD_MISMATCH");
+
+    expect(classifyStoredFilings(
+      [stored()],
+      new Map(),
+      new Map([[authoritative.canonicalAccession, "AUTHORITATIVE_ACCESSION_NOT_FOUND"]]),
+    )[0].accessionClassification).toBe("AUTHORITATIVE_ACCESSION_NOT_FOUND");
+  });
+
+  it("separates duplicate cleanup from metadata correction and replay", () => {
+    const rows = [
+      stored({
+        id: "canonical",
+        rawAccession: authoritative.canonicalAccession,
+        periodOfReport: authoritative.periodOfReport,
+      }),
+      stored({
+        id: "dashed",
+        rawAccession: "0000000001-26-000001",
+        periodOfReport: authoritative.periodOfReport,
+      }),
+    ];
+    const evidence = new Map([[authoritative.canonicalAccession, [authoritative]]]);
+    const safe = buildHistoricalFilingRepairPlan(rows, evidence, {
+      duplicateDispositions: new Map([[authoritative.canonicalAccession, "DELETE_IDENTICAL_DUPLICATE"]]),
+    });
+    expect(safe.duplicateCleanupOperations).toHaveLength(1);
+    expect(safe.metadataCorrectionOperations).toHaveLength(0);
+    expect(safe.replayRequiredOperations).toHaveLength(0);
+
+    const conflict = buildHistoricalFilingRepairPlan(rows, evidence, {
+      duplicateDispositions: new Map([[authoritative.canonicalAccession, "REPLAY_REQUIRED"]]),
+    });
+    expect(conflict.duplicateCleanupOperations).toHaveLength(0);
+    expect(conflict.metadataCorrectionOperations).toHaveLength(0);
+    expect(conflict.replayRequiredOperations).toEqual([{
+      canonicalAccession: authoritative.canonicalAccession,
+      reason: "CONFLICTING_HOLDINGS",
+    }]);
   });
 });

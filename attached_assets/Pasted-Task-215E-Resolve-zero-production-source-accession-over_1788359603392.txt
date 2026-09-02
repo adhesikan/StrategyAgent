@@ -1,0 +1,159 @@
+Task #215E — Resolve zero production/source accession overlap before historical APPLY
+
+Continue from commit:
+
+d6fb89c8ffc76168a350de13560b8aab7af92921
+
+The corrected production dry-run completed successfully but reported:
+
+existingFilings: 241
+existingAccessions: 241
+sourceFilings: 59,375
+sourceAccessions: 59,375
+exactOverlap: 0
+normalizedOverlap: 0
+existingOnly: 218
+sourceOnly: 59,375
+duplicateExistingCanonicalAccessions: 23
+duplicateSourceCanonicalAccessions: 0
+
+DO NOT RUN APPLY.
+Do not change ingestion architecture.
+Do not reopen mapping, identity, OpenFIGI, asset types, Stock View, or analytics.
+
+OBJECTIVE
+
+Explain conclusively why the historical filings already persisted in
+institutional_13f_filings have zero accession overlap with the authoritative
+SEC bulk source for the same historical reporting periods.
+
+This is a bounded filing-identity/provenance investigation only.
+
+CHECK THESE SYSTEMIC POSSIBILITIES
+
+Determine which one is actually true:
+
+1. EXISTING_ACCESSIONS_LEGACY_FORMAT
+2. EXISTING_ACCESSIONS_SYNTHETIC_OR_INTERNAL
+3. WRONG_SEC_SOURCE_ACCESSION_FIELD
+4. REPORT_PERIOD_VS_ARCHIVE_PERIOD_MISMATCH
+5. WRONG_QUARTER_ALIGNMENT
+6. LEGACY_INGESTION_SOURCE_DIFFERENCE
+7. ACCESSION_COLUMN_CONTAMINATION
+8. OTHER — prove exactly what it is
+
+READ-ONLY RECONCILIATION
+
+For the seven-quarter range 2024-Q1 through 2025-Q3:
+
+A. Existing production rows
+
+Report at most 10 sanitized examples containing:
+
+raw accession_number
+canonical accession
+manager/CIK if available
+report_period
+filing_date if available
+form_type if available
+amendment flag if available
+ingestion/source provenance if stored
+
+B. SEC source rows
+
+Report corresponding fields for at most 10 source filings:
+
+raw accession
+canonical accession
+manager/CIK
+report_period
+filing_date
+form_type/amendment
+
+C. CROSS-MATCH BY NON-ACCESSION IDENTITY
+
+Without modifying data, determine whether existing production filings can be
+matched to SEC source filings using a bounded deterministic tuple such as:
+
+manager CIK
++ report period
++ filing date
++ form/amendment status
+
+Report counts:
+
+existingCanonicalUnique
+sourceCanonicalUnique
+accessionOverlap
+managerReportPeriodMatches
+managerReportPeriodFilingDateMatches
+uniqueDeterministicMatches
+ambiguousDeterministicMatches
+noDeterministicMatch
+
+Do not use fuzzy issuer/ticker matching.
+
+QUARTER ALIGNMENT
+
+Prove explicitly what the SEC catalog archive date represents:
+
+- filing-date window
+- reporting-period quarter
+- or another SEC-defined period
+
+Then prove that our labels 2024-Q1 ... 2025-Q3 are targeting the intended
+13F report periods.
+
+Do not assume this from filename naming.
+
+DUPLICATE EXISTING ACCESSIONS
+
+Explain how:
+
+241 raw unique accession rows
+→ 218 canonical accessions
+
+can coexist with the current unique accession index.
+
+Classify the 23 collisions.
+
+Do not modify or deduplicate production data.
+
+DECISION
+
+At the end state exactly one of:
+
+SAFE_TO_BACKFILL_AS_NEW
+SAFE_AFTER_IDENTITY_FIX
+QUARTER_RANGE_MISALIGNED
+EXISTING_DATA_REQUIRES_MIGRATION
+BLOCKED
+
+Do not make production writes.
+
+Only if a code bug is proven, fix the smallest generic bug and test it.
+Otherwise make no code changes.
+
+RETURN ONLY
+
+ROOT CAUSE
+
+QUARTER ALIGNMENT FINDING
+
+EXISTING DATA PROVENANCE
+
+CROSS-MATCH RESULTS
+
+23 CANONICAL COLLISIONS EXPLAINED
+
+FIX if required
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+FINAL DECISION
+
+Do not provide an APPLY command.

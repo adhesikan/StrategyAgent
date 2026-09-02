@@ -3194,6 +3194,43 @@ export type InstitutionalIngestionRun = typeof institutionalIngestionRuns.$infer
 export type InsertInstitutionalIngestionRun = typeof institutionalIngestionRuns.$inferInsert;
 
 /**
+ * Durable checkpoint for the one-time production accession convergence.
+ * Scope is persisted in the same transaction as mutation so downstream
+ * aggregate/signal/snapshot work can resume after a process restart.
+ */
+export const institutionalConvergenceJournal = pgTable("institutional_convergence_journal", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planHash: text("plan_hash").notNull(),
+  /** PLANNED | MUTATION_IN_PROGRESS | MUTATION_COMMITTED |
+   * MATERIALIZATION_IN_PROGRESS | COMPLETED | FAILED_RETRYABLE | FAILED_TERMINAL */
+  status: text("status").notNull(),
+  canonicalAccessions: jsonb("canonical_accessions").notNull().default([]),
+  affectedPeriods: jsonb("affected_periods").notNull().default([]),
+  affectedSymbols: jsonb("affected_symbols").notNull().default([]),
+  /** Exact bounded [{symbol, periodOfReport}] rebuild scope. */
+  targets: jsonb("targets").notNull().default([]),
+  mutationCompleted: boolean("mutation_completed").notNull().default(false),
+  materializationCompleted: boolean("materialization_completed").notNull().default(false),
+  lastCompletedStage: text("last_completed_stage"),
+  completedAggregateTargets: jsonb("completed_aggregate_targets").notNull().default([]),
+  completedSignalSymbols: jsonb("completed_signal_symbols").notNull().default([]),
+  failureStage: text("failure_stage"),
+  /** Sanitized and bounded; never stores raw SEC payloads or credentials. */
+  failureReason: text("failure_reason"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  activeAttemptId: text("active_attempt_id"),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  idxPlanHash: uniqueIndex("idx_institutional_convergence_plan_hash").on(t.planHash),
+  idxStatus: index("idx_institutional_convergence_status").on(t.status),
+}));
+
+export type InstitutionalConvergenceJournal = typeof institutionalConvergenceJournal.$inferSelect;
+export type InsertInstitutionalConvergenceJournal = typeof institutionalConvergenceJournal.$inferInsert;
+
+/**
  * Canonical CUSIP → ticker reference store for the Institutional Intelligence
  * mapping engine. Richer metadata than institutionalSecurityMappings; the review
  * queue operates on this table. Approved entries are synced back to

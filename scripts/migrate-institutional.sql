@@ -270,6 +270,49 @@ CREATE INDEX IF NOT EXISTS idx_iir_heartbeat
   WHERE status = 'running';
 
 -- ---------------------------------------------------------------------------
+-- 6. institutional_convergence_journal
+-- Durable post-convergence materialization checkpoint.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS institutional_convergence_journal (
+  id                          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  plan_hash                   TEXT        NOT NULL,
+  status                      TEXT        NOT NULL,
+  canonical_accessions        JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  affected_periods            JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  affected_symbols            JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  targets                     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  mutation_completed          BOOLEAN     NOT NULL DEFAULT FALSE,
+  materialization_completed   BOOLEAN     NOT NULL DEFAULT FALSE,
+  last_completed_stage        TEXT,
+  completed_aggregate_targets JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  completed_signal_symbols    JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  failure_stage               TEXT,
+  failure_reason              TEXT,
+  attempt_count               INTEGER     NOT NULL DEFAULT 0,
+  active_attempt_id           TEXT,
+  lease_expires_at            TIMESTAMPTZ,
+  created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT institutional_convergence_status_check CHECK (
+    status IN (
+      'PLANNED', 'MUTATION_IN_PROGRESS', 'MUTATION_COMMITTED',
+      'MATERIALIZATION_IN_PROGRESS', 'COMPLETED',
+      'FAILED_RETRYABLE', 'FAILED_TERMINAL'
+    )
+  ),
+  CONSTRAINT institutional_convergence_failure_reason_bound CHECK (
+    failure_reason IS NULL OR length(failure_reason) <= 200
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_institutional_convergence_plan_hash
+  ON institutional_convergence_journal (plan_hash);
+
+CREATE INDEX IF NOT EXISTS idx_institutional_convergence_status
+  ON institutional_convergence_journal (status);
+
+-- ---------------------------------------------------------------------------
 -- Upgrade path: add any columns missing from existing correct-schema tables
 -- (for databases that were created with an intermediate correct schema but
 -- are missing Sprint 2.2.5 checkpoint columns or other additions)
@@ -324,3 +367,4 @@ COMMIT;
 -- ---------------------------------------------------------------------------
 -- Opportunity engine lock:  774412002  (pg_try_advisory_lock)
 -- Institutional ingestion:  774412003  (pg_try_advisory_lock)
+-- 13F duplicate convergence: 774412007 (pg_try_advisory_xact_lock)

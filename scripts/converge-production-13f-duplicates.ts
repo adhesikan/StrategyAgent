@@ -9,11 +9,13 @@
 import { parseArgs } from "node:util";
 import { sql } from "drizzle-orm";
 import {
-  applyDuplicateConvergence,
+  applyDuplicateConvergenceDurable,
   buildDuplicateConvergencePlan,
   DUPLICATE_CONVERGENCE_CONFIRMATION,
   getDuplicateConvergenceApplyGuardIssues,
   loadAuthoritativeReplaySource,
+  readConvergenceJournal,
+  resumePersistedDuplicateConvergence,
   validateDuplicateConvergenceEnvironment,
   type AuthoritativeReplaySource,
   type ConvergenceExecutor,
@@ -137,9 +139,23 @@ export async function validateReplayGroups(
   return validations;
 }
 
-function publicPlan(plan: ReturnType<typeof buildDuplicateConvergencePlan>) {
-  const { operations: _operations, ...output } = plan;
-  return { ...output, metadataCorrectionOperations: 0 };
+function publicPlan(
+  plan: ReturnType<typeof buildDuplicateConvergencePlan>,
+  resumeReady: boolean,
+) {
+  return {
+    mode: plan.mode,
+    duplicateGroups: plan.totalCanonicalDuplicateGroups,
+    safeCleanupGroups: plan.safeCleanupGroups,
+    replayGroups: plan.replayGroups,
+    affectedPeriods: plan.affectedPeriods,
+    affectedSymbols: plan.affectedSymbols,
+    downstreamTargets: plan.downstreamRebuildScope.symbolPeriods,
+    journalRequired: true,
+    resumeReady,
+    productionApplyReady: plan.productionApplyReady,
+    planHash: plan.planHash,
+  };
 }
 
 async function persistReplaySource(
@@ -219,6 +235,45 @@ async function main(): Promise<void> {
       if (mode !== "on") throw new Error("READ_ONLY_SESSION_REQUIRED");
     }
 
+    const loadMaterializationDependencies = async () => {
+      const [
+        { recomputeAggregateForSymbol },
+        { rebuildInstitutionalSignalForSymbol },
+        { runIntelligencePrecomputation },
+      ] = await Promise.all([
+        import("../server/services/institutional/ingestion-service"),
+        import("../server/services/institutional/signal-engine"),
+        import("../server/services/institutional/intelligence-orchestrator"),
+      ]);
+      return {
+        recomputeAggregate: recomputeAggregateForSymbol,
+        rebuildSignal: rebuildInstitutionalSignalForSymbol,
+        refreshSnapshots: runIntelligencePrecomputation,
+      };
+    };
+
+    if (args.apply && args.planHash) {
+      const journal = await readConvergenceJournal(executor, args.planHash);
+      if (journal) {
+        if (args.confirm !== DUPLICATE_CONVERGENCE_CONFIRMATION) {
+          throw new Error("DUPLICATE_CONVERGENCE_GUARD_REJECTED:CONFIRMATION_REQUIRED");
+        }
+        const resumed = await resumePersistedDuplicateConvergence(
+          executor,
+          journal,
+          await loadMaterializationDependencies(),
+        );
+        console.log(JSON.stringify({
+          mode: resumed.status === "COMPLETED" ? "ALREADY_COMPLETED" : "RESUMED",
+          planHash: resumed.planHash,
+          status: resumed.status,
+          downstreamTargets: resumed.targets,
+          mutationRepeated: false,
+        }, null, 2));
+        return;
+      }
+    }
+
     const storedRows = await readStoredFilings(executor);
     const verificationStatus = createSecMetadataVerificationStatus();
     const authoritative = await loadAuthoritativeSecMetadata(storedRows, {
@@ -235,7 +290,8 @@ async function main(): Promise<void> {
     );
 
     if (!args.apply) {
-      console.log(JSON.stringify(publicPlan(plan), null, 2));
+      const journal = await readConvergenceJournal(executor, plan.planHash);
+      console.log(JSON.stringify(publicPlan(plan, journal !== null), null, 2));
       return;
     }
     const guardIssues = getDuplicateConvergenceApplyGuardIssues(plan, args);
@@ -243,10 +299,7 @@ async function main(): Promise<void> {
       throw new Error(`DUPLICATE_CONVERGENCE_GUARD_REJECTED:${guardIssues.join(",")}`);
     }
 
-    const { materializeAffectedInstitutionalTargets } = await import(
-      "../server/services/institutional/ingestion-service"
-    );
-    await applyDuplicateConvergence(executor, plan, {
+    const completed = await applyDuplicateConvergenceDurable(executor, plan, {
       revalidatePlan: async (tx) => {
         const freshGroups = await loadDuplicateGroups(tx, authoritative, replayValidations);
         return buildDuplicateConvergencePlan(
@@ -259,9 +312,14 @@ async function main(): Promise<void> {
         const source = await loadAuthoritativeReplaySource(operation);
         await persistReplaySource(tx, operation, source);
       },
-      materialize: materializeAffectedInstitutionalTargets,
+      materialization: await loadMaterializationDependencies(),
     });
-    console.log(JSON.stringify({ ...publicPlan(plan), mode: "APPLIED" }, null, 2));
+    console.log(JSON.stringify({
+      ...publicPlan(plan, true),
+      mode: "APPLIED",
+      status: completed.status,
+      runId: completed.id,
+    }, null, 2));
   } finally {
     await pool.end();
   }

@@ -3,7 +3,7 @@
  * deliberately independent of normal ingestion: callers must supply the SEC
  * replay operation, which keeps the existing SEC parser/fetcher authoritative.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { normalizeAccession } from "./sec-13f-bulk-parser";
 import type { AuthoritativeFilingMetadata, HoldingFingerprint, StoredFilingMetadata } from "./historical-filing-period-repair";
@@ -88,6 +88,8 @@ export interface ConvergenceJournalRecord {
   failureStage: string | null;
   failureReason: string | null;
   attemptCount: number;
+  activeAttemptId: string | null;
+  leaseExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -101,6 +103,18 @@ export interface ConvergenceMaterializationDependencies {
   recomputeAggregate: (symbol: string, periodOfReport: string, previousPeriod: string | null) => Promise<unknown>;
   rebuildSignal: (symbol: string) => Promise<unknown>;
   refreshSnapshots: (options: { persist: boolean }) => Promise<unknown>;
+}
+
+function previousQuarterEnd(periodOfReport: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(periodOfReport);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month === 3) return `${year - 1}-12-31`;
+  if (month === 6) return `${year}-03-31`;
+  if (month === 9) return `${year}-06-30`;
+  if (month === 12) return `${year}-09-30`;
+  return null;
 }
 
 function targetKey(target: { symbol: string; periodOfReport: string }): string {
@@ -118,8 +132,7 @@ function assertJournalScope(record: ConvergenceJournalRecord, plan: DuplicateCon
     stable(record.canonicalAccessions) !== stable(
       plan.operations.filter((operation) => operation.action !== "BLOCKED")
         .map((operation) => operation.canonicalAccession),
-    ) ||
-    stable(record.targets) !== stable(plan.downstreamRebuildScope.symbolPeriods)
+    )
   ) {
     throw new Error("CONVERGENCE_JOURNAL_SCOPE_MISMATCH");
   }
@@ -145,14 +158,16 @@ export async function resumeConvergenceMaterialization(
     failureReason: null,
     attemptCount: journal.attemptCount + 1,
   });
+  let activeStage: ConvergenceMaterializationStage = "AGGREGATES";
   try {
     const aggregateDone = new Set(current.completedAggregateTargets);
     for (const target of current.targets) {
       if (aggregateDone.has(targetKey(target))) continue;
+      activeStage = "AGGREGATES";
       await dependencies.recomputeAggregate(
         target.symbol,
         target.periodOfReport,
-        null,
+        previousQuarterEnd(target.periodOfReport),
       );
       aggregateDone.add(targetKey(target));
       current = await store.update(current.id, {
@@ -165,6 +180,7 @@ export async function resumeConvergenceMaterialization(
     const signalDone = new Set(current.completedSignalSymbols);
     for (const symbol of current.affectedSymbols) {
       if (signalDone.has(symbol)) continue;
+      activeStage = "SIGNALS";
       await dependencies.rebuildSignal(symbol);
       signalDone.add(symbol);
       current = await store.update(current.id, {
@@ -175,6 +191,7 @@ export async function resumeConvergenceMaterialization(
     }
 
     if (current.affectedSymbols.length > 0 && current.lastCompletedStage !== "SNAPSHOTS") {
+      activeStage = "SNAPSHOTS";
       await dependencies.refreshSnapshots({ persist: true });
       current = await store.update(current.id, {
         status: "COMPLETED",
@@ -182,6 +199,8 @@ export async function resumeConvergenceMaterialization(
         lastCompletedStage: "SNAPSHOTS",
         failureStage: null,
         failureReason: null,
+        activeAttemptId: null,
+        leaseExpiresAt: null,
       });
     } else {
       current = await store.update(current.id, {
@@ -189,15 +208,19 @@ export async function resumeConvergenceMaterialization(
         materializationCompleted: true,
         failureStage: null,
         failureReason: null,
+        activeAttemptId: null,
+        leaseExpiresAt: null,
       });
     }
     return current;
   } catch (error) {
     current = await store.update(current.id, {
       status: "FAILED_RETRYABLE",
-      failureStage: current.lastCompletedStage ?? "AGGREGATES",
+      failureStage: activeStage,
       failureReason: sanitizeJournalFailure(error),
       attemptCount: current.attemptCount,
+      activeAttemptId: null,
+      leaseExpiresAt: null,
     });
     throw error;
   }
@@ -297,9 +320,243 @@ export interface DuplicateConvergenceDependencies {
   materialize: (targets: Array<{symbol: string; periodOfReport: string}>) => Promise<unknown>;
   revalidatePlan?: (tx: ConvergenceExecutor) => Promise<string>;
 }
+export interface DurableDuplicateConvergenceDependencies {
+  replay: DuplicateConvergenceDependencies["replay"];
+  revalidatePlan?: DuplicateConvergenceDependencies["revalidatePlan"];
+  materialization: ConvergenceMaterializationDependencies;
+}
+
+function resultRows(result: any): any[] {
+  return Array.isArray(result) ? result : Array.isArray(result?.rows) ? result.rows : [];
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? [...value]
+    : [];
+}
+
+function targetArray(value: unknown): Array<{ symbol: string; periodOfReport: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      typeof (item as any).symbol !== "string" ||
+      typeof (item as any).periodOfReport !== "string"
+    ) return [];
+    return [{
+      symbol: String((item as any).symbol),
+      periodOfReport: String((item as any).periodOfReport),
+    }];
+  });
+}
+
+function parseJournalRow(row: any): ConvergenceJournalRecord {
+  if (!row || typeof row !== "object") throw new Error("CONVERGENCE_JOURNAL_INVALID");
+  const record: ConvergenceJournalRecord = {
+    id: String(row.id ?? ""),
+    planHash: String(row.planHash ?? row.plan_hash ?? ""),
+    status: String(row.status ?? "") as ConvergenceJournalStatus,
+    canonicalAccessions: stringArray(row.canonicalAccessions ?? row.canonical_accessions),
+    affectedPeriods: stringArray(row.affectedPeriods ?? row.affected_periods),
+    affectedSymbols: stringArray(row.affectedSymbols ?? row.affected_symbols),
+    targets: targetArray(row.targets),
+    mutationCompleted: Boolean(row.mutationCompleted ?? row.mutation_completed),
+    materializationCompleted: Boolean(row.materializationCompleted ?? row.materialization_completed),
+    lastCompletedStage: (row.lastCompletedStage ?? row.last_completed_stage ?? null) as ConvergenceMaterializationStage | null,
+    completedAggregateTargets: stringArray(row.completedAggregateTargets ?? row.completed_aggregate_targets),
+    completedSignalSymbols: stringArray(row.completedSignalSymbols ?? row.completed_signal_symbols),
+    failureStage: row.failureStage ?? row.failure_stage ?? null,
+    failureReason: row.failureReason ?? row.failure_reason ?? null,
+    attemptCount: Number(row.attemptCount ?? row.attempt_count ?? 0),
+    activeAttemptId: row.activeAttemptId ?? row.active_attempt_id ?? null,
+    leaseExpiresAt: row.leaseExpiresAt ?? row.lease_expires_at
+      ? new Date(row.leaseExpiresAt ?? row.lease_expires_at).toISOString()
+      : null,
+    createdAt: new Date(row.createdAt ?? row.created_at).toISOString(),
+    updatedAt: new Date(row.updatedAt ?? row.updated_at).toISOString(),
+  };
+  const validStatuses: ConvergenceJournalStatus[] = [
+    "PLANNED", "MUTATION_IN_PROGRESS", "MUTATION_COMMITTED",
+    "MATERIALIZATION_IN_PROGRESS", "COMPLETED", "FAILED_RETRYABLE", "FAILED_TERMINAL",
+  ];
+  if (
+    !record.id ||
+    !/^[a-f0-9]{64}$/.test(record.planHash) ||
+    !validStatuses.includes(record.status) ||
+    !Number.isInteger(record.attemptCount) ||
+    record.attemptCount < 0
+  ) {
+    throw new Error("CONVERGENCE_JOURNAL_INVALID");
+  }
+  if (getConvergenceJournalConsistencyIssues(record).length > 0) {
+    throw new Error("CONVERGENCE_JOURNAL_INCONSISTENT");
+  }
+  return record;
+}
+
+export function getConvergenceJournalConsistencyIssues(
+  record: ConvergenceJournalRecord,
+): string[] {
+  const issues: string[] = [];
+  const stageValues: ConvergenceMaterializationStage[] = [
+    "EFFECTIVENESS_RECOMPUTED", "AGGREGATES", "SIGNALS", "SNAPSHOTS",
+  ];
+  if (record.lastCompletedStage && !stageValues.includes(record.lastCompletedStage)) {
+    issues.push("INVALID_LAST_COMPLETED_STAGE");
+  }
+  const keys = record.targets.map(targetKey);
+  if (
+    new Set(keys).size !== keys.length ||
+    record.targets.some((target) =>
+      target.symbol !== target.symbol.trim().toUpperCase() ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(target.periodOfReport))
+  ) {
+    issues.push("INVALID_TARGET_SCOPE");
+  }
+  const targetSet = new Set(keys);
+  if (record.completedAggregateTargets.some((key) => !targetSet.has(key))) {
+    issues.push("UNKNOWN_COMPLETED_AGGREGATE_TARGET");
+  }
+  const symbolSet = new Set(record.affectedSymbols);
+  if (record.completedSignalSymbols.some((symbol) => !symbolSet.has(symbol))) {
+    issues.push("UNKNOWN_COMPLETED_SIGNAL_SYMBOL");
+  }
+  if (
+    record.status === "COMPLETED" &&
+    (!record.mutationCompleted || !record.materializationCompleted)
+  ) {
+    issues.push("COMPLETED_FLAGS_INVALID");
+  }
+  if (
+    record.materializationCompleted &&
+    record.status !== "COMPLETED"
+  ) {
+    issues.push("MATERIALIZATION_STATUS_INVALID");
+  }
+  if (
+    ["MUTATION_COMMITTED", "MATERIALIZATION_IN_PROGRESS", "FAILED_RETRYABLE", "COMPLETED"]
+      .includes(record.status) &&
+    !record.mutationCompleted
+  ) {
+    issues.push("MUTATION_STATUS_INVALID");
+  }
+  return issues;
+}
+
+export async function readConvergenceJournal(
+  executor: ConvergenceExecutor,
+  planHash: string,
+): Promise<ConvergenceJournalRecord | null> {
+  const result = await executor.execute(sql`
+    SELECT id, plan_hash AS "planHash", status,
+           canonical_accessions AS "canonicalAccessions",
+           affected_periods AS "affectedPeriods",
+           affected_symbols AS "affectedSymbols", targets,
+           mutation_completed AS "mutationCompleted",
+           materialization_completed AS "materializationCompleted",
+           last_completed_stage AS "lastCompletedStage",
+           completed_aggregate_targets AS "completedAggregateTargets",
+           completed_signal_symbols AS "completedSignalSymbols",
+           failure_stage AS "failureStage", failure_reason AS "failureReason",
+           attempt_count AS "attemptCount",
+           active_attempt_id AS "activeAttemptId",
+           lease_expires_at AS "leaseExpiresAt",
+           created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM institutional_convergence_journal
+     WHERE plan_hash = ${planHash}
+     LIMIT 1
+  `);
+  const rows = resultRows(result);
+  return rows.length === 0 ? null : parseJournalRow(rows[0]);
+}
+
+export function createDatabaseConvergenceJournalStore(
+  executor: ConvergenceExecutor,
+): ConvergenceJournalStore {
+  return {
+    async create(input) {
+      const result = await executor.execute(sql`
+        INSERT INTO institutional_convergence_journal (
+          plan_hash, status, canonical_accessions, affected_periods,
+          affected_symbols, targets, mutation_completed,
+          materialization_completed, last_completed_stage,
+          completed_aggregate_targets, completed_signal_symbols,
+          failure_stage, failure_reason, attempt_count,
+          active_attempt_id, lease_expires_at
+        ) VALUES (
+          ${input.planHash}, ${input.status},
+          CAST(${JSON.stringify(input.canonicalAccessions)} AS jsonb),
+          CAST(${JSON.stringify(input.affectedPeriods)} AS jsonb),
+          CAST(${JSON.stringify(input.affectedSymbols)} AS jsonb),
+          CAST(${JSON.stringify(input.targets)} AS jsonb),
+          ${input.mutationCompleted}, ${input.materializationCompleted},
+          ${input.lastCompletedStage},
+          CAST(${JSON.stringify(input.completedAggregateTargets)} AS jsonb),
+          CAST(${JSON.stringify(input.completedSignalSymbols)} AS jsonb),
+          ${input.failureStage}, ${input.failureReason}, ${input.attemptCount},
+          ${input.activeAttemptId}, ${input.leaseExpiresAt}
+        )
+        RETURNING *
+      `);
+      return parseJournalRow(resultRows(result)[0]);
+    },
+    async update(id, patch) {
+      const existingResult = await executor.execute(sql`
+        SELECT * FROM institutional_convergence_journal WHERE id = ${id} FOR UPDATE
+      `);
+      const existing = parseJournalRow(resultRows(existingResult)[0]);
+      const next = { ...existing, ...patch, id: existing.id, planHash: existing.planHash };
+      const result = await executor.execute(sql`
+        UPDATE institutional_convergence_journal
+           SET status = ${next.status},
+               canonical_accessions = CAST(${JSON.stringify(next.canonicalAccessions)} AS jsonb),
+               affected_periods = CAST(${JSON.stringify(next.affectedPeriods)} AS jsonb),
+               affected_symbols = CAST(${JSON.stringify(next.affectedSymbols)} AS jsonb),
+               targets = CAST(${JSON.stringify(next.targets)} AS jsonb),
+               mutation_completed = ${next.mutationCompleted},
+               materialization_completed = ${next.materializationCompleted},
+               last_completed_stage = ${next.lastCompletedStage},
+               completed_aggregate_targets = CAST(${JSON.stringify(next.completedAggregateTargets)} AS jsonb),
+               completed_signal_symbols = CAST(${JSON.stringify(next.completedSignalSymbols)} AS jsonb),
+               failure_stage = ${next.failureStage},
+               failure_reason = ${next.failureReason},
+               attempt_count = ${next.attemptCount},
+               active_attempt_id = ${next.activeAttemptId},
+               lease_expires_at = ${next.leaseExpiresAt},
+               updated_at = NOW()
+         WHERE id = ${id}
+         RETURNING *
+      `);
+      return parseJournalRow(resultRows(result)[0]);
+    },
+  };
+}
+
 export interface AuthoritativeReplaySource {
   indexUrl: string; sourceUrl: string; sourceChecksum: string;
   holdings: ReturnType<typeof parseInfoTableXml>["holdings"];
+}
+
+async function readTargetsForCanonicalAccessions(
+  executor: ConvergenceExecutor,
+  canonicalAccessions: string[],
+): Promise<Array<{ symbol: string; periodOfReport: string }>> {
+  if (canonicalAccessions.length === 0) return [];
+  const values = sql.join(canonicalAccessions.map((accession) => sql`${accession}`), sql`, `);
+  const targetResult: any = await executor.execute(sql`
+    SELECT DISTINCT UPPER(mapped_symbol) AS symbol,
+           period_of_report::text AS "periodOfReport"
+      FROM institutional_13f_holdings
+     WHERE accession_number IN (${values})
+       AND mapped_symbol IS NOT NULL
+     ORDER BY symbol, "periodOfReport"
+  `);
+  return resultRows(targetResult).map((row) => ({
+    symbol: String(row.symbol),
+    periodOfReport: String(row.periodOfReport),
+  }));
 }
 /** Uses the established strict SEC document selection/parser path; no fuzzy lookup. */
 export async function loadAuthoritativeReplaySource(operation: ConvergenceOperation): Promise<AuthoritativeReplaySource> {
@@ -321,74 +578,201 @@ export async function loadAuthoritativeReplaySource(operation: ConvergenceOperat
   return { indexUrl, sourceUrl, sourceChecksum: createHash("sha256").update(document.text).digest("hex"),
     holdings: parsed.holdings.map(row => normalizeSourceHoldingValue(row, metadata.filingDate).holding) };
 }
+async function executeConvergenceMutation(
+  tx: ConvergenceExecutor,
+  plan: DuplicateConvergencePlan,
+  deps: Pick<DuplicateConvergenceDependencies, "replay" | "revalidatePlan">,
+  hooks: {
+    beforeMutation?: () => Promise<void>;
+    afterMutation?: () => Promise<void>;
+  } = {},
+): Promise<void> {
+  await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
+  const lockResult: any = await tx.execute(
+    sql`SELECT pg_try_advisory_xact_lock(${DUPLICATE_CONVERGENCE_LOCK_KEY}::bigint) AS locked`,
+  );
+  const lockRows = lockResult?.rows ?? lockResult;
+  if (lockRows?.[0]?.locked !== true) throw new Error("DUPLICATE_CONVERGENCE_LOCK_HELD");
+  if (deps.revalidatePlan && await deps.revalidatePlan(tx) !== plan.planHash) throw new Error("STALE_PLAN_HASH");
+  await hooks.beforeMutation?.();
+  for (const operation of plan.operations) {
+    if (operation.action === "BLOCKED") throw new Error("BLOCKED_OPERATION");
+    if (operation.action === "AUTHORITATIVE_REPLAY") await deps.replay(tx, operation); // validates/persists first
+    if (operation.action === "SAFE_CLEANUP") {
+      const holdingSource = operation.holdingSourceRawAccession;
+      if (!holdingSource) throw new Error("SAFE_CLEANUP_HOLDING_SOURCE_MISSING");
+      // Empty copies are disposable; identical non-empty copies are reduced
+      // to one donor before the donor is canonicalized.
+      await tx.execute(sql`
+        DELETE FROM institutional_13f_holdings
+         WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession}
+           AND accession_number <> ${holdingSource}
+      `);
+      await tx.execute(sql`
+        UPDATE institutional_13f_holdings
+           SET accession_number = ${operation.canonicalAccession}
+         WHERE accession_number = ${holdingSource}
+      `);
+      await tx.execute(sql`DELETE FROM institutional_13f_filings WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession} AND id <> ${operation.survivorId!}`);
+      await tx.execute(sql`UPDATE institutional_13f_filings SET accession_number = ${operation.canonicalAccession} WHERE id = ${operation.survivorId!}`);
+      await recomputeEffectiveness(tx, operation);
+      continue;
+    }
+    await tx.execute(sql`DELETE FROM institutional_13f_holdings WHERE accession_number IN (SELECT accession_number FROM institutional_13f_filings WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession}) AND accession_number <> ${operation.canonicalAccession}`);
+    await tx.execute(sql`DELETE FROM institutional_13f_filings WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession} AND accession_number <> ${operation.canonicalAccession}`);
+    await recomputeEffectiveness(tx, operation);
+  }
+  const collisions: any = await tx.execute(sql`SELECT 1 FROM institutional_13f_filings GROUP BY regexp_replace(accession_number, '[^0-9]', '', 'g') HAVING COUNT(*) > 1 LIMIT 1`);
+  if ((collisions.rows ?? collisions)?.length) throw new Error("CANONICAL_ACCESSION_COLLISION_REMAINS");
+  await tx.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_13f_filings_canonical_accession ON institutional_13f_filings ((regexp_replace(accession_number, '[^0-9]', '', 'g')))`);
+  await hooks.afterMutation?.();
+}
+
 /** Applies each validated operation atomically. Replay is invoked before legacy deletion. */
 export async function applyDuplicateConvergence(executor: ConvergenceExecutor, plan: DuplicateConvergencePlan, deps: DuplicateConvergenceDependencies): Promise<void> {
   if (!plan.productionApplyReady) throw new Error("PLAN_NOT_APPLY_READY");
   const run = async (tx: ConvergenceExecutor) => {
-    await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
-    const lockResult: any = await tx.execute(
-      sql`SELECT pg_try_advisory_xact_lock(${DUPLICATE_CONVERGENCE_LOCK_KEY}::bigint) AS locked`,
-    );
-    const lockRows = lockResult?.rows ?? lockResult;
-    if (lockRows?.[0]?.locked !== true) throw new Error("DUPLICATE_CONVERGENCE_LOCK_HELD");
-    if (deps.revalidatePlan && await deps.revalidatePlan(tx) !== plan.planHash) throw new Error("STALE_PLAN_HASH");
-    for (const operation of plan.operations) {
-      if (operation.action === "BLOCKED") throw new Error("BLOCKED_OPERATION");
-      if (operation.action === "AUTHORITATIVE_REPLAY") await deps.replay(tx, operation); // validates/persists first
-      if (operation.action === "SAFE_CLEANUP") {
-        const holdingSource = operation.holdingSourceRawAccession;
-        if (!holdingSource) throw new Error("SAFE_CLEANUP_HOLDING_SOURCE_MISSING");
-        // Empty copies are disposable; identical non-empty copies are reduced
-        // to one donor before the donor is canonicalized.
-        await tx.execute(sql`
-          DELETE FROM institutional_13f_holdings
-           WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession}
-             AND accession_number <> ${holdingSource}
-        `);
-        await tx.execute(sql`
-          UPDATE institutional_13f_holdings
-             SET accession_number = ${operation.canonicalAccession}
-           WHERE accession_number = ${holdingSource}
-        `);
-        await tx.execute(sql`DELETE FROM institutional_13f_filings WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession} AND id <> ${operation.survivorId!}`);
-        await tx.execute(sql`UPDATE institutional_13f_filings SET accession_number = ${operation.canonicalAccession} WHERE id = ${operation.survivorId!}`);
-        await recomputeEffectiveness(tx, operation);
-        continue;
-      }
-      await tx.execute(sql`DELETE FROM institutional_13f_holdings WHERE accession_number IN (SELECT accession_number FROM institutional_13f_filings WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession}) AND accession_number <> ${operation.canonicalAccession}`);
-      await tx.execute(sql`DELETE FROM institutional_13f_filings WHERE regexp_replace(accession_number, '[^0-9]', '', 'g') = ${operation.canonicalAccession} AND accession_number <> ${operation.canonicalAccession}`);
-      await recomputeEffectiveness(tx, operation);
-    }
-    const collisions: any = await tx.execute(sql`SELECT 1 FROM institutional_13f_filings GROUP BY regexp_replace(accession_number, '[^0-9]', '', 'g') HAVING COUNT(*) > 1 LIMIT 1`);
-    if ((collisions.rows ?? collisions)?.length) throw new Error("CANONICAL_ACCESSION_COLLISION_REMAINS");
-    await tx.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_13f_filings_canonical_accession ON institutional_13f_filings ((regexp_replace(accession_number, '[^0-9]', '', 'g')))`);
+    await executeConvergenceMutation(tx, plan, deps);
   };
   if (executor.transaction) await executor.transaction(run); else await run(executor);
   const canonicalAccessions = plan.operations
     .filter((operation) => operation.action !== "BLOCKED")
     .map((operation) => operation.canonicalAccession);
-  const refreshedTargets: Array<{ symbol: string; periodOfReport: string }> = [];
-  if (canonicalAccessions.length > 0) {
-    const values = sql.join(canonicalAccessions.map((accession) => sql`${accession}`), sql`, `);
-    const targetResult: any = await executor.execute(sql`
-      SELECT DISTINCT UPPER(mapped_symbol) AS symbol,
-             period_of_report::text AS "periodOfReport"
-        FROM institutional_13f_holdings
-       WHERE accession_number IN (${values})
-         AND mapped_symbol IS NOT NULL
-    `);
-    for (const row of targetResult?.rows ?? targetResult ?? []) {
-      refreshedTargets.push({
-        symbol: String(row.symbol),
-        periodOfReport: String(row.periodOfReport),
-      });
-    }
-  }
+  const refreshedTargets = await readTargetsForCanonicalAccessions(
+    executor,
+    canonicalAccessions,
+  );
   const targets = Array.from(new Map([
     ...plan.downstreamRebuildScope.symbolPeriods,
     ...refreshedTargets,
   ].map((target) => [`${target.symbol}:${target.periodOfReport}`, target])).values());
   await deps.materialize(targets);
+}
+
+function initialJournalRecord(
+  plan: DuplicateConvergencePlan,
+): Omit<ConvergenceJournalRecord, "id" | "createdAt" | "updatedAt"> {
+  return {
+    planHash: plan.planHash,
+    status: "MUTATION_IN_PROGRESS",
+    canonicalAccessions: plan.operations
+      .filter((operation) => operation.action !== "BLOCKED")
+      .map((operation) => operation.canonicalAccession),
+    affectedPeriods: plan.affectedPeriods,
+    affectedSymbols: plan.affectedSymbols,
+    targets: plan.downstreamRebuildScope.symbolPeriods,
+    mutationCompleted: false,
+    materializationCompleted: false,
+    lastCompletedStage: null,
+    completedAggregateTargets: [],
+    completedSignalSymbols: [],
+    failureStage: null,
+    failureReason: null,
+    attemptCount: 0,
+    activeAttemptId: null,
+    leaseExpiresAt: null,
+  };
+}
+
+export async function resumePersistedDuplicateConvergence(
+  executor: ConvergenceExecutor,
+  journal: ConvergenceJournalRecord,
+  dependencies: ConvergenceMaterializationDependencies,
+): Promise<ConvergenceJournalRecord> {
+  const fresh = await readConvergenceJournal(executor, journal.planHash);
+  if (!fresh || fresh.id !== journal.id) throw new Error("CONVERGENCE_JOURNAL_MISSING");
+  if (fresh.status === "COMPLETED") return fresh;
+  if (!fresh.mutationCompleted) throw new Error("CONVERGENCE_JOURNAL_INCONSISTENT");
+  if (!executor.transaction) throw new Error("CONVERGENCE_TRANSACTION_REQUIRED");
+  const attemptId = randomUUID();
+  const claimed = await executor.transaction(async (tx) => {
+    const lockResult: any = await tx.execute(
+      sql`SELECT pg_try_advisory_xact_lock(${DUPLICATE_CONVERGENCE_LOCK_KEY}::bigint) AS locked`,
+    );
+    if ((lockResult?.rows ?? lockResult)?.[0]?.locked !== true) {
+      throw new Error("DUPLICATE_CONVERGENCE_LOCK_HELD");
+    }
+    const result = await tx.execute(sql`
+      UPDATE institutional_convergence_journal
+         SET active_attempt_id = ${attemptId},
+             lease_expires_at = NOW() + INTERVAL '10 minutes',
+             updated_at = NOW()
+       WHERE id = ${fresh.id}
+         AND mutation_completed = TRUE
+         AND materialization_completed = FALSE
+         AND status <> 'FAILED_TERMINAL'
+         AND (
+           active_attempt_id IS NULL OR
+           lease_expires_at IS NULL OR
+           lease_expires_at <= NOW()
+         )
+       RETURNING *
+    `);
+    const rows = resultRows(result);
+    if (rows.length !== 1) throw new Error("DUPLICATE_CONVERGENCE_RESUME_ACTIVE");
+    return parseJournalRow(rows[0]);
+  });
+  const store = createDatabaseConvergenceJournalStore(executor);
+  return resumeConvergenceMaterialization(claimed, store, dependencies);
+}
+
+/**
+ * Persist the exact rebuild scope in the same transaction as the destructive
+ * convergence. The MUTATION_COMMITTED journal state and filing changes become
+ * visible atomically, so post-commit work can always resume from this record.
+ */
+export async function applyDuplicateConvergenceDurable(
+  executor: ConvergenceExecutor,
+  plan: DuplicateConvergencePlan,
+  deps: DurableDuplicateConvergenceDependencies,
+): Promise<ConvergenceJournalRecord> {
+  if (!plan.productionApplyReady) throw new Error("PLAN_NOT_APPLY_READY");
+  const existing = await readConvergenceJournal(executor, plan.planHash);
+  if (existing) {
+    assertJournalScope(existing, plan);
+    return resumePersistedDuplicateConvergence(executor, existing, deps.materialization);
+  }
+  if (!executor.transaction) throw new Error("CONVERGENCE_TRANSACTION_REQUIRED");
+
+  let committedJournal: ConvergenceJournalRecord | null = null;
+  await executor.transaction(async (tx) => {
+    const store = createDatabaseConvergenceJournalStore(tx);
+    await executeConvergenceMutation(tx, plan, deps, {
+      beforeMutation: async () => {
+        committedJournal = await store.create(initialJournalRecord(plan));
+      },
+      afterMutation: async () => {
+        if (!committedJournal) throw new Error("CONVERGENCE_JOURNAL_MISSING");
+        const refreshedTargets = await readTargetsForCanonicalAccessions(
+          tx,
+          committedJournal.canonicalAccessions,
+        );
+        const targets = Array.from(new Map([
+          ...committedJournal.targets,
+          ...refreshedTargets,
+        ].map((target) => [targetKey(target), target])).values()).sort((a, b) =>
+          a.symbol.localeCompare(b.symbol) ||
+          a.periodOfReport.localeCompare(b.periodOfReport));
+        committedJournal = await store.update(committedJournal.id, {
+          status: "MUTATION_COMMITTED",
+          mutationCompleted: true,
+          lastCompletedStage: "EFFECTIVENESS_RECOMPUTED",
+          targets,
+          affectedSymbols: Array.from(new Set(targets.map((target) => target.symbol))).sort(),
+          affectedPeriods: Array.from(new Set([
+            ...committedJournal.affectedPeriods,
+            ...targets.map((target) => target.periodOfReport),
+          ])).sort(),
+        });
+      },
+    });
+  });
+  if (!committedJournal) throw new Error("CONVERGENCE_JOURNAL_COMMIT_MISSING");
+  return resumePersistedDuplicateConvergence(
+    executor,
+    committedJournal,
+    deps.materialization,
+  );
 }
 async function recomputeEffectiveness(tx: ConvergenceExecutor, operation: ConvergenceOperation): Promise<void> {
   if (!operation.filerCik || operation.periods.length === 0) return;

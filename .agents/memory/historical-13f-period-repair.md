@@ -24,3 +24,9 @@ Production duplicate convergence must be dry-run by default and hash-bound to a 
 **Why:** Choosing an arbitrary legacy copy can preserve a contaminated holding set, while deleting before replay validation can turn a recoverable source failure into data loss.
 
 **How to apply:** Acquire a transaction-scoped advisory lock, revalidate the plan under repeatable-read isolation, validate and persist replay data before deleting legacy rows, reject remaining canonical collisions, and create normalized-accession uniqueness only after all groups converge.
+
+Post-convergence materialization scope must be journaled in the same transaction as duplicate mutation. Resume from persisted exact symbol-period targets, never from a fresh duplicate scan, and checkpoint aggregate targets, signals, and snapshots independently.
+
+**Why:** After mutation commits, duplicate groups disappear; a later materialization failure otherwise destroys the only reconstruction path for the required downstream rebuild.
+
+**How to apply:** Treat the committed journal as the recovery authority, lease each resume attempt, skip completed idempotent stages, sanitize bounded failures, and fail closed on inconsistent journal state.

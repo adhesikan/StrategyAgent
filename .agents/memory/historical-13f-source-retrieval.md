@@ -7,4 +7,4 @@ Historical and scheduled 13F ingestion must resolve archive URLs from the offici
 
 **Why:** Published date-range archives can coexist with HTML 404 responses at guessed legacy paths; treating those responses as unpublished erased usable historical depth.
 
-**How to apply:** Preserve safe HTTP metadata, reject redirects/HTML/zero-byte/wrong-MIME/malformed ZIP responses fail-closed, and reserve not-yet-published only for absence from a successfully fetched authoritative catalog within the publication window.
+**How to apply:** Preserve safe HTTP metadata, reject redirects/HTML/zero-byte/wrong-MIME/malformed ZIP responses fail-closed, and incrementally verify each streamed entry's central-directory CRC and uncompressed size. Integrity failures are never partial success.

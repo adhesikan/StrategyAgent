@@ -24,6 +24,13 @@ An accession is complete only when its persisted holding count exactly matches t
 
 **How to apply:** DRY_RUN and APPLY must use the same count-based completion rule. Holding counts must be aggregated in the database; never load a quarter's holdings merely to decide resumability.
 
+## Cancellation Boundary
+A single signal must reach archive download, entry streams, readline, serial batch consumption, persistence sub-batches, mapping pages, and materialization. Cancellation closes active streams, stops before the next database write, leaves the active accession non-effective, and releases the advisory lock in `finally`.
+
+**Why:** Checking cancellation only between accessions can leave decompression running, continue batch writes, or misclassify an interrupted run.
+
+**How to apply:** Preserve `CANCELLED` as its own failure code; never collapse it into source-unavailable or parse-failed classifications.
+
 ## PERSISTENCE_COUNT_MISMATCH
 Raised when: `holdingCount === 0 AND eligibleCommonStockRows > 1000 AND totalAccessions > 0 AND !abortedEarly AND NOT all-existing`. Stored as `errorCode: "PERSISTENCE_COUNT_MISMATCH"` in the run record. Threshold: `MIN_ELIGIBLE_FOR_MISMATCH_CHECK = 1000`.
 

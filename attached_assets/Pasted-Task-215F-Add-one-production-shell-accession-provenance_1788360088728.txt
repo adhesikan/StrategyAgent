@@ -1,0 +1,190 @@
+Task #215F — Add one production-shell accession provenance reconciler
+
+Do not change ingestion behavior.
+Do not change parser behavior.
+Do not change canonical identity.
+Do not run APPLY.
+Do not modify production data.
+
+The Replit workspace cannot access the actual production database that produced:
+
+existingFilings: 241
+existingCanonicalUnique: 218
+sourceCanonicalUnique: 59,375
+normalizedOverlap: 0
+canonicalCollisions: 23
+
+However, the Railway production service shell DOES have access to that database.
+
+OBJECTIVE
+
+Add ONE bounded, read-only CLI that I can execute manually inside the Railway
+production service shell.
+
+Suggested path:
+
+scripts/reconcile-production-13f-accessions.ts
+
+GUARDS
+
+Require:
+
+NODE_ENV=production
+RAILWAY_ENVIRONMENT_NAME=production
+DATABASE_URL present
+EXTERNAL_DATABASE_URL absent
+
+The script must perform SELECT/read-only operations only.
+
+RANGE
+
+Hard support explicit:
+
+--from-quarter
+--to-quarter
+
+We will run:
+
+2024-Q1 through 2025-Q3
+
+RECONCILIATION
+
+Using the actual institutional_13f_filings rows in the database invoked by
+DATABASE_URL, compare them against the authoritative SEC catalog/parser
+accessions for the same seven quarters.
+
+Output compact JSON only.
+
+1. DATABASE IDENTITY
+
+databaseName
+institutionalFilingsTablePresent
+institutionalHoldingsTablePresent
+ingestionRunsTablePresent
+
+Do not print hostnames, credentials, DATABASE_URL, tokens, or secrets.
+
+2. EXISTING PRODUCTION
+
+existingRows
+existingCanonicalAccessions
+duplicateCanonicalAccessions
+
+3. SEC SOURCE
+
+sourceRows
+sourceCanonicalAccessions
+duplicateSourceCanonicalAccessions
+
+4. OVERLAP
+
+exactOverlap
+normalizedOverlap
+existingOnly
+sourceOnly
+
+5. DETERMINISTIC CROSS MATCH
+
+For existing-only production filings, compare read-only against SEC source
+using available deterministic fields:
+
+manager CIK
+report period
+filing date
+form type
+amendment status
+
+Report:
+
+managerReportPeriodMatches
+managerReportPeriodFilingDateMatches
+uniqueDeterministicMatches
+ambiguousDeterministicMatches
+noDeterministicMatch
+
+No fuzzy matching.
+
+6. PROVENANCE
+
+If institutional ingestion provenance/source fields exist, summarize counts
+by source/provenance.
+
+Do not dump full rows.
+
+7. SANITIZED EXAMPLES
+
+At most 10 existing-only samples containing only:
+
+raw accession
+canonical accession
+manager CIK
+report period
+filing date
+form type
+amendment flag
+stored source/provenance if available
+
+At most 10 matching SEC-source examples if a deterministic cross-match exists.
+
+No holdings and no sensitive data.
+
+8. CANONICAL COLLISIONS
+
+Classify the canonical collision groups into categories such as:
+
+DASHED_VS_UNDASHED
+WHITESPACE_OR_PUNCTUATION
+OTHER_FORMAT_VARIANT
+IDENTICAL_CANONICAL_DIFFERENT_RAW
+UNCLASSIFIED
+
+Return group count and excess-row count.
+
+Do not modify them.
+
+9. FINAL CLASSIFICATION
+
+Return exactly one:
+
+LEGACY_FORMAT_ONLY
+LEGACY_SOURCE_DIFFERENCE
+SYNTHETIC_OR_INTERNAL_ACCESSIONS
+WRONG_FIELD_HISTORICALLY
+MIXED_LEGACY_DATA
+SAFE_ZERO_OVERLAP
+UNRESOLVED
+
+Do not make any production decisions automatically.
+
+IMPLEMENTATION
+
+Reuse:
+- canonical accession normalizer
+- SEC catalog resolver
+- streaming parser
+
+Do not buffer 23 million holdings.
+This task only needs filing/header metadata and accession identity.
+
+Keep memory bounded.
+
+TESTS
+
+Only add focused tests necessary to prove:
+- script is read-only
+- canonical comparison
+- deterministic cross-match
+- collision classification
+- production guards
+
+RETURN ONLY:
+
+FILES CHANGED
+TEST RESULTS
+COMMIT SHA
+PRODUCTION BLOCKER YES/NO
+
+Then give exactly ONE command for me to run inside the Railway production
+service shell for 2024-Q1 through 2025-Q3.
+
+Do not provide an APPLY command.

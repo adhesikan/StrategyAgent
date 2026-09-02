@@ -464,7 +464,7 @@ export default function AgentPage() {
     if (!isConnected) {
       toast({
         title: "Broker Not Connected",
-        description: "Connect your broker in Settings to use InstaTrade\u2122.",
+        description: "Connect your broker in Settings to use InstaTrade®.",
         variant: "destructive",
       });
       return;
@@ -607,7 +607,7 @@ export default function AgentPage() {
                   <span className="text-foreground font-medium">Or use Best Picks Right Now</span> below to get one stock idea, one single-leg option idea, and one defined-risk spread idea — all from the same live data pipeline.
                 </li>
                 <li>
-                  <span className="text-foreground font-medium">Review &amp; send via InstaTrade™</span> — nothing is placed without your explicit acknowledgment.
+                  <span className="text-foreground font-medium">Review &amp; send via InstaTrade®</span> — nothing is placed without your explicit acknowledgment.
                 </li>
               </ol>
               <div className="rounded-md border border-border bg-muted/30 p-2.5 text-xs">

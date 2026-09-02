@@ -10,8 +10,8 @@ export const NAV_LINKS = [
   { href: "#goals", label: "Product" },
   { href: "#how-it-works", label: "How It Works" },
   { href: "#planning", label: "Stocks & Options" },
-  // InstaTrade™ label comes from useBranding at runtime — anchor is always #broker
-  { href: "#broker", label: "InstaTrade™" },
+  // InstaTrade® label comes from useBranding at runtime — anchor is always #broker
+  { href: "#broker", label: "InstaTrade®" },
   { href: "#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
 ];
@@ -22,7 +22,7 @@ export const NAV_SECTION_IDS = ["goals", "how-it-works", "workspace", "planning"
 export const HERO_HEADLINE = "Find, Evaluate, and Plan Stock & Options Opportunities";
 export const HERO_EYEBROW = "AI-Powered Opportunity Intelligence for Self-Directed Traders";
 export const HERO_SUBHEADLINE =
-  "Discover qualified setups, understand the evidence and risks, compare stock and options structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
+  "Discover qualified setups, understand the evidence and risks, compare stock and options structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade®.";
 
 export const HERO_BADGES = [
   "Deterministic Opportunity Screening",
@@ -49,7 +49,7 @@ export const PROHIBITED_TERMS: RegExp[] = [
   /\brisk.?free\b/i,
   /\bexpected profit\b/i,
   /\bexpected return\b/i,
-  /InstaTrade™ order review and submission/i,
+  /InstaTrade® order review and submission/i,
   /See Live Ideas/i,
   /Find Better Stock.*Opportunities With AI/i,
 ];
@@ -167,7 +167,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
   {
     n: "6",
     title: "Review",
-    copy: "Prepare the selected stock or options structure for review through InstaTrade™. Nothing is submitted without explicit user confirmation.",
+    copy: "Prepare the selected stock or options structure for review through InstaTrade®. Nothing is submitted without explicit user confirmation.",
   },
 ];
 
@@ -189,7 +189,7 @@ export const CONTEXTUAL_AI_PROMPTS = [
   "What evidence weakens the thesis?",
   "What would invalidate the setup?",
   "Explain the illustrative options structure.",
-  "What should I verify before using InstaTrade™?",
+  "What should I verify before using InstaTrade®?",
 ];
 
 // ── Research capabilities strip ────────────────────────────────────────────
@@ -285,7 +285,7 @@ export const WITH_BROKER_CAPABILITIES = [
   "Available bid/ask, liquidity, and Greeks",
   "Account and position context",
   "Buying-power validation where supported",
-  // InstaTrade™ name from useBranding at runtime — checked via pattern
+  // InstaTrade® name from useBranding at runtime — checked via pattern
   "preparation and review",
   "User-directed order submission only where implemented and enabled",
 ];
@@ -352,10 +352,10 @@ export const FOOTER_COMPLIANCE_TEXT =
 // ── SEO metadata ───────────────────────────────────────────────────────────
 export const PAGE_TITLE = "VCP Trader AI — Stock and Options Opportunity Intelligence";
 export const META_DESCRIPTION =
-  "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
+  "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade®.";
 export const OG_TITLE = "VCP Trader AI — Stock and Options Opportunity Intelligence";
 export const OG_DESCRIPTION =
-  "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
+  "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade®.";
 
 // ── Pricing ────────────────────────────────────────────────────────────────
 export const PRICING_FEATURE_GROUPS = [
@@ -391,7 +391,7 @@ export const PRICING_FEATURE_GROUPS = [
       "Current quotes through supported connections",
       "Options-chain and listed-contract verification",
       "Available Greeks and liquidity context",
-      // InstaTrade™ name filled at runtime — check pattern in tests
+      // InstaTrade® name filled at runtime — check pattern in tests
       "preparation and review",
     ],
   },
@@ -408,6 +408,6 @@ export const BROKER_COLUMN_ITEMS = [
   "Current stock quotes",
   "Live options chains and available Greeks through supported broker connections",
   "Account and position context",
-  // InstaTrade™ order preparation and review — name from useBranding
+  // InstaTrade® order preparation and review — name from useBranding
   "order preparation and review",
 ];

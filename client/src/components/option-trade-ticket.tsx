@@ -218,10 +218,10 @@ export function OptionTradeTicket({
   });
 
   const submitLabel = !accountSelected
-    ? "Connect Broker to Use InstaTrade™"
+    ? "Connect Broker to Use InstaTrade®"
     : needsLiveSetup
     ? "Complete Live Trading Setup"
-    : "Send to Broker with InstaTrade™";
+    : "Send to Broker with InstaTrade®";
 
   const dte = expiration ? daysUntil(expiration) : 0;
   const estCost = (selectedContract && orderType === "limit" && limitPrice)
@@ -236,7 +236,7 @@ export function OptionTradeTicket({
         <SheetHeader className="px-4 pt-4 pb-3 border-b">
           <SheetTitle className="flex items-center gap-2 text-base" data-testid="option-trade-ticket-title">
             <Zap className="h-4 w-4 text-primary" />
-            InstaTrade™ Options · {symbol}
+            InstaTrade® Options · {symbol}
           </SheetTitle>
           <SheetDescription className="text-xs">
             Pick a contract from your broker's option chain and place the trade.

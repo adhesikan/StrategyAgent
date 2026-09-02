@@ -26,7 +26,7 @@ interface HelpAnswer {
 
 const SUGGESTED_QUESTIONS = [
   "How do I connect my broker?",
-  "How does InstaTrade order review work?",
+  "How does InstaTrade® order review work?",
   "How do I set my risk limits?",
   "How do I protect a position with a trailing stop?",
   "What do the A+/A/B/C grades mean?",

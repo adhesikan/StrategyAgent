@@ -82,7 +82,7 @@ describe("A — Section configuration", () => {
     expect(labels).toContain("Risk");
     expect(labels).toContain("Congress / News");
     expect(labels).toContain("Ask VCP AI");
-    expect(labels).toContain("InstaTrade™");
+    expect(labels).toContain("InstaTrade®");
     expect(labels).toContain("Scan History");
   });
 

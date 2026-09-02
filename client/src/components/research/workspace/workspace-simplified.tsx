@@ -1,6 +1,6 @@
 // workspace-simplified.tsx — Sprint 2.2.4 UX Simplification
 //
-// Information hierarchy: Understand → Plan → Verify → Execute (InstaTrade™)
+// Information hierarchy: Understand → Plan → Verify → Execute (InstaTrade®)
 //
 // NEW components (above-the-fold):
 //   WorkspaceHeroCard          — prominent thesis card, max 3 bullets
@@ -448,7 +448,7 @@ export function WorkspacePrimaryActions({
           data-testid="action-review-instatrade"
         >
           <Zap className="h-4 w-4" />
-          Review with InstaTrade™
+          Review with InstaTrade®
         </Button>
       ) : (
         <Button
@@ -981,7 +981,7 @@ export function WorkspaceFooterCta({
           data-testid="footer-cta-instatrade"
         >
           <Zap className="h-4 w-4" />
-          Review with InstaTrade™
+          Review with InstaTrade®
         </Button>
       ) : (
         <Button

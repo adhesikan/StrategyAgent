@@ -392,7 +392,7 @@ export function buildRiskGroups(
 }
 
 // ---------------------------------------------------------------------------
-// 4. InstaTrade™ Prep State — pure helper
+// 4. InstaTrade® Prep State — pure helper
 // ---------------------------------------------------------------------------
 
 export type InstaTradePrepStateKind =
@@ -435,14 +435,14 @@ export function buildAssistantPrompts(
   // Tier 3 — decision evidence
   prompts.push("What evidence weakens the research thesis?");
 
-  // Tier 4 — InstaTrade™ always within the first 8.
+  // Tier 4 — InstaTrade® always within the first 8.
   // When a contract is selected, the single prompt references both the
-  // selected contract AND InstaTrade™ so both E7 ("contract") and E8
+  // selected contract AND InstaTrade® so both E7 ("contract") and E8
   // ("instatrade") tests can match against the same string.
   if (hasSelectedContract) {
-    prompts.push("What should I verify before using InstaTrade™ with this selected contract?");
+    prompts.push("What should I verify before using InstaTrade® with this selected contract?");
   } else {
-    prompts.push("What should I verify before using InstaTrade™?");
+    prompts.push("What should I verify before using InstaTrade®?");
   }
 
   // Tier 5 — conditional context (warnings / news)
@@ -1270,7 +1270,7 @@ export function WorkspaceInstaTradePrepPanel({
       <CardHeader className="px-4 py-3">
         <CardTitle className="text-[13px] font-medium flex items-center gap-1.5">
           <Zap className="h-3.5 w-3.5 text-primary" />
-          InstaTrade™ Preparation
+          InstaTrade® Preparation
         </CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4 pt-0">
@@ -1284,7 +1284,7 @@ export function WorkspaceInstaTradePrepPanel({
                 "Live quote verification",
                 "Options-chain verification",
                 "Account context and buying-power validation",
-                "Order review through InstaTrade™",
+                "Order review through InstaTrade®",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-2 text-xs text-muted-foreground">
                   <MinusCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground/50" />
@@ -1344,10 +1344,10 @@ export function WorkspaceInstaTradePrepPanel({
               className="gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
               onClick={() => onNavigateTab("trade-planning")}
               data-testid="ws-instatrade-stock-review-btn"
-              aria-label="Open Trade Planning to prepare stock InstaTrade review"
+              aria-label="Open Trade Planning to prepare stock InstaTrade® review"
             >
               <Zap className="h-3.5 w-3.5" />
-              Prepare Stock InstaTrade™ Review
+              Prepare Stock InstaTrade® Review
             </Button>
           </div>
         )}
@@ -1374,16 +1374,16 @@ export function WorkspaceInstaTradePrepPanel({
               className="gap-1.5"
               onClick={() => onNavigateTab("trade-planning")}
               data-testid="ws-instatrade-options-review-btn"
-              aria-label="Open Trade Planning to prepare options InstaTrade review"
+              aria-label="Open Trade Planning to prepare options InstaTrade® review"
             >
               <Zap className="h-3.5 w-3.5" />
-              Prepare Options InstaTrade™ Review
+              Prepare Options InstaTrade® Review
             </Button>
           </div>
         )}
 
         <p className="text-[10px] text-muted-foreground mt-3 border-t border-border/30 pt-2 leading-relaxed">
-          User confirmation required before any order is submitted. InstaTrade™ is a review
+          User confirmation required before any order is submitted. InstaTrade® is a review
           workflow — no orders execute without explicit broker-side confirmation.
         </p>
       </CardContent>

@@ -170,7 +170,7 @@ Current surfaces that show failure/block language when broker is absent but the 
 | live-contract-resolver.tsx — broker_not_connected | Hard empty state | `"Connect broker for live contracts — or enter strikes manually"` |
 | Dashboard portfolio section | `"Connect broker to view portfolio context"` | `"Import or sync a portfolio to see context"` |
 | internal-options.ts — 409 NO_BROKER | `NO_BROKER` error code | `BROKER_REQUIRED` or `INDEPENDENT_MODE_AVAILABLE` (once Audit C complete) |
-| Opportunity Research — InstaTrade CTA | `"Connect brokerage to use InstaTrade™ order planning"` | `"InstaTrade™ requires a connected broker"` (subtle difference — broker optional, not mandatory for research) |
+| Opportunity Research — InstaTrade CTA | `"Connect brokerage to use InstaTrade® order planning"` | `"InstaTrade® requires a connected broker"` (subtle difference — broker optional, not mandatory for research) |
 
 ---
 

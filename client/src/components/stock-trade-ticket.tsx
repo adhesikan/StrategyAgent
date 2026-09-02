@@ -326,7 +326,7 @@ export function StockTradeTicket({
         <SheetHeader className="px-4 pt-4 pb-3 border-b">
           <SheetTitle className="flex items-center gap-2 text-base" data-testid="stock-trade-ticket-title">
             <Zap className="h-4 w-4 text-primary" />
-            InstaTrade™ {scanResult.ticker}
+            InstaTrade® {scanResult.ticker}
           </SheetTitle>
           <SheetDescription className="text-xs" data-testid="stock-trade-ticket-description">
             Place a stock order with your broker
@@ -932,7 +932,7 @@ export function StockTradeTicket({
             }
             className="flex-1"
             data-testid="button-stock-ticket-place"
-            title={!selectedAccount ? "Connect Broker to Use InstaTrade™" : undefined}
+            title={!selectedAccount ? "Connect Broker to Use InstaTrade®" : undefined}
           >
             {placeMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
@@ -940,12 +940,12 @@ export function StockTradeTicket({
               <Zap className="h-4 w-4 mr-1" />
             )}
             {!selectedAccount
-              ? "Connect Broker to Use InstaTrade™"
+              ? "Connect Broker to Use InstaTrade®"
               : needsLiveSetup
               ? "Complete Live Trading Setup"
               : extendedHours
               ? `Send ${sessionInfo.session === "pre" ? "Pre-Market" : "After-Hours"} Order`
-              : "Send to Broker with InstaTrade™"}
+              : "Send to Broker with InstaTrade®"}
           </Button>
         </SheetFooter>
         <LiveTradingSetupDialog

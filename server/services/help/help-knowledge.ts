@@ -15,7 +15,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "getting-started",
     title: "Getting Started",
     keywords: ["onboarding", "setup", "start", "new", "trial", "pricing", "plan", "subscribe", "signup", "account"],
-    text: "VCP Trader AI has one plan: Pro at $99/month with a 14-day free trial. After signing up, users can optionally answer 3 quick setup questions or skip straight to the dashboard. Two ways to use the app: Analysis Mode (no broker connected — AI analysis, educational examples, delayed reference data, no orders) and Connected Broker Mode (broker connected — live data plus InstaTrade order review and submission). The app never auto-trades; every order requires user review and an acknowledgment checkbox.",
+    text: "VCP Trader AI has one plan: Pro at $99/month with a 14-day free trial. After signing up, users can optionally answer 3 quick setup questions or skip straight to the dashboard. Two ways to use the app: Analysis Mode (no broker connected — AI analysis, educational examples, delayed reference data, no orders) and Connected Broker Mode (broker connected — live data plus InstaTrade® order review and submission). The app never auto-trades; every order requires user review and an acknowledgment checkbox.",
   },
   {
     id: "home",
@@ -33,7 +33,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "income",
     title: "Generate Income",
     keywords: ["income", "covered call", "cash secured put", "csp", "premium", "wheel"],
-    text: "Income mode (/income-mode) builds covered-call, cash-secured-put, and defined-risk income ideas from your inputs. Each idea goes through the full InstaTrade review flow — nothing is submitted without your review and acknowledgment.",
+    text: "Income mode (/income-mode) builds covered-call, cash-secured-put, and defined-risk income ideas from your inputs. Each idea goes through the full InstaTrade® review flow — nothing is submitted without your review and acknowledgment.",
   },
   {
     id: "trade",
@@ -55,9 +55,9 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "instatrade",
-    title: "InstaTrade Order Review",
+    title: "InstaTrade® Order Review",
     keywords: ["instatrade", "order", "execute", "place trade", "submit", "broker order", "oco", "bracket", "take profit", "stop loss", "live trading setup"],
-    text: "InstaTrade is the only execution path. It is a sheet-based order ticket with a required acknowledgment checkbox. Button states: no broker account → 'Connect Broker to Use InstaTrade' (disabled); live account without Live Trading Setup → 'Complete Live Trading Setup' (opens an inline dialog); setup complete → 'Send to Broker with InstaTrade'. Server-side risk guardrails block orders that violate stored preferences (allowed instruments, defined-risk-only, minimum score, minimum reward/risk).",
+    text: "InstaTrade® is the only execution path. It is a sheet-based order ticket with a required acknowledgment checkbox. Button states: no broker account → 'Connect Broker to Use InstaTrade®' (disabled); live account without Live Trading Setup → 'Complete Live Trading Setup' (opens an inline dialog); setup complete → 'Send to Broker with InstaTrade®'. Server-side risk guardrails block orders that violate stored preferences (allowed instruments, defined-risk-only, minimum score, minimum reward/risk).",
   },
   {
     id: "position-protection",
@@ -81,7 +81,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "paper-mode",
     title: "Analysis Mode vs. Connected Broker Mode",
     keywords: ["analysis mode", "connected broker", "modes", "paper", "simulated", "delayed data", "live data"],
-    text: "Two modes: Analysis Mode (no broker) gives AI analysis, educational examples, and delayed reference data — no orders. Connected Broker Mode (broker linked) gives live data and InstaTrade order review/submission. Connecting a broker is done in Settings → Broker Connections.",
+    text: "Two modes: Analysis Mode (no broker) gives AI analysis, educational examples, and delayed reference data — no orders. Connected Broker Mode (broker linked) gives live data and InstaTrade® order review/submission. Connecting a broker is done in Settings → Broker Connections.",
   },
   {
     id: "brokers",

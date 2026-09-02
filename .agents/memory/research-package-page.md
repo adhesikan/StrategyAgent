@@ -22,7 +22,7 @@ description: Sprint 2.1 — /opportunity/:symbol page architecture, data contrac
 ## Compliance invariants
 - No "buy", "sell", "recommendation", "expected profit", "target return" anywhere in the file
 - Price/level fields are labeled "educational planning" or "not a trade recommendation"
-- InstaTrade™ section is read-only planning display; `brokerConnected === false` → shows "Connect Brokerage" prompt
+- InstaTrade® section is read-only planning display; `brokerConnected === false` → shows "Connect Brokerage" prompt
 - `InstaTradePanel` navigates to `/instatrade` — never submits an order
 
 ## Entry points
@@ -60,7 +60,7 @@ description: Sprint 2.1 — /opportunity/:symbol page architecture, data contrac
 - Shared types extracted to `client/src/components/research/types.ts`; opportunity-research.tsx imports from there + re-exports EvidenceStars for backward compat tests
 - ResearchTradeCard replaces the Overview tab stacked layout: 2/3+1/3 grid (StockTradeCard + EvidenceCard), optional OptionsTradeCard (gated by shouldShowOptionsCard()), 1/2+1/2 (RiskCard + ActionCard)
 - OptionsTradeCard renders only when candidate.instrument==="options" or structure contains option keywords; all fields are deterministic estimates, clearly labeled
-- ActionCard: 5 secondary buttons (View Why, View Evidence, Congress Activity, Related Research, Save Research) + primary CTA (Prepare InstaTrade™ or Connect Broker)
+- ActionCard: 5 secondary buttons (View Why, View Evidence, Congress Activity, Related Research, Save Research) + primary CTA (Prepare InstaTrade® or Connect Broker)
 - 57 new component unit tests in `client/src/components/research/research-trade-card.test.tsx`; all pure functions exported for testability
 - MarketContextSection + ScanHistorySection remain below ResearchTradeCard in Overview tab
 

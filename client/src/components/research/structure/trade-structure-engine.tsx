@@ -1,5 +1,5 @@
 // TradeStructureEngine — full Trade Planning tab orchestrator.
-// Composes all structure components, comparison ranking, and InstaTrade™ CTA.
+// Composes all structure components, comparison ranking, and InstaTrade® CTA.
 //
 // Inputs: ResearchPackage + EvidenceStars + thesis from Decision Engine.
 // No new API calls. No broker execution. No live contract resolution.
@@ -42,7 +42,7 @@ interface TradeStructureEngineProps {
 }
 
 // ---------------------------------------------------------------------------
-// InstaTrade CTA
+// InstaTrade® CTA
 // ---------------------------------------------------------------------------
 
 function InstaTradePanel({
@@ -70,7 +70,7 @@ function InstaTradePanel({
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-emerald-400" />
               <p className="text-[13px] font-semibold text-foreground">
-                Review with InstaTrade™
+                Review with InstaTrade®
               </p>
               <Badge
                 variant="outline"
@@ -265,7 +265,7 @@ export function TradeStructureEngine({
         )}
       </div>
 
-      {/* ── InstaTrade™ CTA ── */}
+      {/* ── InstaTrade® CTA ── */}
       <InstaTradePanel pkg={pkg} onNavigateTab={onNavigateTab} />
     </div>
   );

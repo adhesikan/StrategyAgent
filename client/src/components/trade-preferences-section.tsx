@@ -40,8 +40,8 @@ const HELP: Record<string, string> = {
   minOpenInterest: "Minimum open interest required on a contract to be considered tradable.",
   minOptionVolume: "Minimum daily volume required on a contract to be considered tradable.",
   maxBidAskSpreadPct: "Maximum bid/ask spread (as a percentage of mid) before the option is flagged as illiquid.",
-  defaultOrderType: "Default order type the InstaTrade ticket will pre-fill (limit is safer; market fills faster).",
-  requireConfirmation: "When on, the InstaTrade ticket will require an explicit confirmation tap before sending.",
+  defaultOrderType: "Default order type the InstaTrade® ticket will pre-fill (limit is safer; market fills faster).",
+  requireConfirmation: "When on, the InstaTrade® ticket will require an explicit confirmation tap before sending.",
 };
 
 interface Prefs {

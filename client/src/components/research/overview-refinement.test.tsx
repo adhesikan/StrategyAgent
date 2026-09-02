@@ -7,7 +7,7 @@
 //  - Stock parameters: no bare blank/dash values
 //  - Options summary: DTE + strike guidance shown; no premiums / Greeks
 //  - Risk grouping: warnings categorized without loss, high-severity first
-//  - Action card: connected → Review with InstaTrade™; disconnected → Connect Broker
+//  - Action card: connected → Review with InstaTrade®; disconnected → Connect Broker
 //  - Congress summary: disclaimer always present; no fabricated counts
 //  - Compact market context: regime label, alignment, data source
 

@@ -71,7 +71,7 @@ Right side: broker-status pill ("No broker" / "Sandbox: {provider}" / "Live: {pr
 
 ### Legacy/secondary navigation
 - `trading-shell.tsx` wraps in-app pages and renders the global `ComplianceFooter`.
-- Public landing (`/`) has its own marketing header: Features / Stocks / Options / InstaTrade™ / Pricing / FAQ + Login + "Start Free Trial" CTA.
+- Public landing (`/`) has its own marketing header: Features / Stocks / Options / InstaTrade® / Pricing / FAQ + Login + "Start Free Trial" CTA.
 - Admin pages are reached from the user menu (`/admin` home links out to users/emails/support/sessions/market-data/etc.).
 
 Note: `replit.md` references an older sidebar + mobile bottom nav (`app-sidebar.tsx`, `mobile-bottom-nav.tsx`); those components no longer exist — the current shell is the top-nav layout described above.
@@ -84,7 +84,7 @@ Note: `replit.md` references an older sidebar + mobile bottom nav (`app-sidebar.
 accordion, alert, alert-dialog, aspect-ratio, avatar, badge, breadcrumb, button, calendar, card, carousel, chart, checkbox, collapsible, command, context-menu, dialog, drawer, dropdown-menu, form, hover-card, input, input-otp, label, menubar, navigation-menu, pagination, popover, progress, radio-group, resizable, scroll-area, select, separator, sheet, sidebar, skeleton, slider, switch, table, tabs, textarea, toast/toaster, toggle, toggle-group, tooltip.
 
 ### App-level shared components (selected, `client/src/components/`)
-- **Trading**: `stock-trade-ticket` / `option-trade-ticket` (sheet-based InstaTrade™ tickets with required acknowledgment checkbox), `trade-setup-card`, `setup-detail-drawer`, `price-chart` (TradingView lightweight-charts), `live-trading-setup` (inline live-setup dialog), `position-protection-panel`, `live-positions-panel`
+- **Trading**: `stock-trade-ticket` / `option-trade-ticket` (sheet-based InstaTrade® tickets with required acknowledgment checkbox), `trade-setup-card`, `setup-detail-drawer`, `price-chart` (TradingView lightweight-charts), `live-trading-setup` (inline live-setup dialog), `position-protection-panel`, `live-positions-panel`
 - **Data status & compliance**: `status-banner` (sample vs daily vs live data wording), `data-attribution` (`TwelveDataLink`, `DataAttribution`, `DataSourcesList` — licensing attribution), `footer` (full §12 disclaimer), `trial-banner`, `quota-banner`, `feature-lock`, `legal-acceptance-modal`
 - **Onboarding**: `start-choice` (StartChoiceDialog, QuickSetupDialog), `onboarding-wizard`, `marketing-onboarding-wizard`, `welcome-tutorial`, `interactive-tutorial`, `persona-selector`
 - **Scanner**: `scanner-filters`, `scanner-table`, `strategy-selector`
@@ -116,7 +116,7 @@ Captured from the running dev app (unauthenticated views; authenticated pages re
 | `/ask` | Ask AI |
 | `/scanner`, `/discover` | Strategy Scanner |
 | `/trade/:ticker` | Trade detail |
-| `/instatrade` | InstaTrade™ |
+| `/instatrade` | InstaTrade® |
 | `/journal`, `/history` | Journal |
 | `/results` | Results |
 | `/goal-mode` | Grow (goal wizard) |

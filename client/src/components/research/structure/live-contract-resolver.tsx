@@ -481,18 +481,18 @@ function CandidateCard({
           )}
           onClick={() => onSelect(candidate)}
           data-testid={`btn-select-candidate-${rank}`}
-          aria-label={`Select ${candidate.structureLabel} expiring ${candidate.expiration} for InstaTrade review`}
+          aria-label={`Select ${candidate.structureLabel} expiring ${candidate.expiration} for InstaTrade® review`}
           aria-pressed={isSelected}
         >
           {isSelected ? (
             <>
               <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              Selected for InstaTrade™ Review
+              Selected for InstaTrade® Review
             </>
           ) : (
             <>
               <Zap className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              Select for InstaTrade™ Review
+              Select for InstaTrade® Review
             </>
           )}
         </Button>
@@ -688,7 +688,7 @@ export function LiveContractResolver({
             <li>View actual listed strikes</li>
             <li>Inspect live bid/ask quotes</li>
             <li>Evaluate contract liquidity</li>
-            <li>Prepare an InstaTrade™ order review</li>
+            <li>Prepare an InstaTrade® order review</li>
           </ul>
           <Button
             variant="outline"

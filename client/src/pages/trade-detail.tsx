@@ -121,7 +121,7 @@ function defaultExpiryLabel(now: Date = new Date()): string {
 
 // -----------------------------------------------------------------------
 // Ticket prefill handoff (user-initiated from a qualified Ask AI card).
-// The draft only PREFILLS this page and its InstaTrade ticket — the user
+// The draft only PREFILLS this page and its InstaTrade® ticket — the user
 // reviews all fields, edits freely, and must explicitly continue and
 // confirm. Nothing is ever submitted automatically.
 // -----------------------------------------------------------------------
@@ -820,7 +820,7 @@ export default function TradeDetailPage() {
               <span className="font-medium">Prefilled from your Ask AI candidate</span>
               {prefillResult.source === "mcp" ? " (prepared by the ticket service)" : " (using the card's displayed values)"}.
               {" "}Review every field below and edit anything you like — nothing is sent until you explicitly
-              continue to InstaTrade and confirm the order there.
+              continue to InstaTrade® and confirm the order there.
               {prefillResult.warnings.length > 0 && (
                 <span className="block mt-1 text-amber-500">{prefillResult.warnings.join(" · ")}</span>
               )}
@@ -1062,7 +1062,7 @@ export default function TradeDetailPage() {
             onClick={() => (isOptionType ? setOptionTicketOpen(true) : setTicketOpen(true))}
             data-testid="button-send-instatrade"
           >
-            <Send className="h-4 w-4" /> Send to InstaTrade™
+            <Send className="h-4 w-4" /> Send to InstaTrade®
           </Button>
           <Button
             variant="outline"
@@ -1101,7 +1101,7 @@ export default function TradeDetailPage() {
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2" data-testid="title-option-ticket">
-              <Send className="h-4 w-4" /> InstaTrade™ — {plan.name}
+              <Send className="h-4 w-4" /> InstaTrade® — {plan.name}
             </SheetTitle>
             <SheetDescription>
               {plan.legs.length > 1

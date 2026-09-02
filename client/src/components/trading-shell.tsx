@@ -67,7 +67,7 @@ export function BrokerStatusStrip() {
 
   const modeLabel = isConnected ? "Connected Broker Mode" : "Analysis Mode";
   const modeTitle = isConnected
-    ? "Using your connected brokerage account for broker-authorized market data, balances, positions, and order submission via InstaTrade™."
+    ? "Using your connected brokerage account for broker-authorized market data, balances, positions, and order submission via InstaTrade®."
     : "AI-generated market analysis and candidates only. Connect a broker for account data and order submission.";
 
   return (

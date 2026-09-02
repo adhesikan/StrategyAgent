@@ -372,9 +372,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerBillingRoutes(app, isAuthenticated);
 
   // Public branding/trademark configuration. The InstaTrade mark symbol is
-  // controlled by the TRADEMARK_INSTATRADE_STATUS env var (pending_registration
-  // | registered) so the switch to ® after the USPTO certificate issues is a
-  // configuration-only change. Defaults safely to pending_registration.
+  // controlled by the TRADEMARK_INSTATRADE_STATUS env var. Defaults safely
+  // to the registered mark for all customer-facing surfaces.
   app.get("/api/branding", (_req, res) => {
     const status = normalizeTrademarkStatus(process.env.TRADEMARK_INSTATRADE_STATUS);
     res.json(buildBrandingInfo(status));

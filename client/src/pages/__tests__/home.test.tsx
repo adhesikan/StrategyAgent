@@ -112,7 +112,7 @@ describe("A. Page structure", () => {
     expect(labels[0]).toBe("Product");
     expect(labels[1]).toBe("How It Works");
     expect(labels[2]).toBe("Stocks & Options");
-    // [3] = InstaTrade™ (dynamic)
+    // [3] = InstaTrade® (dynamic)
     expect(labels[4]).toBe("Pricing");
     expect(labels[5]).toBe("FAQ");
   });
@@ -165,8 +165,8 @@ describe("B. Hero section", () => {
     expect(HERO_SUBHEADLINE).toMatch(/verify.*live contracts.*supported brokerages/i);
   });
 
-  it("subheadline mentions InstaTrade™ preparation/review wording", () => {
-    expect(HERO_SUBHEADLINE).toMatch(/InstaTrade™/i);
+  it("subheadline mentions InstaTrade® preparation/review wording", () => {
+    expect(HERO_SUBHEADLINE).toMatch(/InstaTrade®/i);
     expect(HERO_SUBHEADLINE).not.toMatch(/order review and submission/i);
   });
 
@@ -183,9 +183,9 @@ describe("B. Hero section", () => {
     expect(text).toMatch(/User-Controlled Review/i);
   });
 
-  it("home.tsx hero shows 'Prepare with InstaTrade™', not 'Review and submit'", () => {
+  it("home.tsx hero shows 'Prepare with InstaTrade®', not 'Review and submit'", () => {
     const src = loadSource();
-    expect(src).toMatch(/Prepare with InstaTrade™/);
+    expect(src).toMatch(/Prepare with InstaTrade®/);
     expect(src).not.toMatch(/Review and submit InstaTrade/i);
   });
 
@@ -463,7 +463,7 @@ describe("E. AI Trading Workspace section", () => {
     const text = CONTEXTUAL_AI_PROMPTS.join(" | ");
     expect(text).toMatch(/Why did this candidate qualify/i);
     expect(text).toMatch(/What would invalidate the setup/i);
-    expect(text).toMatch(/What should I verify before using InstaTrade™/i);
+    expect(text).toMatch(/What should I verify before using InstaTrade®/i);
   });
 
   it("home.tsx includes VCP AI disclaimer about not providing personalized investment advice", () => {
@@ -577,8 +577,8 @@ describe("F. Stock and Options Planning section", () => {
   });
 });
 
-// ── G. Broker section and InstaTrade™ ─────────────────────────────────────
-describe("G. Broker section and InstaTrade™", () => {
+// ── G. Broker section and InstaTrade® ─────────────────────────────────────
+describe("G. Broker section and InstaTrade®", () => {
   it("without-broker list has 9 capabilities from spec", () => {
     expect(WITHOUT_BROKER_CAPABILITIES).toHaveLength(9);
   });
@@ -612,9 +612,9 @@ describe("G. Broker section and InstaTrade™", () => {
     expect(SUPPORTED_BROKER_NOTE).toMatch(/Additional connections and capabilities may vary/i);
   });
 
-  it("home.tsx broker section says 'Prepare with InstaTrade™' in mock", () => {
+  it("home.tsx broker section says 'Prepare with InstaTrade®' in mock", () => {
     const src = loadSource();
-    expect(src).toMatch(/Prepare with.*InstaTrade™/);
+    expect(src).toMatch(/Prepare with.*InstaTrade®/);
   });
 
   it("home.tsx broker section mock shows 'Illustrative example'", () => {
@@ -906,8 +906,8 @@ describe("M. SEO metadata", () => {
     expect(META_DESCRIPTION).toMatch(/qualified stock and options opportunities/i);
   });
 
-  it("meta description mentions InstaTrade™", () => {
-    expect(META_DESCRIPTION).toMatch(/InstaTrade™/i);
+  it("meta description mentions InstaTrade®", () => {
+    expect(META_DESCRIPTION).toMatch(/InstaTrade®/i);
   });
 
   it("meta description does not make performance promises", () => {
@@ -918,9 +918,9 @@ describe("M. SEO metadata", () => {
     expect(OG_TITLE).toMatch(/Opportunity Intelligence/i);
   });
 
-  it("Open Graph description mentions qualified opportunities and InstaTrade™", () => {
+  it("Open Graph description mentions qualified opportunities and InstaTrade®", () => {
     expect(OG_DESCRIPTION).toMatch(/qualified stock and options opportunities/i);
-    expect(OG_DESCRIPTION).toMatch(/InstaTrade™/i);
+    expect(OG_DESCRIPTION).toMatch(/InstaTrade®/i);
   });
 
   it("home.tsx sets page title on mount", () => {

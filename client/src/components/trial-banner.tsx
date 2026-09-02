@@ -50,7 +50,7 @@ export function TrialBanner() {
           {expired ? (
             <p data-testid="text-trial-status">
               <span className="font-medium">Your free trial has ended.</span>{" "}
-              Subscribe to keep full access to AI-ranked candidates, options strategy insights, and InstaTrade order review.
+              Subscribe to keep full access to AI-ranked candidates, options strategy insights, and InstaTrade® order review.
             </p>
           ) : (
             <p data-testid="text-trial-status">

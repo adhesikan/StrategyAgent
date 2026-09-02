@@ -752,7 +752,7 @@ export function OrderReviewModal({ open, onClose, scenario, onSend }: OrderRevie
               data-testid="button-order-connect"
             >
               <Link2 className="h-4 w-4 mr-1" />
-              Connect Broker to Use InstaTrade
+              Connect Broker to Use InstaTrade®
             </Button>
           )}
         </DialogFooter>

@@ -139,7 +139,7 @@ export default function IncomeModePage() {
   const handleSend = () => {
     if (!activeScenario) return;
     toast({
-      title: brokerConnected ? "Sent to broker via InstaTrade™" : "Analysis saved — connect a broker to place orders",
+      title: brokerConnected ? "Sent to broker via InstaTrade®" : "Analysis saved — connect a broker to place orders",
       description: `${activeScenario.ticker} ${activeScenario.strategyType} submitted for review.`,
     });
   };

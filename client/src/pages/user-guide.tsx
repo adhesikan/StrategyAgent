@@ -59,14 +59,14 @@ const SECTIONS: Section[] = [
             today.
           </li>
           <li>
-            <strong>OCO bracket exits on the InstaTrade™ option ticket.</strong> When you review a
+            <strong>OCO bracket exits on the InstaTrade® option ticket.</strong> When you review a
             long call, long put, debit spread, or other option setup, a new{" "}
             <em>Attach OCO exit (one-cancels-other)</em> toggle lets you set a take-profit % and
             stop-loss % on the premium (defaults 75% / 50%). The bracket is recorded with your order
-            and echoed back in the confirmation. See <Link href="/guide#instatrade" className="underline">InstaTrade™ Order Review</Link>.
+            and echoed back in the confirmation. See <Link href="/guide#instatrade" className="underline">InstaTrade® Order Review</Link>.
           </li>
           <li>
-            <strong>Single-leg vs multi-leg ticket clarity.</strong> The InstaTrade™ option ticket
+            <strong>Single-leg vs multi-leg ticket clarity.</strong> The InstaTrade® option ticket
             now adapts its wording and submit-button label to the actual order — single-leg trades
             (Long Call, Long Put, CSP) say <em>Send order</em>, and only true multi-leg orders
             (verticals, iron condors, etc.) show the multi-leg routing notice.
@@ -86,7 +86,7 @@ const SECTIONS: Section[] = [
             <Link href="/guide#home" className="underline">Home</Link> section.
           </li>
           <li>
-            <strong>Full InstaTrade™ order review on Income.</strong> The Income mode "Review Details"
+            <strong>Full InstaTrade® order review on Income.</strong> The Income mode "Review Details"
             and "Prepare Order" buttons now open the same order-review modal used by Grow — with
             broker-aware button labels (Connect Broker vs. Send to Broker) and the required acknowledgment
             checkbox. See <Link href="/guide#income" className="underline">Generate Income</Link>.
@@ -312,7 +312,7 @@ const SECTIONS: Section[] = [
     id: "income",
     title: "Generate Income",
     icon: DollarSign,
-    summary: "Covered calls, cash-secured puts, defined-risk income — with full InstaTrade™ review.",
+    summary: "Covered calls, cash-secured puts, defined-risk income — with full InstaTrade® review.",
     body: (
       <>
         <p>
@@ -332,7 +332,7 @@ const SECTIONS: Section[] = [
           required, max loss, and a required acknowledgment checkbox before you can submit.
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
-          <li><strong>Broker connected</strong> — the action button reads <em>Send to Broker via InstaTrade™</em>.</li>
+          <li><strong>Broker connected</strong> — the action button reads <em>Send to Broker via InstaTrade®</em>.</li>
           <li><strong>No broker connected</strong> — the button is disabled and prompts you to connect one.</li>
         </ul>
       </>
@@ -422,14 +422,14 @@ const SECTIONS: Section[] = [
   },
   {
     id: "instatrade",
-    title: "InstaTrade™ Order Review",
+    title: "InstaTrade® Order Review",
     icon: Zap,
     summary: "Self-directed order preparation. You approve every order before submission.",
     keywords: ["order", "execute", "place trade", "broker order", "single-leg", "multi-leg", "oco", "bracket", "take profit", "stop loss"],
     body: (
       <>
         <p>
-          <Link href="/instatrade" className="underline">InstaTrade™</Link> is the order-review surface.
+          <Link href="/instatrade" className="underline">InstaTrade®</Link> is the order-review surface.
           It's <strong>not autonomous</strong> — you must review and confirm every order.
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
@@ -469,7 +469,7 @@ const SECTIONS: Section[] = [
         </p>
 
         <p className="mt-3 text-sm text-muted-foreground">
-          The "Review with InstaTrade™" button on any setup card opens the same review flow with the
+          The "Review with InstaTrade®" button on any setup card opens the same review flow with the
           fields pre-filled.
         </p>
       </>
@@ -502,7 +502,7 @@ const SECTIONS: Section[] = [
         <ul className="list-disc pl-5 space-y-1 mt-2">
           <li>
             <strong>On a new trade</strong> — in the{" "}
-            <Link href="/instatrade" className="underline">InstaTrade™</Link> ticket, open the{" "}
+            <Link href="/instatrade" className="underline">InstaTrade®</Link> ticket, open the{" "}
             <strong>Position Protection</strong> section, set your rules, check the acknowledgment box,
             and submit. Your protection plan is created when the order goes through.
           </li>
@@ -582,7 +582,7 @@ const SECTIONS: Section[] = [
 
         <h4 className="font-semibold mt-4">How to place a pre-market or after-hours order</h4>
         <ol className="list-decimal pl-5 space-y-1 mt-2">
-          <li>Open the <Link href="/instatrade" className="underline">InstaTrade™ ticket</Link> on any stock during a pre-market or after-hours window.</li>
+          <li>Open the <Link href="/instatrade" className="underline">InstaTrade® ticket</Link> on any stock during a pre-market or after-hours window.</li>
           <li>Toggle on the blue <strong>Pre-Market Session</strong> or <strong>After-Hours Session</strong> switch on the ticket.</li>
           <li>The ticket auto-switches to <strong>Limit</strong> order type and disables bracket exits — both required by the brokers.</li>
           <li>Set your limit price (use the Current / Resistance / ±$0.05 chips to nudge it).</li>
@@ -647,7 +647,7 @@ const SECTIONS: Section[] = [
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
           <li><strong>Analysis Mode</strong> — no broker connected. Full AI analysis, candidate scenarios, scoring, news sentiment, and educational strategy examples using delayed or snapshot reference data. No orders can be placed.</li>
-          <li><strong>Connected Broker Mode</strong> — a broker is connected. Broker-authorized market data, account balances and positions, and InstaTrade™ order review and submission through your own brokerage account.</li>
+          <li><strong>Connected Broker Mode</strong> — a broker is connected. Broker-authorized market data, account balances and positions, and InstaTrade® order review and submission through your own brokerage account.</li>
         </ul>
         <p className="mt-3">
           The mode indicator in the header shows which mode you're in. Switch modes by connecting a

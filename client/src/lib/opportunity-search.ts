@@ -196,7 +196,7 @@ export function strikeZoneDisplay(zone: EstimatedOptions["shortStrikeZone"]): st
 // prefill a real ticket: a live option candidate (every leg priced from the
 // live chain) or a stock candidate with a risk estimate. The handoff only
 // PREFILLS the Trade Builder; the user reviews/edits everything and must
-// explicitly continue and confirm through InstaTrade.
+// explicitly continue and confirm through InstaTrade®.
 // ---------------------------------------------------------------------------
 
 export function prepareEligible(card: OpportunityCard): boolean {

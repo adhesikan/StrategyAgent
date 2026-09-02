@@ -86,7 +86,7 @@ export default function TradeSetupsPage() {
     switch (status) {
       case "generated": return "Generated";
       case "reviewed": return "Reviewed";
-      case "sent_to_instatrade": return "Sent to InstaTrade™";
+      case "sent_to_instatrade": return "Sent to InstaTrade®";
       case "archived": return "Archived";
       default: return status;
     }
@@ -107,7 +107,7 @@ export default function TradeSetupsPage() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-[300px] text-xs leading-snug">
-                  Every AI-generated setup is logged here — including its score, instrument recommendation, status, and whether you sent it to InstaTrade™. Use the filters to narrow by symbol, grade, or execution status.
+                  Every AI-generated setup is logged here — including its score, instrument recommendation, status, and whether you sent it to InstaTrade®. Use the filters to narrow by symbol, grade, or execution status.
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -142,7 +142,7 @@ export default function TradeSetupsPage() {
             <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="generated">Generated</SelectItem>
             <SelectItem value="reviewed">Reviewed</SelectItem>
-            <SelectItem value="sent_to_instatrade">Sent to InstaTrade™</SelectItem>
+                <SelectItem value="sent_to_instatrade">Sent to InstaTrade®</SelectItem>
             <SelectItem value="archived">Archived</SelectItem>
           </SelectContent>
         </Select>
@@ -244,7 +244,7 @@ export default function TradeSetupsPage() {
                     {setup.sentToInstatrade && (
                       <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30" data-testid={`badge-instatrade-${setup.id}`}>
                         <Zap className="h-3 w-3 mr-0.5" />
-                        InstaTrade™
+                        InstaTrade®
                       </Badge>
                     )}
                   </div>

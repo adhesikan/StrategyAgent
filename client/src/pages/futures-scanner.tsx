@@ -884,7 +884,7 @@ export default function FuturesScanner() {
                     data-testid="button-quick-trade"
                   >
                     <Zap className="h-4 w-4 mr-1" />
-                    InstaTrade™
+                    InstaTrade®
                   </Button>
                 </span>
               </TooltipTrigger>
@@ -1090,7 +1090,7 @@ export default function FuturesScanner() {
                                 data-testid={`button-instatrade-${i}`}
                               >
                                 <Zap className="h-3 w-3 mr-1" />
-                                InstaTrade™
+                                InstaTrade®
                               </Button>
                             </span>
                           </TooltipTrigger>

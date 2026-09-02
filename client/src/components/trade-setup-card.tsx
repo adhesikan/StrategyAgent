@@ -501,7 +501,7 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
             data-testid="button-send-instatrade"
           >
             <Zap className="h-3.5 w-3.5 mr-1.5" />
-            Send to InstaTrade™
+            Send to InstaTrade®
           </Button>
         </div>
 

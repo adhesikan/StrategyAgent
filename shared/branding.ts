@@ -1,19 +1,19 @@
 export type TrademarkStatus = "pending_registration" | "registered";
 
-export const DEFAULT_TRADEMARK_STATUS: TrademarkStatus = "pending_registration";
+export const DEFAULT_TRADEMARK_STATUS: TrademarkStatus = "registered";
 
 export function normalizeTrademarkStatus(value: string | undefined | null): TrademarkStatus {
   return value === "registered" ? "registered" : DEFAULT_TRADEMARK_STATUS;
 }
 
 export function getInstaTradeName(status: TrademarkStatus = DEFAULT_TRADEMARK_STATUS): string {
-  return status === "registered" ? "InstaTrade®" : "InstaTrade™";
+  void status;
+  return "InstaTrade®";
 }
 
 export function getInstaTradeFooterNotice(status: TrademarkStatus = DEFAULT_TRADEMARK_STATUS): string {
-  return status === "registered"
-    ? "InstaTrade® is a registered trademark of Sunfish Technologies LLC."
-    : "InstaTrade™ is a trademark of Sunfish Technologies LLC.";
+  void status;
+  return "InstaTrade® is a registered trademark of Sunfish Technologies LLC.";
 }
 
 export interface BrandingInfo {

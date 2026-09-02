@@ -304,7 +304,7 @@ export default function AutomationAgentPage() {
           Automation
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage automation endpoints for InstaTrade™ execution
+          Manage automation endpoints for InstaTrade® execution
         </p>
       </div>
 
@@ -455,9 +455,9 @@ export default function AutomationAgentPage() {
                     <span className="text-sm font-medium">2</span>
                   </div>
                   <div>
-                    <p className="font-medium">InstaTrade™</p>
+                    <p className="font-medium">InstaTrade®</p>
                     <p className="text-sm text-muted-foreground">
-                      Click InstaTrade™ to send setup to your endpoint
+                      Click InstaTrade® to send setup to your endpoint
                     </p>
                   </div>
                 </div>
@@ -495,7 +495,7 @@ export default function AutomationAgentPage() {
                 Open Trades
               </CardTitle>
               <CardDescription>
-                Active positions tracked via InstaTrade™
+                Active positions tracked via InstaTrade®
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -509,7 +509,7 @@ export default function AutomationAgentPage() {
                   <Zap className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No open trades</p>
                   <p className="text-sm mt-1">
-                    Use InstaTrade™ from the{" "}
+                    Use InstaTrade® from the{" "}
                     <Link href="/" className="text-primary underline">
                       Scanner
                     </Link>
@@ -709,7 +709,7 @@ export default function AutomationAgentPage() {
             <DialogDescription>
               {editingEndpoint 
                 ? "Update your automation endpoint settings." 
-                : "Add a new webhook endpoint for InstaTrade™ integration."}
+                : "Add a new webhook endpoint for InstaTrade® integration."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

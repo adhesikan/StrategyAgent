@@ -77,7 +77,7 @@ export default function InstaTradePage() {
               <Zap className="h-5 w-5" />
             </div>
             <div className="flex items-center justify-center gap-2">
-              <h1 className="text-xl font-medium">InstaTrade™</h1>
+              <h1 className="text-xl font-medium">InstaTrade®</h1>
               <HelpLink section="instatrade" />
             </div>
             <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">

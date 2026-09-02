@@ -23,14 +23,14 @@ Tracing a brand-new user with no broker through every surface:
 | Options scanner | `options-scanner.tsx:420` | "Connect your broker to scan / Link your brokerage account to start finding trade ideas" + Connect Broker CTA; Find Trades button disabled | Hard blocker (misclassified — scan should not require broker) | **P0** |
 | Strategy scanner | `strategy-scanner.tsx:651` | Falls back to "illustrative examples" with "Connect Tradier or TradeStation for live scan results" | Soft but misleading framing | P1 |
 | Futures scanner | `futures-scanner.tsx:710` | Delayed reference data; "Connect a brokerage that supports futures to enable live data" | Soft — acceptable | P2 |
-| Opportunity Workspace | Various research components | Research surfaces accessible; InstaTrade™ CTA becomes "Connect Broker to Verify Live Contracts" | Soft — broker CTA is premature | P1 |
+| Opportunity Workspace | Various research components | Research surfaces accessible; InstaTrade® CTA becomes "Connect Broker to Verify Live Contracts" | Soft — broker CTA is premature | P1 |
 | Trade structure engine | `trade-structure-engine.tsx:55` | Live contract resolution message; "Connect Broker to Verify Live Contracts" CTA | Soft but placed mid-research | P1 |
-| Research action card | `action-card.tsx:183` | CTA changes from "Review with InstaTrade™" to "Connect Broker" | Soft — replaces wrong CTA | P1 |
+| Research action card | `action-card.tsx:183` | CTA changes from "Review with InstaTrade®" to "Connect Broker" | Soft — replaces wrong CTA | P1 |
 | Trade Planning | `trade-plan-detail.tsx` | Plan creation/edit available; execution section shows broker CTA but plan save works | Mostly OK — execution panel framing needs improvement | P1 |
 | Execution Preflight panel | `ExecutionPreflightPanel.tsx:217` | "Check Execution Preconditions" button disabled; helper text "Connect a broker to run execution preflight" | **CORRECT blocker** (Audit B will split into two layers) | — |
 | Order Preparation panel | `OrderPreparationPanel.tsx:156` | Panel visible; content replaced by "Connect a broker to use Order Preparation" | **CORRECT blocker** | — |
 | Execution Readiness panel | `ExecutionReadinessPanel.tsx` | Broker-gated | **CORRECT blocker** | — |
-| Stock trade ticket | `stock-trade-ticket.tsx:925` | Submit button disabled; "Connect Broker to Use InstaTrade™" | **CORRECT blocker** | — |
+| Stock trade ticket | `stock-trade-ticket.tsx:925` | Submit button disabled; "Connect Broker to Use InstaTrade®" | **CORRECT blocker** | — |
 | Options trade ticket | `option-trade-ticket.tsx:220` | Submit disabled; account selector "No broker connected" | **CORRECT blocker** | — |
 | Workspace risk section | `workspace-sections.tsx:1257` | "No Broker Connected" risk added; lists 4 unavailable capabilities + Connect Broker CTA | Incorrect framing — most are data/provider issues not broker | **P0** |
 | Risk/scenario analysis | `goal-mode.tsx`, `income-mode.tsx` | Analysis available; save toast changes to "connect a broker to place orders" | Mostly OK — toast framing could improve | P2 |

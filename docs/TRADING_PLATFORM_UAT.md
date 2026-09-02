@@ -75,7 +75,7 @@ Legend: fill **Pass/Fail** and **Notes** per scenario.
 
 ## 10. Stock Trade Builder handoff
 - **Prerequisites:** a qualified stock candidate card (with risk estimate/stop) from scenarios 2–4.
-- **Actions:** click **Prepare in Trade Builder**. Review the Trade Builder page. Click **Send to InstaTrade™**. Review the ticket. Do **not** confirm.
+- **Actions:** click **Prepare in Trade Builder**. Review the Trade Builder page. Click **Send to InstaTrade®**. Review the ticket. Do **not** confirm.
 - **Expected UI:** navigation happens only on your click; banner states the prefill source (ticket service vs card values) and that nothing is sent until you confirm; entry/stop/target/quantity prefilled and all editable; no order exists anywhere because you never confirmed.
 - **Expected backend/MCP:** one POST `/api/trade/prepare-ticket` (auth required); zero order-placement calls.
 - **Pass/Fail:** ______  **Notes:** ______

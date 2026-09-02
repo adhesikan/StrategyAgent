@@ -81,7 +81,7 @@ export default function BrokerConnectionsPage() {
                 <ShoppingCart className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-sm font-medium">Order Placement</p>
-                  <p className="text-xs text-muted-foreground">Via InstaTrade™</p>
+                  <p className="text-xs text-muted-foreground">Via InstaTrade®</p>
                 </div>
               </div>
             </div>
@@ -122,7 +122,7 @@ export default function BrokerConnectionsPage() {
               <h3 className="text-lg font-semibold">Connect Your Broker</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
                 Connect your broker account to unlock live market data for strategy analysis
-                and enable order execution through InstaTrade™.
+                and enable order execution through InstaTrade®.
               </p>
             </div>
             <Button onClick={() => navigate("/settings")} data-testid="button-connect-broker">
@@ -133,7 +133,7 @@ export default function BrokerConnectionsPage() {
       )}
 
       <p className="text-[10px] text-muted-foreground/60 text-center" data-testid="text-disclaimer">
-        AI-generated setup for informational purposes only. Not investment advice or a recommendation. Execution available through InstaTrade™.
+        AI-generated setup for informational purposes only. Not investment advice or a recommendation. Execution available through InstaTrade®.
       </p>
     </div>
   );

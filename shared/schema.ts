@@ -706,7 +706,7 @@ export const LANDING_PAGE_OPTIONS = [
   { value: "/trade-finder", label: "Trade" },
   { value: "/markets", label: "Markets" },
   { value: "/opportunity-radar", label: "Top Opportunities" },
-  { value: "/instatrade", label: "InstaTrade" },
+  { value: "/instatrade", label: "InstaTrade®" },
   { value: "/charts", label: "Charts" },
 ] as const;
 export const landingPageValues = LANDING_PAGE_OPTIONS.map((o) => o.value) as unknown as [string, ...string[]];

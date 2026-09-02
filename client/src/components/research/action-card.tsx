@@ -25,7 +25,7 @@ import { track } from "@/lib/analytics";
 import type { ResearchPackage } from "./types";
 
 // ---------------------------------------------------------------------------
-// Inline InstaTrade™ planning panel (read-only, no execution)
+// Inline InstaTrade® planning panel (read-only, no execution)
 // ---------------------------------------------------------------------------
 
 const REGIME_LABEL: Record<string, string> = {
@@ -45,7 +45,7 @@ function InstaTradePanel({ pkg, symbol }: { pkg: ResearchPackage; symbol: string
     >
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-primary uppercase tracking-wider">
-          InstaTrade™ Planning
+          InstaTrade® Planning
         </span>
         <Badge
           variant="outline"
@@ -87,9 +87,9 @@ function InstaTradePanel({ pkg, symbol }: { pkg: ResearchPackage; symbol: string
             track("action_card_instatrade_navigate" as any, { symbol });
             navigate("/instatrade");
           }}
-          aria-label="Open InstaTrade order review workflow"
+          aria-label="Open InstaTrade® order review workflow"
         >
-          Open InstaTrade™ <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          Open InstaTrade® <ExternalLink className="h-3 w-3" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -190,11 +190,11 @@ export function ActionCard({ pkg, symbol, onNavigateTab }: ActionCardProps) {
                 setShowInstatrade((v) => !v);
               }}
               data-testid="btn-prepare-instatrade"
-              aria-label="Review with InstaTrade — opens order preparation workflow"
+              aria-label="Review with InstaTrade® — opens order preparation workflow"
               aria-expanded={showInstatrade}
             >
               <Zap className="h-4 w-4" aria-hidden="true" />
-              Review with InstaTrade™
+              Review with InstaTrade®
             </Button>
             <p className="text-[10px] text-muted-foreground mt-1.5 px-0.5 leading-relaxed">
               Prepare a broker-connected order for review.
@@ -219,7 +219,7 @@ export function ActionCard({ pkg, symbol, onNavigateTab }: ActionCardProps) {
                 navigate("/settings");
               }}
               data-testid="btn-connect-broker"
-              aria-label="Connect broker to enable InstaTrade order review"
+              aria-label="Connect broker to enable InstaTrade® order review"
             >
               <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
               Connect Broker
@@ -228,7 +228,7 @@ export function ActionCard({ pkg, symbol, onNavigateTab }: ActionCardProps) {
               <Info className="h-3.5 w-3.5 shrink-0 text-sky-400 mt-0.5" aria-hidden="true" />
               <span>
                 Connect a brokerage account to verify live option contracts,
-                access account context, and prepare an InstaTrade™ order review.
+                access account context, and prepare an InstaTrade® order review.
               </span>
             </div>
           </div>

@@ -261,7 +261,7 @@ function WorkspaceMockCard() {
 
           <Button className="w-full" size="sm" data-testid="button-mock-execute">
             <Zap className="h-4 w-4 mr-1.5" />
-            Prepare with InstaTrade™
+            Prepare with InstaTrade®
           </Button>
 
           <p className="text-[10px] text-muted-foreground border-t pt-2 flex items-center gap-1">
@@ -321,7 +321,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
             >
               Discover qualified setups, understand the evidence and risks, compare stock and
               options structures, verify live contracts through supported brokerages, and prepare
-              trades for review with InstaTrade™.
+              trades for review with InstaTrade®.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
               <Button
@@ -539,7 +539,7 @@ function HowItWorksSection({ onStartTrial }: { onStartTrial: () => void }) {
       n: "6",
       icon: Zap,
       title: "Review",
-      copy: "Prepare the selected stock or options structure for review through InstaTrade™. Nothing is submitted without explicit user confirmation.",
+      copy: "Prepare the selected stock or options structure for review through InstaTrade®. Nothing is submitted without explicit user confirmation.",
     },
   ];
 
@@ -663,7 +663,7 @@ function WorkspaceSection({ onStartTrial }: { onStartTrial: () => void }) {
     "What evidence weakens the thesis?",
     "What would invalidate the setup?",
     "Explain the illustrative options structure.",
-    "What should I verify before using InstaTrade™?",
+    "What should I verify before using InstaTrade®?",
   ];
 
   return (
@@ -1476,7 +1476,7 @@ export default function HomePage() {
       document.head.appendChild(meta);
     }
     meta.content =
-      "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
+      "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade®.";
 
     // Open Graph
     const setOg = (property: string, content: string) => {
@@ -1489,7 +1489,7 @@ export default function HomePage() {
       el.content = content;
     };
     setOg("og:title", "VCP Trader AI — Stock and Options Opportunity Intelligence");
-    setOg("og:description", "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.");
+    setOg("og:description", "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade®.");
   }, []);
 
   useEffect(() => {

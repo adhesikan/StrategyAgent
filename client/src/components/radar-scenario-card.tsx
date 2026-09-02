@@ -825,7 +825,7 @@ export function OrderReviewDialog({
               data-testid="button-radar-connect"
             >
               <Link2 className="h-4 w-4 mr-1" />
-              Connect Broker to use self-directed InstaTrade
+              Connect Broker to use self-directed InstaTrade®
             </Button>
           )}
         </DialogFooter>

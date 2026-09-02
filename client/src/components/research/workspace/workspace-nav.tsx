@@ -57,7 +57,7 @@ export const WORKSPACE_NAV_SECTIONS: WorkspaceNavSection[] = [
   { id: "risk",       label: "Risk",           anchorId: "ws-risk" },
   { id: "congress",   label: "Congress / News",anchorId: "ws-congress-news" },
   { id: "ask",        label: "Ask VCP AI",     anchorId: "ws-ask-ai" },
-  { id: "instatrade", label: "InstaTrade™",    anchorId: "ws-instatrade" },
+  { id: "instatrade", label: "InstaTrade®",    anchorId: "ws-instatrade" },
   { id: "history",    label: "Scan History",   anchorId: "ws-scan-history" },
 ];
 

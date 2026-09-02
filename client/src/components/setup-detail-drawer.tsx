@@ -93,7 +93,7 @@ export function SetupDetailDrawer({
     },
     onSuccess: (data: any) => {
       toast({
-        title: "InstaTrade™ Sent",
+        title: "InstaTrade® Sent",
         description: `Entry signal sent for ${result?.ticker}`,
       });
       setShowEndpointDialog(false);
@@ -102,7 +102,7 @@ export function SetupDetailDrawer({
     },
     onError: (error: any) => {
       toast({
-        title: "InstaTrade™ Failed",
+        title: "InstaTrade® Failed",
         description: error.message || "Could not send entry signal",
         variant: "destructive",
       });
@@ -482,7 +482,7 @@ export function SetupDetailDrawer({
                   data-testid="button-instatrade"
                 >
                   <Zap className="h-4 w-4" />
-                  {instatradeMutation.isPending ? "Sending..." : "InstaTrade™"}
+                  {instatradeMutation.isPending ? "Sending..." : "InstaTrade®"}
                 </Button>
               </div>
 
@@ -494,7 +494,7 @@ export function SetupDetailDrawer({
                       <div>
                         <p className="font-medium">Set Up Automation</p>
                         <p className="text-sm text-muted-foreground">
-                          Create an automation endpoint to execute setups with InstaTrade™.
+                          Create an automation endpoint to execute setups with InstaTrade®.
                         </p>
                       </div>
                     </div>
@@ -521,7 +521,7 @@ export function SetupDetailDrawer({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
-              InstaTrade™ {result.ticker}
+              InstaTrade® {result.ticker}
             </DialogTitle>
             <DialogDescription>
               {hasEndpoints 
@@ -617,7 +617,7 @@ export function SetupDetailDrawer({
                     <div>
                       <p className="font-medium">Set Up Automation</p>
                       <p className="text-sm text-muted-foreground">
-                        Create an automation endpoint to execute trades with InstaTrade™.
+                        Create an automation endpoint to execute trades with InstaTrade®.
                       </p>
                     </div>
                   </div>
@@ -635,7 +635,7 @@ export function SetupDetailDrawer({
                 disabled={!selectedEndpoint || instatradeMutation.isPending}
                 data-testid="button-confirm-instatrade"
               >
-                {instatradeMutation.isPending ? "Sending..." : "Send InstaTrade™"}
+                {instatradeMutation.isPending ? "Sending..." : "Send InstaTrade®"}
               </Button>
             ) : (
               <Button

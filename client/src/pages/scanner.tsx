@@ -422,7 +422,7 @@ export default function Scanner() {
     },
     onSuccess: () => {
       toast({
-        title: "InstaTrade™ Sent",
+        title: "InstaTrade® Sent",
         description: `Entry signal sent for ${instaTradeResult?.ticker}`,
       });
       setShowEndpointDialog(false);
@@ -431,7 +431,7 @@ export default function Scanner() {
     },
     onError: (error: any) => {
       toast({
-        title: "InstaTrade™ Failed",
+        title: "InstaTrade® Failed",
         description: error.message || "Could not send entry signal",
         variant: "destructive",
       });
@@ -1059,7 +1059,7 @@ export default function Scanner() {
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary shrink-0" />
             <p className="text-sm">
-              <span className="font-medium">New here?</span> Click any card to preview the trade plan. Use InstaTrade™ when you're ready.
+              <span className="font-medium">New here?</span> Click any card to preview the trade plan. Use InstaTrade® when you're ready.
             </p>
           </div>
           <Button
@@ -1389,7 +1389,7 @@ export default function Scanner() {
                     data-testid={`button-instatrade-card-${result.ticker}`}
                   >
                     <Zap className="h-3 w-3" />
-                    InstaTrade™
+                    InstaTrade®
                   </Button>
                 )}
                 {(
@@ -1545,7 +1545,7 @@ export default function Scanner() {
                     data-testid={`button-instatrade-list-${result.ticker}`}
                   >
                     <Zap className="h-3 w-3" />
-                    <span className="hidden sm:inline">InstaTrade™</span>
+                    <span className="hidden sm:inline">InstaTrade®</span>
                   </Button>
                 )}
                 <Button
@@ -2296,7 +2296,7 @@ export default function Scanner() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
-              InstaTrade™ {instaTradeResult?.ticker}
+              InstaTrade® {instaTradeResult?.ticker}
             </DialogTitle>
             <DialogDescription>
               {hasEndpoints 

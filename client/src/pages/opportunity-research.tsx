@@ -7,7 +7,7 @@
 // Compliance rules applied throughout:
 //   - Never uses "buy", "sell", "recommendation", "expected profit", "target return"
 //   - All price/level fields are labeled as "educational planning" only
-//   - InstaTrade™ section is read-only planning display; never an execution button
+//   - InstaTrade® section is read-only planning display; never an execution button
 //   - AI Summary tab is deterministic derivation — no LLM call
 
 import { useState } from "react";
@@ -1302,7 +1302,7 @@ function RiskFactorsSection({
 }
 
 // ---------------------------------------------------------------------------
-// Section 9 — Action Center + Section 10 — InstaTrade™ (unchanged)
+// Section 9 — Action Center + Section 10 — InstaTrade® (unchanged)
 // ---------------------------------------------------------------------------
 
 function ActionCenterSection({
@@ -1458,7 +1458,7 @@ function ActionCenterSection({
               data-testid="btn-review-instatrade"
             >
               <Zap className="h-3.5 w-3.5" />
-              {showInstatrade ? "Hide" : "Review with InstaTrade™"}
+              {showInstatrade ? "Hide" : "Review with InstaTrade®"}
             </Button>
             {showInstatrade && <InstaTradePanel pkg={pkg} symbol={symbol} />}
           </div>
@@ -1470,7 +1470,7 @@ function ActionCenterSection({
             >
               <Info className="h-3.5 w-3.5 shrink-0" />
               <span>
-                Connect a brokerage to use InstaTrade™ order planning.{" "}
+                Connect a brokerage to use InstaTrade® order planning.{" "}
                 <button
                   type="button"
                   className="underline hover:text-foreground"
@@ -1498,7 +1498,7 @@ function InstaTradePanel({ pkg, symbol }: { pkg: ResearchPackage; symbol: string
     >
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-primary uppercase tracking-wide">
-          InstaTrade™ Planning
+          InstaTrade® Planning
         </span>
         <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/40">
           Read-Only · Not an order
@@ -1550,7 +1550,7 @@ function InstaTradePanel({ pkg, symbol }: { pkg: ResearchPackage; symbol: string
             navigate("/instatrade");
           }}
         >
-          Open InstaTrade™ <ExternalLink className="h-3 w-3" />
+          Open InstaTrade® <ExternalLink className="h-3 w-3" />
         </Button>
       </div>
     </div>

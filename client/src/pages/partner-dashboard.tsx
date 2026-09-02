@@ -361,7 +361,7 @@ function BrokerTab() {
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <Zap className="w-5 h-5 text-chart-2" />
-              <h3 className="text-base font-medium">InstaTrade&trade;</h3>
+              <h3 className="text-base font-medium">InstaTrade®</h3>
             </div>
             <p className="text-sm text-muted-foreground">
               Send trades directly to your brokerage with one click. Enter a stock symbol and configure your order.
@@ -386,7 +386,7 @@ function BrokerTab() {
                 data-testid="button-instatrade"
               >
                 <Zap className="w-4 h-4 mr-1" />
-                InstaTrade&trade;
+                InstaTrade®
               </Button>
             </div>
           </CardContent>
@@ -1424,7 +1424,7 @@ function TradesTab() {
         <div className="flex items-center gap-2 p-2 rounded-md bg-yellow-500/10 border border-yellow-500/20">
           <Clock className="w-4 h-4 text-yellow-500 shrink-0" />
           <span className="text-xs text-yellow-600 dark:text-yellow-400">
-            {pendingCount} signal{pendingCount !== 1 ? "s" : ""} awaiting your review — click InstaTrade to execute
+            {pendingCount} signal{pendingCount !== 1 ? "s" : ""} awaiting your review — click InstaTrade® to execute
           </span>
         </div>
       )}
@@ -1564,7 +1564,7 @@ function TradesTab() {
                             data-testid={`button-instatrade-trade-${trade.id}`}
                           >
                             <Zap className="h-3 w-3" />
-                            InstaTrade&trade;
+                            InstaTrade®
                           </Button>
                         )}
                         {trade.brokerOrderId && (trade.status === "EXECUTED" || trade.status === "PENDING") && trade.id.startsWith("broker-") && (

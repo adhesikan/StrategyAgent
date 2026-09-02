@@ -149,7 +149,7 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
                   <><ArrowUpDown className="h-3 w-3 mr-1" />Broker</>
                 )
               ) : (
-                <><Zap className="h-3 w-3 mr-1" />InstaTrade&trade;</>
+                <><Zap className="h-3 w-3 mr-1" />InstaTrade®</>
               )}
             </Badge>
             <div className="min-w-0">
@@ -250,7 +250,7 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
                   data-testid={`button-instatrade-${trade.id}`}
                 >
                   <Zap className="h-3 w-3" />
-                  InstaTrade&trade;
+                  InstaTrade®
                 </Button>
               )}
               {cancellable && onCancel && (
@@ -486,7 +486,7 @@ export function TradeActivityPanel() {
               Trade Activity
             </CardTitle>
             <CardDescription>
-              Executed trades from Auto Agent and InstaTrade&trade;
+              Executed trades from Auto Agent and InstaTrade®
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -541,7 +541,7 @@ export function TradeActivityPanel() {
             <SelectContent>
               <SelectItem value="all">All Sources</SelectItem>
               <SelectItem value="auto_agent">Auto Agent</SelectItem>
-              <SelectItem value="instatrade">InstaTrade</SelectItem>
+              <SelectItem value="instatrade">InstaTrade®</SelectItem>
               <SelectItem value="broker">Broker</SelectItem>
             </SelectContent>
           </Select>
@@ -611,7 +611,7 @@ export function TradeActivityPanel() {
             <ArrowUpDown className="h-10 w-10 text-muted-foreground/50 mb-3" />
             <p className="text-sm font-medium">No trade activity yet</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Executed trades from Auto Agent and InstaTrade&trade; will appear here
+              Executed trades from Auto Agent and InstaTrade® will appear here
             </p>
           </div>
         )}

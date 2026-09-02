@@ -9,7 +9,7 @@ The Workspace tab (TabsContent value="overview") was redesigned from a 12-sectio
 
 1. **WorkspaceHeroCard** — prominent decision card; thesis variant (bullish/neutral/bearish), max 3 whySelected bullets, top risk, regime, confidence. "View Full Decision →" navigates to Decision tab.
 2. **WorkspaceTradePlanCard** — two-column (Stock left, Options right); all fields from `candidate` + `OptionsStructure.label/preferredDTE/strikeGuidance`.
-3. **WorkspacePrimaryActions** — single action area; primary CTA = "Review with InstaTrade™" (broker) or "Connect Broker"; secondary = Ask VCP AI, Congress, Trade Plan.
+3. **WorkspacePrimaryActions** — single action area; primary CTA = "Review with InstaTrade®" (broker) or "Connect Broker"; secondary = Ask VCP AI, Congress, Trade Plan.
 4. **WorkspaceRiskCompact** — max 3 risks initially; "+N more" expand; uses `selectTopRisks(groups, 3)`.
 5. **WorkspaceEvidenceCompact** — 4 score bars (technical/regime/congress/news), expandable to 6; uses `buildEvidenceSummaryRows`.
 6. **WorkspaceMarketContextCompact** — 4-row compact grid (regime, source, quality, scan time).

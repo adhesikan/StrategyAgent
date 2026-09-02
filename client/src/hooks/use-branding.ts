@@ -9,9 +9,8 @@ const FALLBACK: BrandingInfo = buildBrandingInfo(DEFAULT_TRADEMARK_STATUS);
 
 /**
  * Centralized trademark/branding info served by GET /api/branding.
- * Controlled by the TRADEMARK_INSTATRADE_STATUS env var on the server, so
- * switching InstaTrade™ → InstaTrade® is a configuration-only change.
- * Falls back safely to pending_registration (™) while loading or on error.
+ * Controlled by the TRADEMARK_INSTATRADE_STATUS env var on the server.
+ * Falls back safely to the registered mark while loading or on error.
  */
 export function useBranding(): BrandingInfo {
   const { data } = useQuery<BrandingInfo>({

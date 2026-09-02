@@ -199,7 +199,7 @@ All of the following must pass before Phase 2.8 begins:
 | OpenAI | Research Workspace AI unavailable | Deterministic evidence still shows | No |
 | MCP | No new opportunity scans | Last valid snapshot serves | No |
 | Twelve Data | Market prices unavailable | Stored bars used; UNAVAILABLE shown | No |
-| Broker | InstaTrade™ disabled | All research/planning continues | No |
+| Broker | InstaTrade® disabled | All research/planning continues | No |
 | Institutional | 13F data unavailable | Opportunity Workspace loads without institutional tab | No |
 | Database | Entire platform affected | DB is critical dependency | Yes |
 

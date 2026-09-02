@@ -323,7 +323,7 @@ export function MarketingOnboardingWizard({ open, onClose }: MarketingOnboarding
               <div className="flex items-start gap-2 text-xs text-muted-foreground">
                 <Target className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
                 <span>
-                  Create your account to unlock live setups, probability grades, and InstaTrade™ execution.
+                  Create your account to unlock live setups, probability grades, and InstaTrade® execution.
                 </span>
               </div>
             </div>

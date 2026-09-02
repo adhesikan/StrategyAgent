@@ -39,7 +39,7 @@ export default function DisclaimerPage() {
             </p>
 
             <p>
-              VCP Trader AI includes optional, self-directed execution tools, including InstaTrade™, which allow users to send generated setups for trade execution only according to rules, conditions, and risk settings defined and authorized by the user. VCP Trader AI does not select securities or determine trade suitability for any user.
+              VCP Trader AI includes optional, self-directed execution tools, including InstaTrade®, which allow users to send generated setups for trade execution only according to rules, conditions, and risk settings defined and authorized by the user. VCP Trader AI does not select securities or determine trade suitability for any user.
             </p>
 
             <p>

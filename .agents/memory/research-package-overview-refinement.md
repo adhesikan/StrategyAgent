@@ -36,7 +36,7 @@ description: Sprint 2.2.1 — posture bug fix, evidence scores, improved thesis,
 - `client/src/components/research/stock-trade-card.tsx` — replace bare "—" with informative resolution-state text; add resolveFieldState() helper
 - `client/src/components/research/evidence-card.tsx` — rename to "Evidence Strength"; add numeric scores (72/100); add optional pkg prop for computeTechnicalScore/computeRegimeScore
 - `client/src/components/research/risk-card.tsx` — categorize warnings (market/trade-plan/execution/other); collapse/expand for long lists; all warnings preserved
-- `client/src/components/research/action-card.tsx` — primary CTA (Review with InstaTrade™ / Connect Broker) now first and visually dominant; secondary actions below
+- `client/src/components/research/action-card.tsx` — primary CTA (Review with InstaTrade® / Connect Broker) now first and visually dominant; secondary actions below
 - `client/src/components/research/compact-market-context.tsx` — NEW: compact regime/alignment/data-source/scan-time card for Overview
 - `client/src/components/research/compact-options-overview.tsx` — NEW: compact options structure summary (DTE + strike framework; no premiums/Greeks)
 - `client/src/components/research/congress-summary-card.tsx` — NEW: congress disclosure summary with mandatory disclaimer; no fabricated counts

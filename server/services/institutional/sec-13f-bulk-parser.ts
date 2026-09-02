@@ -1196,6 +1196,26 @@ export function parseSubmissionTsv(text: string): {
   };
 }
 
+/**
+ * Parse only filing metadata from a bulk archive.
+ *
+ * This deliberately resolves and reads SUBMISSION.tsv only.  In particular,
+ * it must not call parseInfoTableTsv() or materialize INFOTABLE.tsv: this
+ * helper is used for accession identity recovery when the filer submissions
+ * endpoint is unavailable.
+ */
+export function parseSubmissionMetadataFromArchiveBuffer(
+  buffer: Buffer,
+  targetAccessions?: ReadonlySet<string>,
+): SubmissionRow[] {
+  const zip = new AdmZip(buffer);
+  const resolved = resolveRequiredArchiveEntry(zip.getEntries(), "SUBMISSION.tsv");
+  if (!resolved.found) throw new Error(resolved.error);
+  const parsed = parseSubmissionTsv(resolved.entry.getData().toString("utf8"));
+  if (!targetAccessions) return parsed.rows;
+  return parsed.rows.filter((row) => targetAccessions.has(row.accessionNumber));
+}
+
 // ---------------------------------------------------------------------------
 // COVERPAGE.tsv parser
 // ---------------------------------------------------------------------------

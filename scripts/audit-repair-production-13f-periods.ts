@@ -20,14 +20,28 @@ import {
   submissionsHistoryUrl,
   submissionsUrl,
 } from "../server/services/institutional/sec-client";
-import { normalizeAccession, normalizeDateField, normalizeSubmissionType } from "../server/services/institutional/sec-13f-bulk-parser";
+import {
+  normalizeAccession,
+  normalizeDateField,
+  normalizeSubmissionType,
+  parseSubmissionMetadataFromArchiveBuffer,
+  prepareBulkArchiveFromDescriptor,
+  type SubmissionRow,
+} from "../server/services/institutional/sec-13f-bulk-parser";
+import {
+  fetchDatasetCatalog,
+  toDatasetDescriptor,
+  type InstitutionalDatasetCatalogEntry,
+} from "../server/services/institutional/sec-dataset-catalog";
 import {
   buildHistoricalFilingRepairPlan,
   classifyStoredFilings,
   decideDuplicateHoldingDisposition,
   summarizeFilingAudit,
   type AuthoritativeFilingMetadata,
+  type AccessionVerificationOutcome,
   type FilingRepairPlan,
+  type HoldingFingerprint,
   type StoredFilingMetadata,
 } from "../server/services/institutional/historical-filing-period-repair";
 
@@ -240,6 +254,9 @@ export interface SecMetadataLoadOptions {
   maxCiks?: number;
   cikBatchSize?: number;
   fetchSec?: (url: string) => Promise<string>;
+  catalog?: InstitutionalDatasetCatalogEntry[];
+  fetchCatalog?: () => Promise<InstitutionalDatasetCatalogEntry[]>;
+  fetchArchive?: (descriptor: ReturnType<typeof toDatasetDescriptor>) => Promise<Buffer>;
   onProgress?: (progress: { processedCiks: number; totalCiks: number; batchNumber: number }) => void;
 }
 
@@ -247,10 +264,16 @@ export interface SecMetadataVerificationStatus {
   unverifiedCiks: Set<string>;
   secNotFoundCiks: Set<string>;
   failures: SecSubmissionsFailureDetails[];
+  accessionOutcomes: Map<string, AccessionVerificationOutcome>;
 }
 
 export function createSecMetadataVerificationStatus(): SecMetadataVerificationStatus {
-  return { unverifiedCiks: new Set(), secNotFoundCiks: new Set(), failures: [] };
+  return {
+    unverifiedCiks: new Set(),
+    secNotFoundCiks: new Set(),
+    failures: [],
+    accessionOutcomes: new Map(),
+  };
 }
 
 export class HistoricalAuditBoundError extends Error {
@@ -347,6 +370,147 @@ function recordSecFailure(
   status.failures.push(failure.details);
 }
 
+function submissionRowToAuthoritative(row: SubmissionRow): AuthoritativeFilingMetadata {
+  return {
+    canonicalAccession: row.accessionNumber,
+    filerCik: row.cik,
+    filingDate: row.filingDate,
+    periodOfReport: row.periodOfReport,
+    filingType: row.formType,
+    amendmentFlag: row.isAmendment,
+  };
+}
+
+function sameAuthoritativeMetadata(
+  left: AuthoritativeFilingMetadata,
+  right: AuthoritativeFilingMetadata,
+): boolean {
+  return left.canonicalAccession === right.canonicalAccession &&
+    left.filerCik === right.filerCik &&
+    left.filingDate === right.filingDate &&
+    left.periodOfReport === right.periodOfReport &&
+    left.filingType === right.filingType &&
+    left.amendmentFlag === right.amendmentFlag;
+}
+
+function addAuthoritativeEvidence(
+  output: Map<string, AuthoritativeFilingMetadata[]>,
+  evidence: AuthoritativeFilingMetadata,
+): void {
+  const existing = output.get(evidence.canonicalAccession);
+  if (!existing) {
+    output.set(evidence.canonicalAccession, [evidence]);
+    return;
+  }
+  if (!existing.some((item) => sameAuthoritativeMetadata(item, evidence))) existing.push(evidence);
+}
+
+export function selectAccessionVerificationDescriptors(
+  rows: StoredFilingMetadata[],
+  catalog: InstitutionalDatasetCatalogEntry[],
+): Array<ReturnType<typeof toDatasetDescriptor>> {
+  const selected = new Map<string, ReturnType<typeof toDatasetDescriptor>>();
+  for (const row of rows) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.filingDate)) continue;
+    for (const entry of catalog) {
+      if (row.filingDate < entry.windowStart || row.filingDate > entry.windowEnd) continue;
+      const descriptor = toDatasetDescriptor({
+        entry,
+        expectedPeriodOfReport: entry.expectedPeriodOfReport,
+        canonicalPeriodLabel: entry.canonicalPeriodLabel,
+      });
+      if (!selected.has(descriptor.downloadUrl)) selected.set(descriptor.downloadUrl, descriptor);
+    }
+  }
+  return Array.from(selected.values()).sort((a, b) => a.downloadUrl.localeCompare(b.downloadUrl));
+}
+
+async function recoverAccessionsFromBulkMetadata(
+  storedRows: StoredFilingMetadata[],
+  authoritative: Map<string, AuthoritativeFilingMetadata[]>,
+  status: SecMetadataVerificationStatus,
+  options: SecMetadataLoadOptions,
+): Promise<void> {
+  const unresolvedRows = storedRows.filter((row) => {
+    const accession = normalizeAccession(row.rawAccession);
+    return /^\d{18}$/.test(accession) && !authoritative.has(accession);
+  });
+  if (unresolvedRows.length === 0) return;
+
+  let catalog = options.catalog;
+  try {
+    if (!catalog && options.fetchCatalog) catalog = await options.fetchCatalog();
+  } catch {
+    for (const row of unresolvedRows) {
+      status.accessionOutcomes.set(normalizeAccession(row.rawAccession), "VERIFICATION_UNAVAILABLE");
+    }
+    return;
+  }
+  if (!catalog || catalog.length === 0) {
+    for (const row of unresolvedRows) {
+      status.accessionOutcomes.set(normalizeAccession(row.rawAccession), "VERIFICATION_UNAVAILABLE");
+    }
+    return;
+  }
+
+  const descriptors = selectAccessionVerificationDescriptors(unresolvedRows, catalog);
+  const targetsByDescriptor = new Map<string, Set<string>>();
+  for (const row of unresolvedRows) {
+    const accession = normalizeAccession(row.rawAccession);
+    for (const descriptor of descriptors) {
+      if (row.filingDate >= descriptor.windowStart && row.filingDate <= descriptor.windowEnd) {
+        const targets = targetsByDescriptor.get(descriptor.downloadUrl);
+        if (targets) targets.add(accession);
+        else targetsByDescriptor.set(descriptor.downloadUrl, new Set([accession]));
+      }
+    }
+  }
+
+  const unavailable = new Set<string>();
+  const scanned = new Set<string>();
+  const archiveCache = new Map<string, Buffer>();
+  for (const descriptor of descriptors) {
+    const targets = targetsByDescriptor.get(descriptor.downloadUrl) ?? new Set<string>();
+    if (targets.size === 0) continue;
+    let buffer: Buffer;
+    try {
+      buffer = archiveCache.get(descriptor.downloadUrl) ?? await (options.fetchArchive
+        ? options.fetchArchive(descriptor)
+        : (async () => {
+          const prepared = await prepareBulkArchiveFromDescriptor(descriptor);
+          if ("status" in prepared) throw new Error(prepared.failureCode ?? "SEC_ARCHIVE_UNAVAILABLE");
+          return prepared.buffer;
+        })());
+      archiveCache.set(descriptor.downloadUrl, buffer);
+    } catch {
+      for (const accession of targets) unavailable.add(accession);
+      continue;
+    }
+    try {
+      const rowsFromArchive = parseSubmissionMetadataFromArchiveBuffer(buffer, targets);
+      for (const accession of targets) scanned.add(accession);
+      for (const row of rowsFromArchive) {
+        addAuthoritativeEvidence(authoritative, submissionRowToAuthoritative(row));
+      }
+    } catch {
+      for (const accession of targets) unavailable.add(accession);
+    }
+  }
+
+  for (const row of unresolvedRows) {
+    const accession = normalizeAccession(row.rawAccession);
+    if (authoritative.has(accession)) {
+      if ((authoritative.get(accession) ?? []).length > 1) {
+        status.accessionOutcomes.set(accession, "AMBIGUOUS_CONFLICTING_EVIDENCE");
+      }
+    } else if (unavailable.has(accession) || !scanned.has(accession)) {
+      status.accessionOutcomes.set(accession, "VERIFICATION_UNAVAILABLE");
+    } else {
+      status.accessionOutcomes.set(accession, "AUTHORITATIVE_ACCESSION_NOT_FOUND");
+    }
+  }
+}
+
 export async function loadAuthoritativeSecMetadata(
   storedRows: StoredFilingMetadata[],
   options: SecMetadataLoadOptions & { status?: SecMetadataVerificationStatus } = {},
@@ -427,6 +591,9 @@ export async function loadAuthoritativeSecMetadata(
             // No alternate URL is invented. Remaining accessions are left
             // without metadata and therefore fail closed during classification.
             options.status?.unverifiedCiks.add(cik);
+            for (const accession of unresolved) {
+              options.status?.accessionOutcomes.set(accession, "VERIFICATION_UNAVAILABLE");
+            }
             recordSecFailure(options.status, failure);
             break;
           }
@@ -449,6 +616,9 @@ export async function loadAuthoritativeSecMetadata(
       processedCiks++;
     }
     options.onProgress?.({ processedCiks, totalCiks: byCik.size, batchNumber: batchNumber + 1 });
+  }
+  if (options.status) {
+    await recoverAccessionsFromBulkMetadata(storedRows, output, options.status, options);
   }
   return output;
 }
@@ -526,12 +696,52 @@ async function readStoredFilings(
   }));
 }
 
+async function readDuplicateHoldingFingerprints(
+  executor: Executor,
+  rows: StoredFilingMetadata[],
+): Promise<Map<string, HoldingFingerprint>> {
+  const duplicateRows = rows.filter((row, index) => rows.some(
+    (other, otherIndex) =>
+      otherIndex !== index && normalizeAccession(other.rawAccession) === normalizeAccession(row.rawAccession),
+  ));
+  const rawAccessions = Array.from(new Set(duplicateRows.map((row) => row.rawAccession))).sort();
+  if (rawAccessions.length === 0) return new Map();
+  const values = sql.join(rawAccessions.map((value) => sql`${value}`), sql`, `);
+  const result = await executor.execute(sql`
+    SELECT accession_number AS "rawAccession",
+           COUNT(*)::int AS row_count,
+           md5(COALESCE(string_agg(
+             concat_ws('|', cusip, class_title, COALESCE(put_call, ''), issuer_name,
+               COALESCE(reported_value::text, ''), COALESCE(reported_shares::text, ''),
+               COALESCE(shares_prn_type, ''), COALESCE(investment_discretion, ''),
+               COALESCE(voting_sole::text, ''), COALESCE(voting_shared::text, ''),
+               COALESCE(voting_none::text, '')),
+             E'\n' ORDER BY cusip, class_title, COALESCE(put_call, ''), issuer_name
+           ), '')) AS digest
+      FROM institutional_13f_holdings
+     WHERE accession_number IN (${values})
+     GROUP BY accession_number
+  `);
+  return new Map(rowsOf(result).map((row) => [
+    String(row.rawAccession),
+    { count: Number(row.row_count ?? 0), digest: String(row.digest ?? "") },
+  ]));
+}
+
 async function readDownstreamImpact(
   executor: Executor,
-  canonicalAccessions: string[],
-  affectedPeriods: string[],
+  categories: {
+    verifiedMetadataMismatches: string[];
+    canonicalDuplicates: string[];
+    unverifiedFilings: string[];
+  },
 ): Promise<Record<string, unknown>> {
-  if (canonicalAccessions.length === 0) {
+  const categorized = [
+    ...categories.verifiedMetadataMismatches.map((accession) => ["verifiedMetadataMismatches", accession] as const),
+    ...categories.canonicalDuplicates.map((accession) => ["canonicalDuplicates", accession] as const),
+    ...categories.unverifiedFilings.map((accession) => ["unverifiedFilings", accession] as const),
+  ];
+  if (categorized.length === 0) {
     return {
       holdings: 0,
       effectiveFilings: 0,
@@ -540,66 +750,105 @@ async function readDownstreamImpact(
       sectorSnapshots: 0,
       themeSnapshots: 0,
       affectedSymbols: 0,
+      categoryImpact: {
+        verifiedMetadataMismatches: { holdings: 0, effectiveFilings: 0, aggregates: 0, signals: 0, affectedSymbols: 0 },
+        canonicalDuplicates: { holdings: 0, effectiveFilings: 0, aggregates: 0, signals: 0, affectedSymbols: 0 },
+        unverifiedFilings: { holdings: 0, effectiveFilings: 0, aggregates: 0, signals: 0, affectedSymbols: 0 },
+      },
       downstreamGeneratedFromContaminatedFilings: false,
     };
   }
-  const accessions = sql.join(canonicalAccessions.map((value) => sql`${value}`), sql`, `);
-  const periods = affectedPeriods.length
-    ? sql.join(affectedPeriods.map((value) => sql`${value}`), sql`, `)
-    : sql`NULL`;
+  const categorizedValues = sql.join(
+    categorized.map(([category, accession]) => sql`(${category}, ${accession})`),
+    sql`, `,
+  );
   const result = await executor.execute(sql`
-    WITH affected_holdings AS (
-      SELECT h.*
+    WITH categorized_accessions(category, accession) AS (
+      VALUES ${categorizedValues}
+    ),
+    affected_holdings AS (
+      SELECT ca.category, h.*
         FROM institutional_13f_holdings h
-       WHERE regexp_replace(h.accession_number, '[^0-9]', '', 'g') IN (${accessions})
+        JOIN categorized_accessions ca
+          ON regexp_replace(h.accession_number, '[^0-9]', '', 'g') = ca.accession
     ),
     affected_symbols AS (
-      SELECT DISTINCT mapped_symbol AS symbol
+      SELECT DISTINCT category, mapped_symbol AS symbol
         FROM affected_holdings
        WHERE mapped_symbol IS NOT NULL
     ),
     affected_aggregates AS (
-      SELECT a.*
+      SELECT s.category, a.*
         FROM institutional_quarterly_aggregates a
-       WHERE a.period_of_report::text IN (${periods})
-         AND a.symbol IN (SELECT symbol FROM affected_symbols)
+        JOIN affected_symbols s ON s.symbol = a.symbol
     ),
     affected_signals AS (
-      SELECT s.*
+      SELECT i.category, s.*
         FROM institutional_symbol_signals s
-       WHERE s.symbol IN (SELECT symbol FROM affected_symbols)
+        JOIN affected_symbols i ON i.symbol = s.symbol
     )
-    SELECT
-      (SELECT COUNT(*)::int FROM affected_holdings) AS holdings,
+    SELECT category,
+      (SELECT COUNT(*)::int FROM affected_holdings h WHERE h.category = c.category) AS holdings,
       (SELECT COUNT(*)::int FROM institutional_13f_filings f
-        WHERE f.is_effective
-          AND regexp_replace(f.accession_number, '[^0-9]', '', 'g') IN (${accessions})
-      ) AS "effectiveFilings",
-      (SELECT COUNT(*)::int FROM affected_aggregates) AS "quarterlyAggregates",
-      (SELECT COUNT(*)::int FROM affected_signals) AS signals,
-      (SELECT COUNT(*)::int FROM affected_symbols) AS "affectedSymbols",
-      CASE WHEN EXISTS (SELECT 1 FROM affected_signals)
-        THEN (SELECT COUNT(*)::int FROM sector_intelligence_snapshots
-               WHERE generated_at = (SELECT MAX(generated_at) FROM sector_intelligence_snapshots))
-        ELSE 0 END AS "sectorSnapshots",
-      CASE WHEN EXISTS (SELECT 1 FROM affected_signals)
-        THEN (SELECT COUNT(*)::int FROM theme_intelligence_snapshots
-               WHERE generated_at = (SELECT MAX(generated_at) FROM theme_intelligence_snapshots))
-        ELSE 0 END AS "themeSnapshots"
+        JOIN categorized_accessions ca
+          ON regexp_replace(f.accession_number, '[^0-9]', '', 'g') = ca.accession
+        WHERE ca.category = c.category AND f.is_effective) AS "effectiveFilings",
+      (SELECT COUNT(*)::int FROM affected_aggregates a WHERE a.category = c.category) AS aggregates,
+      (SELECT COUNT(*)::int FROM affected_signals s WHERE s.category = c.category) AS signals,
+      (SELECT COUNT(*)::int FROM affected_symbols s WHERE s.category = c.category) AS "affectedSymbols"
+    FROM (SELECT DISTINCT category FROM categorized_accessions) c
+    ORDER BY category
   `);
-  const row = rowsOf(result)[0] ?? {};
-  const quarterlyAggregates = Number(row.quarterlyAggregates ?? 0);
-  const signals = Number(row.signals ?? 0);
-  return {
-    holdings: Number(row.holdings ?? 0),
-    effectiveFilings: Number(row.effectiveFilings ?? 0),
-    quarterlyAggregates,
-    signals,
-    sectorSnapshots: Number(row.sectorSnapshots ?? 0),
-    themeSnapshots: Number(row.themeSnapshots ?? 0),
-    affectedSymbols: Number(row.affectedSymbols ?? 0),
-    downstreamGeneratedFromContaminatedFilings: quarterlyAggregates > 0 || signals > 0,
+  const emptyCategory = () => ({ holdings: 0, effectiveFilings: 0, aggregates: 0, signals: 0, affectedSymbols: 0 });
+  const categoryImpact: Record<string, ReturnType<typeof emptyCategory>> = {
+    verifiedMetadataMismatches: emptyCategory(),
+    canonicalDuplicates: emptyCategory(),
+    unverifiedFilings: emptyCategory(),
   };
+  for (const row of rowsOf(result)) {
+    const category = String(row.category);
+    if (category in categoryImpact) {
+      categoryImpact[category] = {
+        holdings: Number(row.holdings ?? 0),
+        effectiveFilings: Number(row.effectiveFilings ?? 0),
+        aggregates: Number(row.aggregates ?? 0),
+        signals: Number(row.signals ?? 0),
+        affectedSymbols: Number(row.affectedSymbols ?? 0),
+      };
+    }
+  }
+  const totals = Object.values(categoryImpact).reduce((sum, item) => ({
+    holdings: sum.holdings + item.holdings,
+    effectiveFilings: sum.effectiveFilings + item.effectiveFilings,
+    aggregates: sum.aggregates + item.aggregates,
+    signals: sum.signals + item.signals,
+    affectedSymbols: sum.affectedSymbols + item.affectedSymbols,
+  }), emptyCategory());
+  return {
+    holdings: totals.holdings,
+    effectiveFilings: totals.effectiveFilings,
+    quarterlyAggregates: totals.aggregates,
+    signals: totals.signals,
+    sectorSnapshots: 0,
+    themeSnapshots: 0,
+    affectedSymbols: totals.affectedSymbols,
+    categoryImpact,
+    downstreamRowsLinkedToCanonicalDuplicates: categoryImpact.canonicalDuplicates,
+    downstreamRowsLinkedToUnverifiedFilings: categoryImpact.unverifiedFilings,
+    downstreamRowsLinkedToVerifiedMetadataMismatches: categoryImpact.verifiedMetadataMismatches,
+    downstreamGeneratedFromContaminatedFilings:
+      totalsForCategory(categoryImpact.verifiedMetadataMismatches) > 0,
+  };
+}
+
+function totalsForCategory(category: {
+  holdings: number;
+  effectiveFilings: number;
+  aggregates: number;
+  signals: number;
+  affectedSymbols: number;
+}): number {
+  return category.holdings + category.aggregates + category.signals + category.affectedSymbols;
 }
 
 function sanitizedExamples(classified: ReturnType<typeof classifyStoredFilings>) {

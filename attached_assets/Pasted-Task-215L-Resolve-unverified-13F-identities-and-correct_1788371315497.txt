@@ -1,0 +1,245 @@
+Task #215L — Resolve unverified 13F identities and correct contamination semantics
+
+Continue from the current production audit implementation.
+
+Latest production DRY_RUN result:
+
+totalRows: 4891
+canonicalUniqueAccessions: 3696
+canonicalDuplicateRows: 1195
+verifiedAgainstSEC: 2301
+periodMatchesSEC: 2301
+periodMismatchesSEC: 0
+filingDateMismatchesSEC: 0
+managerCikMismatchesSEC: 0
+
+classifications:
+VALID_SEC_IDENTITY_AND_PERIOD: 1229
+CANONICAL_DUPLICATE: 1072
+PERIOD_MISMATCH: 0
+SOURCE_IDENTITY_NOT_VERIFIED: 2590
+OTHER_INVALID: 0
+
+unverifiedAccessions: 1931
+unverifiedCiks: 84
+secNotFoundCiks: 60
+
+canonicalDuplicateGroups: 536
+
+Current repair planner:
+operationCount: 1765
+blockedCount: 1931
+
+DO NOT:
+- run repair APPLY
+- run historical backfill
+- modify production data
+- assume a 2026 filing with an older PERIODOFREPORT is contaminated
+- reopen OpenFIGI, mappings, Stock View, trend, or asset typing
+
+IMPORTANT FINDING
+
+The legacy requested-period substitution bug is proven in historical code.
+
+However, the production audit currently shows ZERO SEC-verified period
+mismatches.
+
+Therefore production period contamination has NOT yet been proven.
+
+The statement:
+
+downstreamGeneratedFromContaminatedFilings: true
+
+must not be emitted merely because rows are duplicates or unverified.
+
+OBJECTIVE
+
+Resolve as many of the 1,931 unverified canonical accessions as possible
+using authoritative SEC accession-level evidence, then make the audit and
+repair classifications accurately distinguish:
+
+1. verified valid filing
+2. verified canonical duplicate
+3. verified metadata mismatch
+4. authoritative accession not found
+5. verification unavailable
+6. ambiguous/conflicting evidence
+
+PART 1 — ACCESSION-LEVEL AUTHORITATIVE VERIFICATION
+
+The SEC submissions endpoint is not sufficient because some filer CIK
+submissions endpoints return 404.
+
+Add an accession-level verification path using existing authoritative SEC
+13F sources.
+
+Prefer reuse of the already proven SEC bulk/archive infrastructure.
+
+For each unverified accession, attempt authoritative matching against SEC
+metadata by canonical accession.
+
+Possible authoritative evidence may include, if already supported by the
+codebase:
+
+- SEC 13F bulk SUBMISSION metadata
+- SEC filing/archive metadata keyed by accession
+- historical submissions files referenced by SEC
+
+Do not use fuzzy issuer or manager matching.
+
+Do not invent alternate accession identities.
+
+Canonical accession must remain the primary identity.
+
+PART 2 — BOUNDED SOURCE STRATEGY
+
+There are only 1,931 unresolved canonical accessions.
+
+Do not download all historical 13F holdings.
+
+Build a metadata-only verification path.
+
+If using quarterly SEC 13F archives:
+
+- parse SUBMISSION metadata only
+- do not materialize INFOTABLE holdings
+- determine necessary archive ranges from accession filing year/date or
+  existing filing metadata where safe
+- process serially or with tightly bounded concurrency
+- cache/archive-index metadata within the run so the same source is not
+  repeatedly fetched
+- bounded memory
+- bounded retries
+- SEC rate limiting preserved
+
+PART 3 — CLASSIFICATIONS
+
+After authoritative accession verification classify every canonical accession
+into exactly one of:
+
+VERIFIED_VALID
+VERIFIED_CANONICAL_DUPLICATE
+VERIFIED_PERIOD_MISMATCH
+VERIFIED_FILING_DATE_MISMATCH
+VERIFIED_CIK_MISMATCH
+AUTHORITATIVE_ACCESSION_NOT_FOUND
+VERIFICATION_UNAVAILABLE
+AMBIGUOUS_CONFLICTING_EVIDENCE
+
+Do not call an accession contaminated unless authoritative SEC metadata
+proves a mismatch.
+
+PART 4 — FIX DOWNSTREAM IMPACT SEMANTICS
+
+Replace or correct:
+
+downstreamGeneratedFromContaminatedFilings
+
+It may be true only when at least one authoritative verified metadata
+mismatch exists and downstream rows depend on that filing.
+
+Separately report:
+
+downstreamRowsLinkedToCanonicalDuplicates
+downstreamRowsLinkedToUnverifiedFilings
+downstreamRowsLinkedToVerifiedMetadataMismatches
+
+Report counts for:
+- holdings
+- effective filings
+- aggregates
+- signals
+- affected symbols
+
+Do not conflate duplicates, unverified identity, and contamination.
+
+PART 5 — REPAIR PLANNER SAFETY
+
+Do not automatically repair unverified filings.
+
+Split proposed operations into:
+
+duplicateCleanupOperations
+metadataCorrectionOperations
+replayRequiredOperations
+blockedOperations
+
+A canonical dashed/undashed duplicate may be cleanup-eligible only when:
+
+- authoritative accession identity agrees
+- filing metadata agrees
+- holding fingerprints are empty or identical according to existing rules
+- no conflicting downstream ownership exists
+
+Metadata correction may occur only with authoritative exact SEC evidence.
+
+If there are zero verified metadata mismatches, metadataCorrectionOperations
+must be zero.
+
+PART 6 — REPORT THE DUPLICATE POPULATION CLEARLY
+
+For the 536 canonical duplicate groups report:
+
+verifiedDuplicateGroups
+unverifiedDuplicateGroups
+identicalHoldingDuplicateGroups
+conflictingHoldingDuplicateGroups
+emptyHoldingDuplicateGroups
+safeDuplicateCleanupGroups
+blockedDuplicateGroups
+
+Counts only plus at most 10 sanitized examples.
+
+PART 7 — ACCEPTANCE
+
+The audit should answer these questions unambiguously:
+
+A. Is production period contamination actually proven?
+B. How many exact SEC metadata mismatches exist?
+C. How many rows are merely dashed/undashed duplicates?
+D. How many accessions remain impossible to verify?
+E. How many duplicate groups can be safely deduplicated?
+F. Is historical backfill still blocked, and why?
+
+TESTS
+
+Add focused tests for:
+
+- late filing with older PERIODOFREPORT remains VERIFIED_VALID
+- accession-level verification succeeds when submissions endpoint 404s
+- exact period mismatch is classified only from authoritative evidence
+- duplicates are not called contamination
+- unverified rows are not called contamination
+- downstream impact categories remain separated
+- zero verified mismatch => zero metadata correction operations
+- duplicate cleanup requires identical/empty holding fingerprints
+- conflicting duplicates fail closed
+- metadata-only source path does not parse INFOTABLE
+- audit remains read-only and bounded
+
+RETURN ONLY:
+
+ROOT CAUSE / FINDING
+
+ACCESSION VERIFICATION RESULT
+
+PRODUCTION CLASSIFICATION
+
+DUPLICATE ANALYSIS
+
+DOWNSTREAM IMPACT
+
+REPAIR ELIGIBILITY
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+If blocker is NO, provide exactly ONE production read-only audit command.
+
+Do not provide an APPLY command.
+Do not provide a historical backfill command.

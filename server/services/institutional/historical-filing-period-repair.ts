@@ -8,6 +8,32 @@ export type FilingAuditClassification =
   | "SOURCE_IDENTITY_NOT_VERIFIED"
   | "OTHER_INVALID";
 
+export type FilingAccessionClassification =
+  | "VERIFIED_VALID"
+  | "VERIFIED_CANONICAL_DUPLICATE"
+  | "VERIFIED_PERIOD_MISMATCH"
+  | "VERIFIED_FILING_DATE_MISMATCH"
+  | "VERIFIED_CIK_MISMATCH"
+  | "AUTHORITATIVE_ACCESSION_NOT_FOUND"
+  | "VERIFICATION_UNAVAILABLE"
+  | "AMBIGUOUS_CONFLICTING_EVIDENCE";
+
+export type AccessionVerificationOutcome =
+  | "AUTHORITATIVE_ACCESSION_NOT_FOUND"
+  | "VERIFICATION_UNAVAILABLE"
+  | "AMBIGUOUS_CONFLICTING_EVIDENCE";
+
+export const FILING_ACCESSION_CLASSIFICATIONS: FilingAccessionClassification[] = [
+  "VERIFIED_VALID",
+  "VERIFIED_CANONICAL_DUPLICATE",
+  "VERIFIED_PERIOD_MISMATCH",
+  "VERIFIED_FILING_DATE_MISMATCH",
+  "VERIFIED_CIK_MISMATCH",
+  "AUTHORITATIVE_ACCESSION_NOT_FOUND",
+  "VERIFICATION_UNAVAILABLE",
+  "AMBIGUOUS_CONFLICTING_EVIDENCE",
+];
+
 export interface StoredFilingMetadata {
   id: string;
   rawAccession: string;
@@ -31,8 +57,14 @@ export interface AuthoritativeFilingMetadata {
 export interface ClassifiedFiling extends StoredFilingMetadata {
   canonicalAccession: string;
   classification: FilingAuditClassification;
+  accessionClassification: FilingAccessionClassification;
   authoritative: AuthoritativeFilingMetadata | null;
   mismatches: Array<"PERIOD" | "FILING_DATE" | "MANAGER_CIK" | "FORM" | "AMENDMENT">;
+}
+
+export interface HoldingFingerprint {
+  count: number;
+  digest: string;
 }
 
 export interface FilingRepairOperation {
@@ -47,9 +79,19 @@ export interface FilingRepairOperation {
 export interface FilingRepairPlan {
   planHash: string;
   operations: FilingRepairOperation[];
+  duplicateCleanupOperations: FilingRepairOperation[];
+  metadataCorrectionOperations: FilingRepairOperation[];
+  replayRequiredOperations: Array<{
+    canonicalAccession: string;
+    reason: "CONFLICTING_HOLDINGS" | "DOWNSTREAM_OWNERSHIP_CONFLICT";
+  }>;
   blocked: Array<{
     canonicalAccession: string;
-    reason: "UNVERIFIED" | "AMBIGUOUS_SEC_IDENTITY" | "INVALID_ACCESSION";
+    reason: "UNVERIFIED" | "AMBIGUOUS_SEC_IDENTITY" | "INVALID_ACCESSION" | "VERIFICATION_UNAVAILABLE";
+  }>;
+  blockedOperations: Array<{
+    canonicalAccession: string;
+    reason: "UNVERIFIED" | "AMBIGUOUS_SEC_IDENTITY" | "INVALID_ACCESSION" | "VERIFICATION_UNAVAILABLE";
   }>;
   affectedPeriods: string[];
 }
@@ -74,6 +116,7 @@ function metadataMismatches(
 export function classifyStoredFilings(
   storedRows: StoredFilingMetadata[],
   authoritativeByAccession: ReadonlyMap<string, AuthoritativeFilingMetadata[]>,
+  verificationOutcomes: ReadonlyMap<string, AccessionVerificationOutcome> = new Map(),
 ): ClassifiedFiling[] {
   const canonicalCounts = new Map<string, number>();
   for (const row of storedRows) {
@@ -87,6 +130,17 @@ export function classifyStoredFilings(
     const validAccession = /^\d{18}$/.test(canonicalAccession);
     const authoritative = authoritativeMatches.length === 1 ? authoritativeMatches[0] : null;
     const mismatches = authoritative ? metadataMismatches(row, authoritative) : [];
+    let accessionClassification: FilingAccessionClassification;
+    if (!validAccession) accessionClassification = "VERIFICATION_UNAVAILABLE";
+    else if (authoritativeMatches.length > 1) accessionClassification = "AMBIGUOUS_CONFLICTING_EVIDENCE";
+    else if (authoritativeMatches.length === 0) {
+      accessionClassification = verificationOutcomes.get(canonicalAccession)
+        ?? "VERIFICATION_UNAVAILABLE";
+    } else if (mismatches.includes("PERIOD")) accessionClassification = "VERIFIED_PERIOD_MISMATCH";
+    else if (mismatches.includes("FILING_DATE")) accessionClassification = "VERIFIED_FILING_DATE_MISMATCH";
+    else if (mismatches.includes("MANAGER_CIK")) accessionClassification = "VERIFIED_CIK_MISMATCH";
+    else if ((canonicalCounts.get(canonicalAccession) ?? 0) > 1) accessionClassification = "VERIFIED_CANONICAL_DUPLICATE";
+    else accessionClassification = "VERIFIED_VALID";
     let classification: FilingAuditClassification;
 
     if (!validAccession) classification = "OTHER_INVALID";
@@ -100,6 +154,7 @@ export function classifyStoredFilings(
       ...row,
       canonicalAccession,
       classification,
+      accessionClassification,
       authoritative,
       mismatches,
     };
@@ -138,6 +193,9 @@ function stableJson(value: unknown): string {
 export function buildHistoricalFilingRepairPlan(
   storedRows: StoredFilingMetadata[],
   authoritativeByAccession: ReadonlyMap<string, AuthoritativeFilingMetadata[]>,
+  options: {
+    duplicateDispositions?: ReadonlyMap<string, DuplicateHoldingDisposition>;
+  } = {},
 ): FilingRepairPlan {
   const groups = new Map<string, StoredFilingMetadata[]>();
   for (const row of storedRows) {
@@ -148,6 +206,9 @@ export function buildHistoricalFilingRepairPlan(
   }
 
   const operations: FilingRepairOperation[] = [];
+  const duplicateCleanupOperations: FilingRepairOperation[] = [];
+  const metadataCorrectionOperations: FilingRepairOperation[] = [];
+  const replayRequiredOperations: FilingRepairPlan["replayRequiredOperations"] = [];
   const blocked: FilingRepairPlan["blocked"] = [];
   const affectedPeriods = new Set<string>();
 
@@ -178,21 +239,36 @@ export function buildHistoricalFilingRepairPlan(
     const duplicateIds = sorted.slice(1).map((row) => row.id);
     if (!needsMetadataCorrection && !canonicalizeAccession && duplicateIds.length === 0) continue;
 
+    if (duplicateIds.length > 0 && options.duplicateDispositions?.get(canonicalAccession) === "REPLAY_REQUIRED") {
+      replayRequiredOperations.push({
+        canonicalAccession,
+        reason: "CONFLICTING_HOLDINGS",
+      });
+      continue;
+    }
+
     for (const row of rows) affectedPeriods.add(row.periodOfReport);
     affectedPeriods.add(authoritative.periodOfReport);
-    operations.push({
+    const operation = {
       canonicalAccession,
       survivorId: survivor.id,
       duplicateIds,
       oldPeriods: Array.from(new Set(rows.map((row) => row.periodOfReport))).sort(),
       authoritative,
       canonicalizeAccession,
-    });
+    };
+    operations.push(operation);
+    if (duplicateIds.length > 0) duplicateCleanupOperations.push(operation);
+    if (needsMetadataCorrection) metadataCorrectionOperations.push(operation);
   }
 
   const planBody = {
     operations,
+    duplicateCleanupOperations,
+    metadataCorrectionOperations,
+    replayRequiredOperations,
     blocked,
+    blockedOperations: blocked,
     affectedPeriods: Array.from(affectedPeriods).sort(),
   };
   return {
@@ -201,7 +277,10 @@ export function buildHistoricalFilingRepairPlan(
   };
 }
 
-export function summarizeFilingAudit(classified: ClassifiedFiling[]) {
+export function summarizeFilingAudit(
+  classified: ClassifiedFiling[],
+  fingerprints: ReadonlyMap<string, HoldingFingerprint> = new Map(),
+) {
   const canonicalUniqueAccessions = new Set(classified.map((row) => row.canonicalAccession)).size;
   const counts: Record<FilingAuditClassification, number> = {
     VALID_SEC_IDENTITY_AND_PERIOD: 0,
@@ -216,8 +295,15 @@ export function summarizeFilingAudit(classified: ClassifiedFiling[]) {
   let periodMismatchesSEC = 0;
   let filingDateMismatchesSEC = 0;
   let managerCikMismatchesSEC = 0;
+  const canonicalClassificationCounts: Record<FilingAccessionClassification, number> =
+    Object.fromEntries(FILING_ACCESSION_CLASSIFICATIONS.map((item) => [item, 0])) as Record<FilingAccessionClassification, number>;
+  const duplicateGroups = new Map<string, ClassifiedFiling[]>();
   for (const row of classified) {
     counts[row.classification]++;
+    canonicalClassificationCounts[row.accessionClassification]++;
+    const group = duplicateGroups.get(row.canonicalAccession);
+    if (group) group.push(row);
+    else duplicateGroups.set(row.canonicalAccession, [row]);
     if (row.authoritative) {
       verifiedAgainstSEC++;
       if (row.mismatches.includes("PERIOD")) {
@@ -228,6 +314,35 @@ export function summarizeFilingAudit(classified: ClassifiedFiling[]) {
       }
       if (row.mismatches.includes("FILING_DATE")) filingDateMismatchesSEC++;
       if (row.mismatches.includes("MANAGER_CIK")) managerCikMismatchesSEC++;
+    }
+  }
+  let verifiedDuplicateGroups = 0;
+  let unverifiedDuplicateGroups = 0;
+  let identicalHoldingDuplicateGroups = 0;
+  let conflictingHoldingDuplicateGroups = 0;
+  let emptyHoldingDuplicateGroups = 0;
+  let safeDuplicateCleanupGroups = 0;
+  let blockedDuplicateGroups = 0;
+  for (const [accession, rows] of duplicateGroups) {
+    if (rows.length < 2) continue;
+    const verified = rows.every((row) => row.authoritative !== null);
+    if (verified) verifiedDuplicateGroups++;
+    else unverifiedDuplicateGroups++;
+    const sets = rows.map((row) => fingerprints.get(row.rawAccession)).filter(Boolean) as HoldingFingerprint[];
+    if (sets.length < rows.length) {
+      blockedDuplicateGroups++;
+      continue;
+    }
+    if (sets.some((set) => set.count === 0)) emptyHoldingDuplicateGroups++;
+    else if (sets.every((set) => set.count === sets[0].count && set.digest === sets[0].digest)) {
+      identicalHoldingDuplicateGroups++;
+    } else conflictingHoldingDuplicateGroups++;
+    if (verified && !sets.some((set) => set.count > 0) ||
+      verified && (sets.some((set) => set.count === 0) ||
+        sets.every((set) => set.count === sets[0].count && set.digest === sets[0].digest))) {
+      safeDuplicateCleanupGroups++;
+    } else {
+      blockedDuplicateGroups++;
     }
   }
   return {
@@ -245,6 +360,14 @@ export function summarizeFilingAudit(classified: ClassifiedFiling[]) {
         .map((row) => row.canonicalAccession),
     ).size,
     classifications: counts,
+    canonicalClassificationCounts,
+    verifiedDuplicateGroups,
+    unverifiedDuplicateGroups,
+    identicalHoldingDuplicateGroups,
+    conflictingHoldingDuplicateGroups,
+    emptyHoldingDuplicateGroups,
+    safeDuplicateCleanupGroups,
+    blockedDuplicateGroups,
     periodMismatchesByStoredReportQuarter: Object.fromEntries(
       Object.entries(byStoredQuarter).sort(([a], [b]) => a.localeCompare(b)),
     ),

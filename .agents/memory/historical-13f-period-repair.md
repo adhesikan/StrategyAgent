@@ -18,3 +18,9 @@ A genuine SEC submissions 404 is record-level source unavailability: preserve su
 Accession recovery may use catalog-resolved SEC bulk archives, but must read SUBMISSION metadata only, select archives from filing-date windows, process one archive at a time, and never infer identity from issuer/manager similarity.
 
 Duplicates and unverified identities are not contamination. The contamination flag requires an exact SEC-verified metadata mismatch plus dependent downstream rows; report duplicate, unverified, and mismatch impact separately.
+
+Production duplicate convergence must be dry-run by default and hash-bound to a fresh plan. Safe cleanup may retain a non-empty donor only when authoritative metadata matches and holding fingerprints are empty or identical; conflicting non-empty sets require exact SEC replay before any legacy deletion.
+
+**Why:** Choosing an arbitrary legacy copy can preserve a contaminated holding set, while deleting before replay validation can turn a recoverable source failure into data loss.
+
+**How to apply:** Acquire a transaction-scoped advisory lock, revalidate the plan under repeatable-read isolation, validate and persist replay data before deleting legacy rows, reject remaining canonical collisions, and create normalized-accession uniqueness only after all groups converge.

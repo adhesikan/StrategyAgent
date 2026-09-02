@@ -8,8 +8,27 @@ const accession = "000000000126000001";
 const authoritative = { canonicalAccession: accession, filerCik: "0000000001", filingDate: "2026-05-15", periodOfReport: "2026-03-31", filingType: "13F-HR", amendmentFlag: false };
 function group(conflict = false): DuplicateGroup {
   const rows = ["a", "b"].map((id, n) => ({ id, rawAccession: n ? "0000000001-26-000001" : accession, filerCik: authoritative.filerCik, filingDate: authoritative.filingDate, periodOfReport: authoritative.periodOfReport, filingType: "13F-HR", amendmentFlag: false, isEffective: true }));
-  return { canonicalAccession: accession, rows, authoritative, symbols: ["ABC"], fingerprints: new Map([[rows[0].rawAccession, { count: 1, digest: "one" }], [rows[1].rawAccession, { count: 1, digest: conflict ? "two" : "one" }]]) };
+  return {
+    canonicalAccession: accession,
+    rows,
+    authoritative,
+    targets: [{ symbol: "ABC", periodOfReport: authoritative.periodOfReport }],
+    fingerprints: new Map([
+      [rows[0].rawAccession, { count: 1, digest: "one" }],
+      [rows[1].rawAccession, { count: 1, digest: conflict ? "two" : "one" }],
+    ]),
+  };
 }
+
+function executorWithResults(results: unknown[]) {
+  const execute = vi.fn(async () => results.shift() ?? { rows: [] });
+  const executor: any = {
+    execute,
+    transaction: async (fn: any) => fn(executor),
+  };
+  return executor;
+}
+
 describe("production duplicate convergence", () => {
   it("collapses identical dashed duplicates without double counting", () => {
     const plan = buildDuplicateConvergencePlan([group()]);
@@ -30,19 +49,87 @@ describe("production duplicate convergence", () => {
     buildDuplicateConvergencePlan([group()]);
     expect(execute).not.toHaveBeenCalled();
   });
+  it("keeps the non-empty dashed holding donor and exact symbol-period targets", () => {
+    const input = group();
+    input.fingerprints.set(input.rows[0].rawAccession, { count: 0, digest: "empty" });
+    input.targets = [
+      { symbol: "abc", periodOfReport: "2026-03-31" },
+      { symbol: "ABC", periodOfReport: "2026-03-31" },
+      { symbol: "XYZ", periodOfReport: "2025-12-31" },
+    ];
+    const plan = buildDuplicateConvergencePlan([input]);
+    expect(plan.operations[0].holdingSourceRawAccession).toBe("0000000001-26-000001");
+    expect(plan.downstreamRebuildScope.symbolPeriods).toEqual([
+      { symbol: "ABC", periodOfReport: "2026-03-31" },
+      { symbol: "XYZ", periodOfReport: "2025-12-31" },
+    ]);
+  });
+  it("blocks an unvalidated replay when validation is mandatory", () => {
+    const plan = buildDuplicateConvergencePlan(
+      [group(true)],
+      "DRY_RUN",
+      { requireReplayValidation: true },
+    );
+    expect(plan.operations[0]).toMatchObject({
+      action: "BLOCKED",
+      blocker: "AUTHORITATIVE_REPLAY_NOT_VALIDATED",
+    });
+    expect(plan.productionApplyReady).toBe(false);
+  });
   it("validates replay before deleting legacy and is transactionally resumable", async () => {
     const plan = buildDuplicateConvergencePlan([group(true)], "APPLY");
     const events: string[] = [];
-    const executor: any = { transaction: async (fn: any) => fn(executor), execute: vi.fn(async (query: any) => events.push(String(query))) };
-    await applyDuplicateConvergence(executor, plan, { replay: async () => events.push("validated-and-inserted"), materialize: async () => undefined });
-    expect(events[1]).toBe("validated-and-inserted");
+    let calls = 0;
+    const executor: any = {
+      transaction: async (fn: any) => fn(executor),
+      execute: vi.fn(async (query: any) => {
+        calls += 1;
+        events.push(String(query));
+        return calls === 2 ? { rows: [{ locked: true }] } : { rows: [] };
+      }),
+    };
+    await applyDuplicateConvergence(executor, plan, { replay: async () => { events.push("validated-and-inserted"); }, materialize: async () => undefined });
+    expect(events[2]).toBe("validated-and-inserted");
+  });
+  it("does not execute destructive convergence statements when replay validation fails", async () => {
+    const plan = buildDuplicateConvergencePlan([group(true)], "APPLY");
+    const executor = executorWithResults([
+      { rows: [] },
+      { rows: [{ locked: true }] },
+    ]);
+    await expect(applyDuplicateConvergence(executor, plan, {
+      replay: async () => { throw new Error("SEC_REPLAY_FAILED"); },
+      materialize: async () => undefined,
+    })).rejects.toThrow("SEC_REPLAY_FAILED");
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+  });
+  it("rolls back instead of creating uniqueness when a canonical collision remains", async () => {
+    const plan = buildDuplicateConvergencePlan([group()], "APPLY");
+    const executor = executorWithResults([
+      { rows: [] },
+      { rows: [{ locked: true }] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ collision: 1 }] },
+    ]);
+    await expect(applyDuplicateConvergence(executor, plan, {
+      replay: async () => undefined,
+      materialize: async () => undefined,
+    })).rejects.toThrow("CANONICAL_ACCESSION_COLLISION_REMAINS");
   });
   it("fails before writes when in-transaction population changed", async () => {
     const plan = buildDuplicateConvergencePlan([group()], "APPLY");
-    const execute = vi.fn();
+    let calls = 0;
+    const execute = vi.fn(async () => {
+      calls += 1;
+      return calls === 2 ? { rows: [{ locked: true }] } : { rows: [] };
+    });
     await expect(applyDuplicateConvergence({ execute, transaction: async fn => fn({ execute }) }, plan, {
       replay: async () => undefined, materialize: async () => undefined, revalidatePlan: async () => "changed",
     })).rejects.toThrow("STALE_PLAN_HASH");
-    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledTimes(2);
   });
 });

@@ -12,6 +12,7 @@ import {
 } from "../server/services/institutional/sec-dataset-catalog";
 import {
   streamBulkFromDescriptor,
+  normalizeAccession,
   type BulkParseResult,
 } from "../server/services/institutional/sec-13f-bulk-parser";
 import { runInstitutionalIngestion } from "../server/services/institutional/ingestion-service";
@@ -53,10 +54,6 @@ export interface DryRunQuarterPlan {
   downstreamAggregateRebuildRequired: boolean;
   downstreamSignalRebuildRequired: boolean;
   status: "NO_CHANGE" | "PARTIAL_BACKFILL_REQUIRED" | "FULL_BACKFILL_REQUIRED" | "SOURCE_ERROR";
-}
-
-function normalizeAccession(accession: string): string {
-  return accession.replace(/-/g, "").trim().toUpperCase();
 }
 
 function sourceFilingSnapshots(source: BulkParseResult): Map<string, { amendmentFlag: boolean; filingDate: string; holdingRows: number }> {

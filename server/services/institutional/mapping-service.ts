@@ -293,7 +293,10 @@ export async function seedReviewedMappings(
  * Apply mapping results to the institutional_13f_holdings table for a given
  * accession number. Called after parsing a filing.
  */
-export async function applyMappingsToHoldings(accessionNumber: string): Promise<{
+export async function applyMappingsToHoldings(
+  accessionNumber: string,
+  signal?: AbortSignal,
+): Promise<{
   mappedCount: number;
   unmappedCount: number;
 }> {
@@ -303,6 +306,7 @@ export async function applyMappingsToHoldings(accessionNumber: string): Promise<
   const pageSize = 2_000;
 
   while (true) {
+    if (signal?.aborted) throw new Error("CANCELLED");
     const holdings = await db
       .select({
         id: institutional13fHoldings.id,
@@ -323,6 +327,7 @@ export async function applyMappingsToHoldings(accessionNumber: string): Promise<
     );
 
     for (const holding of holdings) {
+      if (signal?.aborted) throw new Error("CANCELLED");
       const mapping = mappings.get(holding.cusip);
       if (!mapping) {
         unmappedCount++;

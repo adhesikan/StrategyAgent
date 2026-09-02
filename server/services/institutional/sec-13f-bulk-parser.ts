@@ -2204,7 +2204,10 @@ const CRC32_TABLE = (() => {
 
 function updateCrc32(crc: number, chunk: Buffer): number {
   let value = crc;
-  for (const byte of chunk) value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  for (let index = 0; index < chunk.length; index++) {
+    const byte = chunk[index];
+    value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
   return value;
 }
 

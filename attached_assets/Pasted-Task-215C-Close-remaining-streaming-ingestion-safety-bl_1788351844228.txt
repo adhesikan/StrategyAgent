@@ -1,0 +1,104 @@
+Task #215C — Close remaining streaming ingestion safety blockers
+
+Continue from commit:
+
+7ebde37fc18b81616090e0daaa709046eaeb9522
+
+Do not redesign the pipeline.
+Do not run production APPLY.
+Do not run production dry-run yet.
+Do not change canonical identity, mapping, or analytics semantics.
+
+OBJECTIVE
+
+Close the two explicit production blockers left by Task #215B:
+
+1. streaming ZIP-entry CRC/size validation
+2. end-to-end cancellation propagation
+
+CRC / SIZE VALIDATION
+
+For every required streamed SEC archive entry used by the historical 13F parser:
+
+- validate expected uncompressed size where available
+- validate CRC32 where available from ZIP metadata
+- fail closed on truncation
+- fail closed on CRC mismatch
+- fail closed on decompression premature EOF
+- fail closed if required entry byte count does not match metadata
+- do not emit a successful completed quarter if integrity validation fails
+
+Return a structured source/parser failure rather than partial success.
+
+Do not buffer the full entry in memory to calculate CRC.
+CRC must be updated incrementally while streaming.
+
+CANCELLATION PROPAGATION
+
+Propagate a single AbortSignal / cancellation mechanism through:
+
+SEC download
+→ archive entry stream
+→ decompression
+→ readline/parser
+→ bounded batch consumer
+→ database persistence loop
+→ mapping/materialization loop
+
+When cancelled:
+
+- stop further network reads
+- destroy active streams
+- stop producing new holding batches
+- stop consuming new batches
+- stop further database writes after the current safe transaction boundary
+- release advisory locks/resources
+- leave interrupted accessions non-effective and resumable
+- exit with a clear cancelled/aborted state
+
+Do not swallow AbortError as SOURCE_UNAVAILABLE or PARSE_FAILED.
+
+TESTS
+
+Add tests proving:
+
+- valid CRC/size passes
+- CRC mismatch fails closed
+- truncated entry fails closed
+- wrong uncompressed size fails closed
+- malformed compressed stream fails closed
+- cancellation during download stops processing
+- cancellation during parsing stops batch emission
+- cancellation during persistence prevents further batches
+- cancellation releases resources/locks
+- interrupted accession remains resumable/non-effective
+- no unbounded buffering regression
+
+Keep the 2,000-holding batch ceiling.
+
+Run:
+- focused streaming/integrity/cancellation tests
+- institutional suite
+- release suite
+- production build
+- git diff --check
+
+Do not spend time fixing unrelated pre-existing full-typecheck UI/glossary errors.
+
+RETURN ONLY
+
+CRC/SIZE VALIDATION FIX
+
+CANCELLATION FIX
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+If and only if blocker is NO, provide exactly ONE command to rerun the production DRY_RUN for 2024-Q1 through 2025-Q3.
+
+Do not provide an APPLY command.

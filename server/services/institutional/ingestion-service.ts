@@ -1595,6 +1595,7 @@ async function ingestFromDescriptor(
     ? prepared
     : await streamPreparedBulkArchive(prepared, descriptor, {
         batchSize: 2_000,
+        signal,
         onBatch(batch) {
           for (const holding of batch) {
             expectedHoldingsByAccession.set(
@@ -1844,7 +1845,7 @@ async function ingestFromDescriptor(
           await upsertHoldings(holdingRows, signal);
           holdingCount += holdingRows.length;
           if (context.accessionComplete) {
-            const { mappedCount: mc, unmappedCount: uc } = await applyMappingsToHoldings(accession);
+            const { mappedCount: mc, unmappedCount: uc } = await applyMappingsToHoldings(accession, signal);
             mappedCount += mc;
             unmappedCount += uc;
             await updateEffectivenessForFiler(first.filerCik, first.periodOfReport, accession, first.filingDate);
@@ -1870,6 +1871,7 @@ async function ingestFromDescriptor(
       persistenceResult.status === "failed" ||
       persistenceResult.status === "empty_parse_failure"
     ) {
+      const cancelled = persistenceResult.failureCode === "CANCELLED" || signal.aborted;
       return {
         quarter,
         periodOfReport: descriptor.expectedPeriodOfReport,
@@ -1881,7 +1883,8 @@ async function ingestFromDescriptor(
         totalAccessions,
         processedAccessions,
         status: "partial",
-        errorCode: "PARSE_FAILED",
+        errorCode: cancelled ? "CANCELLED" : (persistenceResult.failureCode ?? "PARSE_FAILED"),
+        ...(cancelled ? { abortedByTimeout: true } : {}),
       };
     }
   }

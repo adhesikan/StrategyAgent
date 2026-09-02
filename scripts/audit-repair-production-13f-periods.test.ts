@@ -1,15 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildHistoricalAuditReadOnlyUrl,
+  buildSecSubmissionsRequest,
   chunkCanonicalCiks,
   extractAuthoritativeSecFilings,
   getHistoricalRepairApplyGuardIssues,
   HistoricalAuditBoundError,
   loadAuthoritativeSecMetadata,
   parseHistoricalPeriodAuditArgs,
+  runHistoricalPeriodAudit,
   validateHistoricalAuditBounds,
   validateHistoricalPeriodAuditEnvironment,
+  SecSubmissionsFailureError,
 } from "./audit-repair-production-13f-periods";
+import { SecHttpError, submissionsHistoryUrl, submissionsUrl } from "../server/services/institutional/sec-client";
 import { buildHistoricalFilingRepairPlan } from "../server/services/institutional/historical-filing-period-repair";
 
 describe("historical filing-period production audit", () => {
@@ -92,6 +96,18 @@ describe("historical filing-period production audit", () => {
     }]);
   });
 
+  it("builds full canonical submissions URLs without iterating over protocol text", () => {
+    expect(buildSecSubmissionsRequest("123456789").url)
+      .toBe("https://data.sec.gov/submissions/CIK0123456789.json");
+    expect(submissionsUrl("0123456789"))
+      .toBe("https://data.sec.gov/submissions/CIK0123456789.json");
+    expect(submissionsHistoryUrl("CIK0123456789-submissions-001.json"))
+      .toBe("https://data.sec.gov/submissions/CIK0123456789-submissions-001.json");
+    expect(buildSecSubmissionsRequest("123456789").url).not.toBe("https");
+    expect(() => buildSecSubmissionsRequest("https")).toThrow(SecSubmissionsFailureError);
+    expect(() => submissionsHistoryUrl("https")).toThrow("SEC_SUBMISSIONS_HISTORY_FILE_INVALID");
+  });
+
   it("fails closed unless apply confirmation and plan hash match", () => {
     const plan = buildHistoricalFilingRepairPlan([], new Map());
     const issues = getHistoricalRepairApplyGuardIssues({
@@ -160,6 +176,9 @@ describe("historical filing-period production audit", () => {
     });
     expect(metadata.size).toBe(1001);
     expect(fetchSec).toHaveBeenCalledTimes(1001);
+    expect(fetchSec.mock.calls.every(([url]) =>
+      /^https:\/\/data\.sec\.gov\/submissions\/CIK\d{10}\.json$/.test(url),
+    )).toBe(true);
     expect(maxInFlight).toBe(1);
     expect(progress).toEqual(Array.from({ length: 11 }, (_, index) => index + 1));
   });
@@ -191,8 +210,89 @@ describe("historical filing-period production audit", () => {
     } satisfies Partial<HistoricalAuditBoundError["details"]>);
   });
 
-  it("dry-run helpers have no database write dependency", () => {
-    const execute = vi.fn();
-    expect(execute).not.toHaveBeenCalled();
+  it("distinguishes a genuine SEC 404 from URL construction failure", async () => {
+    const row = {
+      id: "row-1",
+      rawAccession: "000000000126000001",
+      filerCik: "0000000001",
+      filingDate: "2026-05-15",
+      periodOfReport: "2026-03-31",
+      filingType: "13F-HR",
+      amendmentFlag: false,
+      isEffective: true,
+    };
+    const failure = await loadAuthoritativeSecMetadata([row], {
+      fetchSec: vi.fn(async () => {
+        throw new SecHttpError(404, "https://data.sec.gov/submissions/CIK0000000001.json");
+      }),
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(SecSubmissionsFailureError);
+    expect((failure as SecSubmissionsFailureError).details).toEqual({
+      error: "SEC_SUBMISSIONS_FETCH_FAILED",
+      stage: "SEC_SUBMISSIONS_FETCH",
+      cik: "0000000001",
+      httpStatus: 404,
+      safeMessage: "SEC_SUBMISSIONS_NOT_FOUND",
+    });
+  });
+
+  it("keeps the dry-run audit on SELECT-only SQL", async () => {
+    const executedSql: string[] = [];
+    const executor = {
+      execute: vi.fn(async (query: any) => {
+        const text = (query.queryChunks ?? [])
+          .map((chunk: any) => chunk.value ?? chunk.text ?? "")
+          .join(" ");
+        executedSql.push(text);
+        if (text.includes("to_regclass")) {
+          return { rows: [{ table_name: "institutional_13f_filings" }] };
+        }
+        if (text.includes("actualFilings")) {
+          return { rows: [{ actualFilings: 1, actualUniqueCiks: 1 }] };
+        }
+        if (text.includes("rawAccession")) {
+          return {
+            rows: [{
+              id: "row-1",
+              rawAccession: "000000000126000001",
+              filerCik: "0000000001",
+              filingDate: "2026-05-15",
+              periodOfReport: "2026-03-31",
+              filingType: "13F-HR",
+              amendmentFlag: false,
+              isEffective: true,
+            }],
+          };
+        }
+        return {
+          rows: [{
+            holdings: 0,
+            effectiveFilings: 0,
+            quarterlyAggregates: 0,
+            signals: 0,
+            affectedSymbols: 0,
+            sectorSnapshots: 0,
+            themeSnapshots: 0,
+          }],
+        };
+      }),
+    };
+    const result = await runHistoricalPeriodAudit(
+      executor,
+      async () => new Map([[
+        "000000000126000001",
+        [{
+          canonicalAccession: "000000000126000001",
+          filerCik: "0000000001",
+          filingDate: "2026-05-15",
+          periodOfReport: "2026-03-31",
+          filingType: "13F-HR",
+          amendmentFlag: false,
+        }],
+      ]]),
+    );
+    expect(result.audit.totalRows).toBe(1);
+    expect(executedSql.every((text) => !/\b(INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE)\b/i.test(text)))
+      .toBe(true);
   });
 });

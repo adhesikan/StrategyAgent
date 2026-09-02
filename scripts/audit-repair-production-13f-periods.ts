@@ -14,7 +14,12 @@
 
 import { parseArgs } from "node:util";
 import { sql } from "drizzle-orm";
-import { secFetch } from "../server/services/institutional/sec-client";
+import {
+  secFetch,
+  SecHttpError,
+  submissionsHistoryUrl,
+  submissionsUrl,
+} from "../server/services/institutional/sec-client";
 import { normalizeAccession, normalizeDateField, normalizeSubmissionType } from "../server/services/institutional/sec-13f-bulk-parser";
 import {
   buildHistoricalFilingRepairPlan,
@@ -253,6 +258,77 @@ export class HistoricalAuditBoundError extends Error {
   }
 }
 
+export interface SecSubmissionsFailureDetails {
+  error: "SEC_SUBMISSIONS_FETCH_FAILED" | "SEC_SUBMISSIONS_URL_INVALID";
+  stage: "SEC_SUBMISSIONS_FETCH";
+  cik: string;
+  httpStatus: number | null;
+  safeMessage: string;
+}
+
+export class SecSubmissionsFailureError extends Error {
+  constructor(public readonly details: SecSubmissionsFailureDetails) {
+    super(details.error);
+    this.name = "SecSubmissionsFailureError";
+  }
+}
+
+export function buildSecSubmissionsRequest(cik: string): { cik: string; url: string } {
+  const normalized = cik.trim();
+  if (!/^\d{1,10}$/.test(normalized)) {
+    throw new SecSubmissionsFailureError({
+      error: "SEC_SUBMISSIONS_URL_INVALID",
+      stage: "SEC_SUBMISSIONS_FETCH",
+      cik: normalized.slice(0, 10),
+      httpStatus: null,
+      safeMessage: "SEC_CIK_INVALID",
+    });
+  }
+  const canonicalCik = normalized.replace(/^0+/, "").padStart(10, "0");
+  try {
+    const url = submissionsUrl(canonicalCik);
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || parsed.hostname !== "data.sec.gov") {
+      throw new Error("SEC_SUBMISSIONS_HOST_INVALID");
+    }
+    return { cik: canonicalCik, url };
+  } catch (error) {
+    if (error instanceof SecSubmissionsFailureError) throw error;
+    throw new SecSubmissionsFailureError({
+      error: "SEC_SUBMISSIONS_URL_INVALID",
+      stage: "SEC_SUBMISSIONS_FETCH",
+      cik: canonicalCik,
+      httpStatus: null,
+      safeMessage: "SEC_SUBMISSIONS_URL_INVALID",
+    });
+  }
+}
+
+function buildSecSubmissionsFailure(cik: string, error: unknown): SecSubmissionsFailureError {
+  const canonicalCik = /^\d{1,10}$/.test(cik.trim())
+    ? cik.trim().replace(/^0+/, "").padStart(10, "0")
+    : cik.trim().slice(0, 10);
+  if (error instanceof SecSubmissionsFailureError) return error;
+  if (error instanceof SecHttpError) {
+    return new SecSubmissionsFailureError({
+      error: "SEC_SUBMISSIONS_FETCH_FAILED",
+      stage: "SEC_SUBMISSIONS_FETCH",
+      cik: canonicalCik,
+      httpStatus: error.status,
+      safeMessage: error.status === 404
+        ? "SEC_SUBMISSIONS_NOT_FOUND"
+        : "SEC_SUBMISSIONS_HTTP_ERROR",
+    });
+  }
+  return new SecSubmissionsFailureError({
+    error: "SEC_SUBMISSIONS_FETCH_FAILED",
+    stage: "SEC_SUBMISSIONS_FETCH",
+    cik: canonicalCik,
+    httpStatus: null,
+    safeMessage: "SEC_SUBMISSIONS_REQUEST_FAILED",
+  });
+}
+
 export async function loadAuthoritativeSecMetadata(
   storedRows: StoredFilingMetadata[],
   options: SecMetadataLoadOptions = {},
@@ -290,7 +366,13 @@ export async function loadAuthoritativeSecMetadata(
     // the next batch is allocated. No Promise.all over the production CIK set.
     for (const cik of batches[batchNumber]) {
       const cikTargets = byCik.get(cik)!;
-      const body = await fetchSec(`https://data.sec.gov/submissions/CIK${cik}.json`);
+      const request = buildSecSubmissionsRequest(cik);
+      let body: string;
+      try {
+        body = await fetchSec(request.url);
+      } catch (error) {
+        throw buildSecSubmissionsFailure(request.cik, error);
+      }
       let payload: SecSubmissionsPayload;
       try {
         payload = JSON.parse(body) as SecSubmissionsPayload;
@@ -307,7 +389,12 @@ export async function loadAuthoritativeSecMetadata(
         .slice(0, MAX_SEC_HISTORY_FILES_PER_CIK);
       for (const fileName of historyFiles) {
         if (unresolved.size === 0) break;
-        const historyText = await fetchSec(`https://data.sec.gov/submissions/${fileName}`);
+        let historyText: string;
+        try {
+          historyText = await fetchSec(submissionsHistoryUrl(fileName));
+        } catch (error) {
+          throw buildSecSubmissionsFailure(cik, error);
+        }
         let history: SecSubmissionsPayload;
         try {
           history = JSON.parse(historyText) as SecSubmissionsPayload;
@@ -753,7 +840,7 @@ async function main(args = process.argv.slice(2)): Promise<void> {
 
 if (process.argv[1]?.includes("audit-repair-production-13f-periods")) {
   main().catch((error) => {
-    if (error instanceof HistoricalAuditBoundError) {
+    if (error instanceof HistoricalAuditBoundError || error instanceof SecSubmissionsFailureError) {
       console.error(JSON.stringify(error.details));
     } else {
       console.error(JSON.stringify({

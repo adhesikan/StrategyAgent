@@ -311,8 +311,20 @@ export function filingDocUrl(cik: string, accessionNoDashes: string, docFilename
  * Returns recent filing history without downloading full documents.
  */
 export function submissionsUrl(cik: string): string {
-  const padded = cik.replace(/^0+/, "").padStart(10, "0");
+  const normalized = cik.trim();
+  if (!/^\d{1,10}$/.test(normalized)) {
+    throw new Error("SEC_CIK_INVALID: expected 1-10 numeric digits");
+  }
+  const padded = normalized.replace(/^0+/, "").padStart(10, "0");
   return `${EDGAR_DATA_BASE}/submissions/CIK${padded}.json`;
+}
+
+/** URL for an SEC submissions history file named by the submissions response. */
+export function submissionsHistoryUrl(fileName: string): string {
+  if (!/^CIK\d{10}-submissions-\d{3}\.json$/.test(fileName)) {
+    throw new Error("SEC_SUBMISSIONS_HISTORY_FILE_INVALID");
+  }
+  return `${EDGAR_DATA_BASE}/submissions/${fileName}`;
 }
 
 // ---------------------------------------------------------------------------

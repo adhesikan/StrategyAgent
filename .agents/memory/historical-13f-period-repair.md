@@ -10,3 +10,5 @@ Historical filing identity and period corrections must be derived from a unique 
 **How to apply:** Keep production audits read-only and Railway-identity-bound. Correct a verified accession atomically; merge duplicates only when one holding set is empty or both fingerprints match. Otherwise roll back and require source replay. Recompute only affected periods and symbols.
 
 For production-wide verification, count the filing population before loading rows, enforce finite filing/CIK/batch ceilings, sort and deduplicate CIKs, and process SEC submissions serially in bounded batches. A cap failure must report actual filings and unique CIKs without exposing rows or secrets.
+
+SEC errors must be sanitized structurally, not by splitting messages on punctuation: URLs contain colons, so message splitting can falsely make a valid request appear truncated.

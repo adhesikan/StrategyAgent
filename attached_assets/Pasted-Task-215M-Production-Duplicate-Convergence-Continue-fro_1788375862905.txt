@@ -1,0 +1,224 @@
+Task #215M — Production Duplicate Convergence
+
+Continue from the current institutional 13F implementation.
+
+Latest production read-only audit established:
+
+totalRows: 4891
+canonicalUniqueAccessions: 3696
+canonicalDuplicateRows: 1195
+
+verifiedAgainstSEC: 4891
+periodMismatchesSEC: 0
+filingDateMismatchesSEC: 0
+managerCikMismatchesSEC: 0
+unverifiedAccessions: 0
+
+safeDuplicateCleanupGroups: 1068
+conflictingHoldingDuplicateGroups: 127
+
+productionPeriodContaminationProven: false
+exactSecMetadataMismatchAccessions: 0
+historicalBackfillBlocked: true
+historicalBackfillBlocker: DUPLICATE_REPLAY_REQUIRED
+
+DO NOT:
+- perform additional contamination diagnosis
+- investigate individual duplicate groups manually
+- modify metadata that already matches SEC
+- run historical backfill
+- run production APPLY automatically
+- reopen OpenFIGI, mappings, asset types, Stock View, trend, or resolver work
+
+OBJECTIVE
+
+Create one generic, guarded, resumable production convergence operation that
+eliminates canonical filing duplicates and safely resolves the 127 conflicting
+legacy duplicate groups using authoritative SEC replay.
+
+After this task, the system must be ready for one production dry run followed
+by one guarded APPLY.
+
+PART 1 — SAFE DUPLICATE CLEANUP
+
+For the 1068 duplicate groups already classified safe:
+
+- canonicalize accession to the shared 18-digit undashed identity
+- preserve exactly one canonical filing row
+- deduplicate only when authoritative SEC identity and filing metadata agree
+- preserve holdings when holding fingerprints are identical
+- safely remove redundant duplicate filing/holding ownership
+- never double-count holdings
+- recompute effective filing state after consolidation
+- preserve amendment semantics
+- preserve source provenance
+
+Do not modify correct SEC metadata.
+
+PART 2 — CONFLICTING DUPLICATE REPLAY
+
+For the 127 groups with conflicting non-empty holding fingerprints:
+
+DO NOT attempt to merge or choose between conflicting legacy holding sets.
+
+Instead:
+
+1. Resolve the canonical accession using exact authoritative SEC identity.
+2. Obtain the filing from the existing canonical SEC ingestion infrastructure.
+3. Validate:
+   - accession
+   - filer CIK
+   - filing date
+   - PERIODOFREPORT
+   - form
+   - amendment state
+4. Quarantine/delete only the conflicting legacy copies inside the guarded
+   convergence transaction or replay workflow.
+5. Replay the canonical accession from authoritative SEC data.
+6. Persist one canonical filing identity and its authoritative holdings.
+7. Recompute effective filing/amendment state.
+
+Replay must use existing SEC parsing/ingestion logic.
+
+Do not build a second ingestion implementation.
+
+Do not use fuzzy matching.
+
+PART 3 — TRANSACTION AND RESUMABILITY
+
+The convergence operation must:
+
+- DRY_RUN by default
+- require explicit --apply
+- require exact fresh plan hash
+- require confirmation phrase
+- verify Railway production identity
+- require DATABASE_URL
+- reject EXTERNAL_DATABASE_URL
+- use advisory locking
+- be idempotent
+- be resumable after interruption
+- fail closed on ambiguous SEC identity
+- validate source before destructive legacy deletion
+- never leave a conflicting accession with no valid canonical filing after
+  successful commit
+
+If replay cannot be validated, leave that group unchanged and report it as a
+blocker.
+
+PART 4 — DOWNSTREAM REBUILD
+
+After successful convergence:
+
+- recompute effective filings
+- rebuild only affected quarterly aggregates
+- rebuild affected signals
+- rebuild affected sector/theme materialization if required by current pipeline
+- use canonical existing materialization paths
+- no broad unrelated rebuild
+
+PART 5 — DATABASE INVARIANT
+
+After convergence enforce or prepare the correct canonical uniqueness
+guarantee so dashed and undashed forms cannot create duplicate filing identity
+again.
+
+Do not add a constraint until existing duplicate rows are safely converged.
+
+The invariant must be based on canonical accession identity, not raw accession
+format.
+
+PART 6 — DRY-RUN OUTPUT
+
+Return a bounded machine-readable plan including:
+
+mode
+totalCanonicalDuplicateGroups
+safeCleanupGroups
+replayGroups
+blockedGroups
+safeCleanupOperations
+replayOperations
+affectedFilings
+affectedHoldings
+affectedPeriods
+affectedSymbols
+downstreamRebuildScope
+canonicalUniquenessReady
+planHash
+productionApplyReady
+
+Expected from current production state:
+
+safeCleanupGroups approximately 1068
+replayGroups approximately 127
+metadataCorrectionOperations = 0
+
+If counts materially differ, explain why and do not APPLY.
+
+PART 7 — ACCEPTANCE
+
+The post-APPLY target state must be:
+
+canonicalDuplicateRows = 0
+canonicalDuplicateGroups = 0
+unverifiedAccessions = 0
+verified metadata mismatches = 0
+one canonical filing per accession
+conflicting legacy holding populations eliminated through authoritative replay
+effective filing semantics valid
+no duplicated holding ownership
+downstream materialization rebuilt for affected scope
+historicalBackfillBlocked = false
+
+The historical 2024-Q1 through 2025-Q3 backfill is NOT part of this task.
+
+TESTS
+
+Add focused tests for:
+
+- identical duplicate cleanup
+- conflicting duplicate replay
+- SEC source validated before legacy deletion
+- replay failure leaves legacy group unchanged
+- dashed/undashed collapse to one canonical identity
+- amendment effectiveness after consolidation
+- holdings not double-counted
+- interrupted replay is resumable
+- rerun is idempotent
+- canonical uniqueness invariant
+- dry-run performs zero writes
+- stale plan hash rejected
+- downstream rebuild limited to affected scope
+
+Run:
+- focused institutional tests
+- relevant repair/ingestion tests
+- production build
+- git diff --check
+- changed-file TypeScript validation
+
+RETURN ONLY:
+
+ROOT CAUSE
+
+CONVERGENCE DESIGN
+
+DRY-RUN PLAN SUPPORT
+
+DATABASE INVARIANT
+
+DOWNSTREAM REBUILD
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+If blocker is NO, provide exactly ONE production DRY_RUN command.
+
+Do not provide an APPLY command.
+Do not provide a historical backfill command.

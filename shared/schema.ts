@@ -2891,6 +2891,9 @@ export type InsertOpportunityHistory = typeof opportunityHistory.$inferInsert;
 /**
  * One row per SEC Form 13F-HR (or 13F-HR/A) filing.
  * accessionNumber is normalized without dashes and is the natural primary key.
+ * The production migration additionally installs a functional unique index on
+ * regexp_replace(accession_number, '[^0-9]', '', 'g') after legacy convergence,
+ * so a dashed legacy spelling can never become a second identity.
  * isEffective tracks which version of a filing is considered the authoritative
  * version for a given filer+quarter after amendments are processed.
  */

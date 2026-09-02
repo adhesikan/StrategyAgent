@@ -85,6 +85,11 @@ CREATE TABLE IF NOT EXISTS institutional_13f_filings (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_13f_filings_accession
   ON institutional_13f_filings (accession_number);
 
+-- Created only by the guarded duplicate-convergence APPLY after it has proven
+-- there are no canonical collisions.  Do not create this on legacy data.
+-- CREATE UNIQUE INDEX idx_13f_filings_canonical_accession
+--   ON institutional_13f_filings ((regexp_replace(accession_number, '[^0-9]', '', 'g')));
+
 CREATE INDEX IF NOT EXISTS idx_13f_filings_cik_period
   ON institutional_13f_filings (filer_cik, period_of_report);
 

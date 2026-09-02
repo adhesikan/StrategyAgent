@@ -644,7 +644,7 @@ async function readFilingPopulation(executor: Executor): Promise<FilingPopulatio
   };
 }
 
-async function readStoredFilings(
+export async function readStoredFilings(
   executor: Executor,
   limits: Pick<HistoricalPeriodAuditArgs, "maxFilings" | "maxCiks"> = HISTORICAL_AUDIT_DEFAULTS,
 ): Promise<StoredFilingMetadata[]> {
@@ -663,6 +663,7 @@ async function readStoredFilings(
   const result = await executor.execute(sql`
     SELECT id::text AS id,
            accession_number AS "rawAccession",
+           filer_name AS "filerName",
            filer_cik AS "filerCik",
            filing_date::text AS "filingDate",
            period_of_report::text AS "periodOfReport",
@@ -686,6 +687,7 @@ async function readStoredFilings(
   return rows.map((row) => ({
     id: String(row.id),
     rawAccession: String(row.rawAccession),
+    filerName: String(row.filerName ?? row.filerCik),
     filerCik: String(row.filerCik),
     filingDate: String(row.filingDate),
     periodOfReport: String(row.periodOfReport),
@@ -695,7 +697,7 @@ async function readStoredFilings(
   }));
 }
 
-async function readDuplicateHoldingFingerprints(
+export async function readDuplicateHoldingFingerprints(
   executor: Executor,
   rows: StoredFilingMetadata[],
 ): Promise<Map<string, HoldingFingerprint>> {

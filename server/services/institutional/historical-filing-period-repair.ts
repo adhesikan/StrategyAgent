@@ -37,6 +37,7 @@ export const FILING_ACCESSION_CLASSIFICATIONS: FilingAccessionClassification[] =
 export interface StoredFilingMetadata {
   id: string;
   rawAccession: string;
+  filerName?: string;
   filerCik: string;
   filingDate: string;
   periodOfReport: string;

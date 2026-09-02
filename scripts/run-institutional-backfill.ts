@@ -56,6 +56,86 @@ export interface DryRunQuarterPlan {
   status: "NO_CHANGE" | "PARTIAL_BACKFILL_REQUIRED" | "FULL_BACKFILL_REQUIRED" | "SOURCE_ERROR";
 }
 
+export interface AccessionOverlap {
+  existingFilings: number;
+  existingAccessions: number;
+  sourceFilings: number;
+  sourceAccessions: number;
+  exactOverlap: number;
+  normalizedOverlap: number;
+  existingOnly: number;
+  sourceOnly: number;
+  duplicateExistingCanonicalAccessions: number;
+  duplicateSourceCanonicalAccessions: number;
+  normalizationExamples: Array<{ existing: string; canonical: string }>;
+}
+
+export function buildAccessionOverlap(
+  existingFilings: Array<{ accessionNumber: string }>,
+  sourceFilingAccessions: Iterable<string>,
+): AccessionOverlap {
+  const existingExact = new Set<string>();
+  const existingCanonicalCounts = new Map<string, number>();
+  for (const filing of existingFilings) {
+    const exact = filing.accessionNumber.trim();
+    const canonical = normalizeAccession(exact);
+    existingExact.add(exact);
+    existingCanonicalCounts.set(canonical, (existingCanonicalCounts.get(canonical) ?? 0) + 1);
+  }
+
+  const sourceExact = new Set<string>();
+  const sourceCanonicalCounts = new Map<string, number>();
+  for (const accession of sourceFilingAccessions) {
+    const exact = accession.trim();
+    const canonical = normalizeAccession(exact);
+    sourceExact.add(exact);
+    sourceCanonicalCounts.set(canonical, (sourceCanonicalCounts.get(canonical) ?? 0) + 1);
+  }
+
+  const existingCanonical = new Set(existingCanonicalCounts.keys());
+  const sourceCanonical = new Set(sourceCanonicalCounts.keys());
+  let exactOverlap = 0;
+  let normalizedOverlap = 0;
+  let existingOnly = 0;
+  let sourceOnly = 0;
+  const normalizationExamples: Array<{ existing: string; canonical: string }> = [];
+
+  for (const accession of sourceExact) {
+    if (existingExact.has(accession)) exactOverlap++;
+  }
+  for (const accession of existingCanonical) {
+    if (sourceCanonical.has(accession)) normalizedOverlap++;
+    else existingOnly++;
+  }
+  for (const accession of sourceCanonical) {
+    if (!existingCanonical.has(accession)) sourceOnly++;
+  }
+  if (normalizedOverlap > exactOverlap) {
+    for (const filing of existingFilings) {
+      const exact = filing.accessionNumber.trim();
+      const canonical = normalizeAccession(exact);
+      if (exact !== canonical && sourceCanonical.has(canonical)) {
+        normalizationExamples.push({ existing: exact, canonical });
+        if (normalizationExamples.length === 10) break;
+      }
+    }
+  }
+
+  return {
+    existingFilings: existingFilings.length,
+    existingAccessions: existingExact.size,
+    sourceFilings: sourceExact.size,
+    sourceAccessions: sourceCanonical.size,
+    exactOverlap,
+    normalizedOverlap,
+    existingOnly,
+    sourceOnly,
+    duplicateExistingCanonicalAccessions: existingFilings.length - existingCanonical.size,
+    duplicateSourceCanonicalAccessions: sourceExact.size - sourceCanonical.size,
+    normalizationExamples,
+  };
+}
+
 function sourceFilingSnapshots(source: BulkParseResult): Map<string, { amendmentFlag: boolean; filingDate: string; holdingRows: number }> {
   const filings = new Map<string, { amendmentFlag: boolean; filingDate: string; holdingRows: number }>();
   for (const holding of source.holdings) {
@@ -281,6 +361,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
 
   if (!options.apply) {
     const plans: DryRunQuarterPlan[] = [];
+    const reconciliation: AccessionOverlap[] = [];
     for (const descriptor of range.descriptors) {
       const heapUsedMBStart = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
       let heapUsedMBPeak = heapUsedMBStart;
@@ -328,6 +409,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         amendmentsToReconcile,
       });
       plans.push(plan);
+      reconciliation.push(buildAccessionOverlap(existing.filings, sourceByAccession.keys()));
       const heapUsedMBEnd = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
       console.log(JSON.stringify({ ...plan, heapUsedMBStart, heapUsedMBPeak, heapUsedMBEnd, batchCount }));
     }
@@ -349,6 +431,34 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       estimatedHoldingRowsToProcess: 0,
     });
     console.log(JSON.stringify({ totals }));
+    const overlap = reconciliation.reduce<AccessionOverlap>((total, current) => ({
+      existingFilings: total.existingFilings + current.existingFilings,
+      existingAccessions: total.existingAccessions + current.existingAccessions,
+      sourceFilings: total.sourceFilings + current.sourceFilings,
+      sourceAccessions: total.sourceAccessions + current.sourceAccessions,
+      exactOverlap: total.exactOverlap + current.exactOverlap,
+      normalizedOverlap: total.normalizedOverlap + current.normalizedOverlap,
+      existingOnly: total.existingOnly + current.existingOnly,
+      sourceOnly: total.sourceOnly + current.sourceOnly,
+      duplicateExistingCanonicalAccessions:
+        total.duplicateExistingCanonicalAccessions + current.duplicateExistingCanonicalAccessions,
+      duplicateSourceCanonicalAccessions:
+        total.duplicateSourceCanonicalAccessions + current.duplicateSourceCanonicalAccessions,
+      normalizationExamples: [...total.normalizationExamples, ...current.normalizationExamples].slice(0, 10),
+    }), {
+      existingFilings: 0,
+      existingAccessions: 0,
+      sourceFilings: 0,
+      sourceAccessions: 0,
+      exactOverlap: 0,
+      normalizedOverlap: 0,
+      existingOnly: 0,
+      sourceOnly: 0,
+      duplicateExistingCanonicalAccessions: 0,
+      duplicateSourceCanonicalAccessions: 0,
+      normalizationExamples: [],
+    });
+    console.log(JSON.stringify({ accessionReconciliation: overlap }));
     log("mode=DRY_RUN no database writes performed");
     return;
   }

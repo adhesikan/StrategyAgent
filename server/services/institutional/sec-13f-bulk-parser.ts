@@ -21,7 +21,7 @@
 //   - ZIP entry names are uppercase; matching is case-insensitive.
 //   - Files are tab-delimited and may begin with a UTF-8 BOM.
 //   - Line endings may be CRLF or LF.
-//   - Accession numbers are normalized to dashed format before joining.
+//   - Accession numbers are normalized to canonical 18-digit format before joining.
 //   - Put/call rows are preserved; never counted as common-stock SH volume.
 //   - PRN rows are preserved; never counted as share count.
 //   - A nontrivial archive with 0 parsed 13F-HR rows is EMPTY_PARSE_FAILURE.
@@ -188,7 +188,7 @@ export interface BulkParseDiagnostics {
 }
 
 export interface ParsedBulkHolding {
-  accessionNumber: string; // dashed format
+  accessionNumber: string; // canonical 18-digit format, without dashes
   filerCik: string;        // 10-digit padded
   filerName: string;
   filingType: string;      // "13F-HR" | "13F-HR/A"
@@ -637,15 +637,14 @@ export function parseTsv(raw: string): {
 // ---------------------------------------------------------------------------
 
 /**
- * Normalize an accession number to dashed format: XXXXXXXXXX-YY-ZZZZZZ.
- * Handles already-dashed input (returned as-is) and 18-digit undashed input.
+ * Normalize an accession number to the database's canonical 18-digit format.
+ * Handles both SEC's dashed XXXXXXXXXX-YY-ZZZZZZ form and undashed input.
  */
 export function normalizeAccession(raw: string): string {
   const s = raw.trim();
-  if (/^\d{10}-\d{2}-\d{6}$/.test(s)) return s;              // already dashed
   const digits = s.replace(/[^0-9]/g, "");
   if (digits.length === 18) {
-    return `${digits.slice(0, 10)}-${digits.slice(10, 12)}-${digits.slice(12)}`;
+    return digits;
   }
   return s; // Unknown format — return as-is; join will fail gracefully
 }
@@ -893,7 +892,7 @@ export function normalizeSubmissionType(
 // ---------------------------------------------------------------------------
 
 export interface SubmissionRow {
-  accessionNumber: string; // dashed format
+  accessionNumber: string; // canonical 18-digit format
   cik: string;             // 10-digit padded
   /** Manager name if present in SUBMISSION (legacy). Empty string for current schema. */
   name: string;
@@ -1105,7 +1104,7 @@ export function parseSubmissionTsv(text: string): {
     if (!accRaw.trim()) { rejectedMissingAccession++; continue; }
     const accession = normalizeAccession(accRaw);
     // Track non-standard format (informational — still accepted)
-    if (!/^\d{10}-\d{2}-\d{6}$/.test(accession)) rejectedInvalidAccession++;
+    if (!/^\d{18}$/.test(accession)) rejectedInvalidAccession++;
 
     // CIK: missing and non-numeric are separate gates
     if (!cikRaw.trim()) { rejectedMissingCik++; continue; }
@@ -1203,7 +1202,7 @@ export function parseSubmissionTsv(text: string): {
 
 /** A parsed row from COVERPAGE.tsv, keyed by accession number. */
 export interface CoverPageRow {
-  accessionNumber: string; // dashed format
+  accessionNumber: string; // canonical 18-digit format
   managerName: string;
   /** Amendment flag from ISAMENDMENT column ("Y"/"N"), if present */
   isAmendment: boolean;

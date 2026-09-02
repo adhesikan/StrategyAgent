@@ -144,7 +144,7 @@ describe("B. Current underscore-style headers", () => {
       [CURRENT_CP_HEADER, cpRow(ACC1_DASHED, "MY FUND LLC")].join("\n"),
     );
     expect(cp.canonicalMapping["manager name"]).toBe("FILINGMANAGER_NAME");
-    expect(cp.byAccession.get(ACC1_DASHED)?.managerName).toBe("MY FUND LLC");
+    expect(cp.byAccession.get(ACC1_PLAIN)?.managerName).toBe("MY FUND LLC");
   });
 });
 
@@ -317,7 +317,7 @@ describe("J. Duplicate identical COVERPAGE rows", () => {
     const r   = parseCoverPageTsv(cp);
     expect(r.parsedRows).toBe(1);
     expect(r.duplicateAccessionCount).toBe(1);
-    expect(r.byAccession.get(ACC1_DASHED)?.managerName).toBe("FUND DUPE");
+    expect(r.byAccession.get(ACC1_PLAIN)?.managerName).toBe("FUND DUPE");
   });
 
   it("J02: three identical rows → one result, two counted as duplicates", () => {
@@ -341,7 +341,7 @@ describe("K. Conflicting duplicate COVERPAGE rows", () => {
       cpRow(ACC1_DASHED, "FUND TWO"),
     ].join("\n");
     const r = parseCoverPageTsv(cp);
-    expect(r.byAccession.has(ACC1_DASHED)).toBe(false); // excluded — ambiguous
+    expect(r.byAccession.has(ACC1_PLAIN)).toBe(false); // excluded — ambiguous
     expect(r.conflictingAccessionCount).toBe(1);
     expect(r.duplicateAccessionCount).toBe(1);
   });
@@ -374,7 +374,7 @@ describe("L. Accession normalization across SUBMISSION + COVERPAGE + INFOTABLE",
     const buf  = makeZip({ "SUBMISSION.tsv": sub, "COVERPAGE.tsv": cp, "INFOTABLE.tsv": info });
     const r    = parseBulkQuarterFromBuffer(buf, 2026, 1);
     expect(r.holdings).toHaveLength(1);
-    expect(r.holdings[0].accessionNumber).toBe(ACC1_DASHED); // always normalized
+    expect(r.holdings[0].accessionNumber).toBe(ACC1_PLAIN); // always normalized
   });
 
   it("L02: ACC1_PLAIN in COVERPAGE, ACC1_DASHED in SUBMISSION — join succeeds", () => {
@@ -387,9 +387,9 @@ describe("L. Accession normalization across SUBMISSION + COVERPAGE + INFOTABLE",
     expect(r.holdings[0].filerName).toBe("FUND A");
   });
 
-  it("L03: normalizeAccession is idempotent on dashed format", () => {
-    expect(normalizeAccession(ACC1_DASHED)).toBe(ACC1_DASHED);
-    expect(normalizeAccession(ACC1_PLAIN)).toBe(ACC1_DASHED);
+  it("L03: normalizeAccession is idempotent on canonical undashed format", () => {
+    expect(normalizeAccession(ACC1_DASHED)).toBe(ACC1_PLAIN);
+    expect(normalizeAccession(ACC1_PLAIN)).toBe(ACC1_PLAIN);
   });
 });
 
@@ -672,13 +672,13 @@ describe("parseCoverPageTsv — unit", () => {
     const r  = parseCoverPageTsv(cp);
     expect(r.missingHeaders).toHaveLength(0);
     expect(r.parsedRows).toBe(1);
-    expect(r.byAccession.get(ACC1_DASHED)?.managerName).toBe("MY FUND");
+    expect(r.byAccession.get(ACC1_PLAIN)?.managerName).toBe("MY FUND");
   });
 
   it("CP02: isAmendment flag is parsed", () => {
     const cp = [CURRENT_CP_HEADER, cpRow(ACC1_DASHED, "MY FUND", "Y")].join("\n");
     const r  = parseCoverPageTsv(cp);
-    expect(r.byAccession.get(ACC1_DASHED)?.isAmendment).toBe(true);
+    expect(r.byAccession.get(ACC1_PLAIN)?.isAmendment).toBe(true);
   });
 
   it("CP03: missing accession column → missingHeaders contains 'accession'", () => {

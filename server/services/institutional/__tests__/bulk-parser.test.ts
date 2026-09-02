@@ -147,16 +147,16 @@ describe("P1 — parseTsv", () => {
 // ---------------------------------------------------------------------------
 
 describe("P2 — normalizeAccession", () => {
-  it("returns already-dashed format unchanged", () => {
-    expect(normalizeAccession("0001234567-26-000001")).toBe("0001234567-26-000001");
+  it("converts dashed SEC format to the canonical 18-digit database identity", () => {
+    expect(normalizeAccession("0001234567-26-000001")).toBe("000123456726000001");
   });
 
-  it("converts 18-digit undashed to dashed", () => {
-    expect(normalizeAccession("001234567226000001")).toBe("0012345672-26-000001");
+  it("keeps canonical 18-digit undashed input unchanged", () => {
+    expect(normalizeAccession("001234567226000001")).toBe("001234567226000001");
   });
 
   it("trims whitespace", () => {
-    expect(normalizeAccession("  0001234567-26-000001  ")).toBe("0001234567-26-000001");
+    expect(normalizeAccession("  0001234567-26-000001  ")).toBe("000123456726000001");
   });
 
   it("returns short unknown format as-is (join will fail gracefully)", () => {
@@ -180,7 +180,7 @@ describe("P3 — parseSubmissionTsv", () => {
     const { rows, totalRows } = parseSubmissionTsv(VALID_SUB);
     expect(rows).toHaveLength(1);
     expect(totalRows).toBe(1);
-    expect(rows[0].accessionNumber).toBe("0001234567-26-000001");
+    expect(rows[0].accessionNumber).toBe("000123456726000001");
     expect(rows[0].cik).toBe("0001234567");
     expect(rows[0].name).toBe("VANGUARD GROUP INC");
     expect(rows[0].periodOfReport).toBe("2025-12-31");

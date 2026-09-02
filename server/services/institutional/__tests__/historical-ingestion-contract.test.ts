@@ -14,6 +14,7 @@ import {
   resolveCatalogQuarterRange,
 } from "../sec-dataset-catalog";
 import {
+  buildAccessionOverlap,
   buildDryRunQuarterPlan,
   buildStreamingDryRunPlan,
   parseHistoricalBackfillArgs,
@@ -287,9 +288,9 @@ describe("catalog range and guarded backfill", () => {
   const source = {
     status: "success",
     holdings: [
-      { accessionNumber: "0001-24-000001", filingDate: "2024-05-01", isAmendment: false },
-      { accessionNumber: "0001-24-000001", filingDate: "2024-05-01", isAmendment: false },
-      { accessionNumber: "0002-24-000002", filingDate: "2024-05-02", isAmendment: true },
+      { accessionNumber: "0000000001-24-000001", filingDate: "2024-05-01", isAmendment: false },
+      { accessionNumber: "0000000001-24-000001", filingDate: "2024-05-01", isAmendment: false },
+      { accessionNumber: "0000000002-24-000002", filingDate: "2024-05-02", isAmendment: true },
     ],
     diagnostics: {},
   } as BulkParseResult;
@@ -316,7 +317,7 @@ describe("catalog range and guarded backfill", () => {
 
   it("projects partial and no-change reruns without inventing updates", () => {
     const existing = [{
-      accessionNumber: "000124000001",
+      accessionNumber: "000000000124000001",
       amendmentFlag: false,
       filingDate: "2024-05-01",
       isEffective: true,
@@ -325,7 +326,7 @@ describe("catalog range and guarded backfill", () => {
       descriptor,
       source,
       existingFilings: existing,
-      existingHoldingRows: [{ accessionNumber: "000124000001", holdingRows: 2 }],
+      existingHoldingRows: [{ accessionNumber: "000000000124000001", holdingRows: 2 }],
     })).toMatchObject({
       filingsAlreadyPresent: 1,
       filingsToInsert: 1,
@@ -339,11 +340,11 @@ describe("catalog range and guarded backfill", () => {
       source,
       existingFilings: [
         ...existing,
-        { accessionNumber: "000224000002", amendmentFlag: true, filingDate: "2024-05-02", isEffective: true },
+        { accessionNumber: "000000000224000002", amendmentFlag: true, filingDate: "2024-05-02", isEffective: true },
       ],
       existingHoldingRows: [
-        { accessionNumber: "000124000001", holdingRows: 2 },
-        { accessionNumber: "000224000002", holdingRows: 1 },
+        { accessionNumber: "000000000124000001", holdingRows: 2 },
+        { accessionNumber: "000000000224000002", holdingRows: 1 },
       ],
     })).toMatchObject({
       filingsAlreadyPresent: 2,
@@ -380,6 +381,35 @@ describe("catalog range and guarded backfill", () => {
       filingsPotentiallyUpdated: 1,
       estimatedHoldingRowsToProcess: 1_500,
       status: "PARTIAL_BACKFILL_REQUIRED",
+    });
+  });
+
+  it("reconciles dashed and canonical accessions with one canonical identity", () => {
+    expect(buildAccessionOverlap(
+      [
+        { accessionNumber: "0000000001-24-000001" },
+        { accessionNumber: "000000000224000002" },
+        { accessionNumber: "0000000002-24-000002" },
+      ],
+      ["000000000124000001", "000000000224000002", "0000000003-24-000003"],
+    )).toEqual({
+      existingFilings: 3,
+      existingAccessions: 3,
+      sourceFilings: 3,
+      sourceAccessions: 3,
+      exactOverlap: 1,
+      normalizedOverlap: 2,
+      existingOnly: 0,
+      sourceOnly: 1,
+      duplicateExistingCanonicalAccessions: 1,
+      duplicateSourceCanonicalAccessions: 0,
+      normalizationExamples: [{
+        existing: "0000000001-24-000001",
+        canonical: "000000000124000001",
+      }, {
+        existing: "0000000002-24-000002",
+        canonical: "000000000224000002",
+      }],
     });
   });
 

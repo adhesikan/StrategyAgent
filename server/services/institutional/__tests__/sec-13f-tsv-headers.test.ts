@@ -100,7 +100,7 @@ describe("A. Current SUBMISSION headers (ACCESSION_NUMBER, FILINGMANAGER_NAME, P
 
   it("A02: extracts accession correctly via ACCESSION_NUMBER", () => {
     const r = parseSubmissionTsv(CURRENT_SUB_TSV);
-    expect(r.rows[0]?.accessionNumber).toBe(ACC_HYPHEN);
+    expect(r.rows[0]?.accessionNumber).toBe(ACC_PLAIN);
   });
 
   it("A03: extracts manager name via FILINGMANAGER_NAME", () => {
@@ -146,7 +146,7 @@ describe("B. Current INFOTABLE headers (ACCESSION_NUMBER, VOTINGAUTHORITY_SOLE, 
 
   it("B02: extracts accession via ACCESSION_NUMBER", () => {
     const r = parseInfoTableTsv(CURRENT_INFO_TSV);
-    expect(r.rows[0]?.accessionNumber).toBe(ACC_HYPHEN);
+    expect(r.rows[0]?.accessionNumber).toBe(ACC_PLAIN);
   });
 
   it("B03: extracts issuer name via NAMEOFISSUER", () => {
@@ -187,7 +187,7 @@ describe("C. Legacy hyphenated headers (ACCESSION-NUMBER, NAME, CONFORMED-PERIOD
 
   it("C02: SUBMISSION legacy — extracts all required fields", () => {
     const r = parseSubmissionTsv(LEGACY_SUB_TSV);
-    expect(r.rows[0]?.accessionNumber).toBe(ACC_HYPHEN);
+    expect(r.rows[0]?.accessionNumber).toBe(ACC_PLAIN);
     expect(r.rows[0]?.name).toBe("TEST FUND LP");
     expect(r.rows[0]?.periodOfReport).toBe("2025-12-31");
   });
@@ -277,7 +277,7 @@ describe("E. BOM on first header", () => {
     const bomHeader = `\uFEFFACCESSION_NUMBER\tCIK\tFILINGMANAGER_NAME\tFORM_TYPE\tFILING_DATE\tPERIODOFREPORT`;
     const tsv = `${bomHeader}\n${SUB_ROW_CURRENT(ACC_HYPHEN)}`;
     const r = parseSubmissionTsv(tsv);
-    expect(r.rows[0]?.accessionNumber).toBe(ACC_HYPHEN);
+    expect(r.rows[0]?.accessionNumber).toBe(ACC_PLAIN);
   });
 
   it("E03: BOM on INFOTABLE is handled", () => {
@@ -287,7 +287,7 @@ describe("E. BOM on first header", () => {
     const tsv = `${bomHeader}\n${INFO_ROW(ACC_HYPHEN, "\t")}`;
     const r = parseInfoTableTsv(tsv);
     expect(r.missingHeaders).toHaveLength(0);
-    expect(r.rows[0]?.accessionNumber).toBe(ACC_HYPHEN);
+    expect(r.rows[0]?.accessionNumber).toBe(ACC_PLAIN);
   });
 });
 
@@ -301,7 +301,7 @@ describe("F. Mixed-case headers", () => {
       `${ACC_HYPHEN}\t0001234567\tTEST FUND LP\t13F-HR\t2026-02-15\t20251231`;
     const r = parseSubmissionTsv(tsv);
     expect(r.missingHeaders).toHaveLength(0);
-    expect(r.rows[0]?.accessionNumber).toBe(ACC_HYPHEN);
+    expect(r.rows[0]?.accessionNumber).toBe(ACC_PLAIN);
   });
 
   it("F02: mixed-case INFOTABLE headers resolve correctly", () => {

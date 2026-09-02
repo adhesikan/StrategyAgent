@@ -15,6 +15,7 @@ import {
 } from "../sec-dataset-catalog";
 import {
   buildDryRunQuarterPlan,
+  buildStreamingDryRunPlan,
   parseHistoricalBackfillArgs,
   validateHistoricalBackfillEnvironment,
 } from "../../../../scripts/run-institutional-backfill";
@@ -254,6 +255,36 @@ describe("catalog range and guarded backfill", () => {
       filingsToInsert: 0,
       estimatedHoldingRowsToProcess: 0,
       status: "NO_CHANGE",
+    });
+  });
+
+  it("projects an interrupted existing accession for full bounded replay", () => {
+    expect(buildStreamingDryRunPlan(
+      descriptor,
+      {
+        filings: [{
+          accessionNumber: "000124000001",
+          amendmentFlag: false,
+          filingDate: "2024-05-01",
+          isEffective: false,
+        }],
+        holdingRows: 500,
+      },
+      {
+        status: "success",
+        sourceFilings: 1,
+        sourceHoldingRows: 1_500,
+        filingsToInsert: 0,
+        filingsPotentiallyUpdated: 1,
+        holdingRowsToProcess: 1_500,
+        amendmentsToReconcile: 0,
+      },
+    )).toMatchObject({
+      filingsAlreadyPresent: 1,
+      filingsToInsert: 0,
+      filingsPotentiallyUpdated: 1,
+      estimatedHoldingRowsToProcess: 1_500,
+      status: "PARTIAL_BACKFILL_REQUIRED",
     });
   });
 

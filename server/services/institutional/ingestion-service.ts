@@ -1545,6 +1545,16 @@ async function ingestQuarter(
 // Descriptor-based ingestion (catalog-driven, post-2023 safe)
 // ---------------------------------------------------------------------------
 
+export function classifyAccessionPersistence(
+  filingExists: boolean,
+  persistedHoldingCount: number,
+  expectedHoldingCount: number,
+): "complete" | "write" {
+  return filingExists && persistedHoldingCount === expectedHoldingCount
+    ? "complete"
+    : "write";
+}
+
 /**
  * Ingest a single SEC 13F bulk dataset identified by a catalog DatasetDescriptor.
  *
@@ -1577,13 +1587,20 @@ async function ingestFromDescriptor(
   // compressed buffer; malformed late rows therefore cannot cause partial
   // persistence.
   const prepared = await prepareBulkArchiveFromDescriptor(descriptor, signal);
-  const validatedAccessions = new Set<string>();
+  // Filing-level state is bounded by the number of submissions (hundreds or
+  // thousands), never by the multi-million-row holdings population.
+  const expectedHoldingsByAccession = new Map<string, number>();
   const parseResult = "status" in prepared
     ? prepared
     : await streamPreparedBulkArchive(prepared, descriptor, {
         batchSize: 2_000,
         onBatch(batch) {
-          for (const holding of batch) validatedAccessions.add(holding.accessionNumber);
+          for (const holding of batch) {
+            expectedHoldingsByAccession.set(
+              holding.accessionNumber,
+              (expectedHoldingsByAccession.get(holding.accessionNumber) ?? 0) + 1,
+            );
+          }
         },
       });
 
@@ -1640,7 +1657,7 @@ async function ingestFromDescriptor(
       status: parseResult.status,
       errorCode: parseResult.status === "empty_parse_failure"
         ? "EMPTY_PARSE_FAILURE"
-        : "PARSE_FAILED",
+        : (parseResult.failureCode ?? "PARSE_FAILED"),
     };
   }
 
@@ -1693,7 +1710,7 @@ async function ingestFromDescriptor(
     durationMs: parseResult.diagnostics.durationMs,
   });
 
-  const totalAccessions = validatedAccessions.size;
+  const totalAccessions = expectedHoldingsByAccession.size;
   log("institutional_13f_persistence_started", {
     quarter,
     fileName: descriptor.fileName,
@@ -1713,7 +1730,7 @@ async function ingestFromDescriptor(
   let processedAccessions = 0;
   const chunkSize = opts?.chunkSize ?? Infinity;
   const persistenceStartMs = Date.now();
-  const accessionDisposition = new Map<string, "existing" | "new">();
+  const accessionDisposition = new Map<string, "complete" | "write">();
 
   // Record totalAccessions in the run record immediately (fire-and-forget)
   if (opts?.runId) {
@@ -1741,16 +1758,41 @@ async function ingestFromDescriptor(
           let disposition = accessionDisposition.get(accession);
           if (!disposition) {
             const existing = await db
-              .select({ id: institutional13fFilings.id })
+              .select({
+                id: institutional13fFilings.id,
+                holdingCount: sql<number>`(
+                  SELECT COUNT(*)::int
+                    FROM institutional_13f_holdings h
+                   WHERE h.accession_number = ${institutional13fFilings.accessionNumber}
+                )`,
+              })
               .from(institutional13fFilings)
               .where(eq(institutional13fFilings.accessionNumber, accession))
               .limit(1);
             processedAccessions++;
-            disposition = existing.length > 0 ? "existing" : "new";
+            const expectedHoldingCount = expectedHoldingsByAccession.get(accession) ?? 0;
+            const persistedHoldingCount = Number(existing[0]?.holdingCount ?? 0);
+            disposition = classifyAccessionPersistence(
+              existing.length > 0,
+              persistedHoldingCount,
+              expectedHoldingCount,
+            );
             accessionDisposition.set(accession, disposition);
-            if (disposition === "existing") {
+            if (disposition === "complete") {
               skippedExistingFilings++;
             } else {
+              if (existing.length > 0) {
+                // An interrupted prior run left a partial accession. Keep it
+                // invisible, discard only that accession's partial holdings,
+                // and replay it from the already-validated source stream.
+                await db
+                  .update(institutional13fFilings)
+                  .set({ isEffective: false })
+                  .where(eq(institutional13fFilings.accessionNumber, accession));
+                await db
+                  .delete(institutional13fHoldings)
+                  .where(eq(institutional13fHoldings.accessionNumber, accession));
+              }
               await upsertFiling({
                 accessionNumber: accession,
                 filerCik: first.filerCik,
@@ -1762,16 +1804,16 @@ async function ingestFromDescriptor(
                 amendmentFlag: first.isAmendment,
                 amendmentNumber: null,
                 amendmentType: null,
-                isEffective: true,
+                // Finalized only after the accession-complete callback.
+                isEffective: false,
                 sourceUrl,
                 sourceChecksum: null,
               });
-              await updateEffectivenessForFiler(first.filerCik, first.periodOfReport, accession, first.filingDate);
               filingCount++;
               newAccessions++;
             }
           }
-          if (disposition === "existing") continue;
+          if (disposition === "complete") continue;
 
           const holdingRows: InsertInstitutional13fHolding[] = holdings.map((h: ParsedBulkHolding) => ({
       accessionNumber: h.accessionNumber,
@@ -1803,6 +1845,7 @@ async function ingestFromDescriptor(
             const { mappedCount: mc, unmappedCount: uc } = await applyMappingsToHoldings(accession);
             mappedCount += mc;
             unmappedCount += uc;
+            await updateEffectivenessForFiler(first.filerCik, first.periodOfReport, accession, first.filingDate);
           }
 
           if (processedAccessions % PROGRESS_LOG_INTERVAL === 0) {

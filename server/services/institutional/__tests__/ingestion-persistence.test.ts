@@ -30,6 +30,7 @@ vi.mock("../../../db", () => ({
     select: vi.fn(),
     update: vi.fn(),
     insert: vi.fn(),
+    delete: vi.fn(),
     // pg_try_advisory_lock → granted; pg_advisory_unlock → no-op
     execute: vi.fn().mockResolvedValue([{ locked: true }]),
   },
@@ -72,7 +73,15 @@ vi.mock("../sec-13f-bulk-parser", async (importOriginal) => {
     streamPreparedBulkArchive: vi.fn(async (archive: any, _descriptor: DatasetDescriptor, options: any) => {
       const result = archive.testResult as BulkParseResult;
       if ((result.status === "success" || result.status === "partial_success") && result.holdings.length > 0) {
-        await options.onBatch(result.holdings);
+        const byAccession = new Map<string, typeof result.holdings>();
+        for (const holding of result.holdings) {
+          const group = byAccession.get(holding.accessionNumber);
+          if (group) group.push(holding);
+          else byAccession.set(holding.accessionNumber, [holding]);
+        }
+        for (const [accessionNumber, holdings] of byAccession) {
+          await options.onBatch(holdings, { accessionNumber, accessionComplete: true });
+        }
       }
       const { holdings: _holdings, ...streamResult } = result;
       return streamResult;
@@ -238,6 +247,16 @@ describe("Institutional 13F — Persistence Waterfall", () => {
     vi.mocked(db.execute)
       .mockResolvedValueOnce([{ locked: true }] as any)
       .mockResolvedValue([] as any);
+  });
+
+  describe("bounded accession resumability", () => {
+    it("skips only a filing whose persisted holding count exactly matches the validated source", async () => {
+      const { classifyAccessionPersistence } = await import("../ingestion-service");
+      expect(classifyAccessionPersistence(true, 2_000, 2_000)).toBe("complete");
+      expect(classifyAccessionPersistence(true, 1_999, 2_000)).toBe("write");
+      expect(classifyAccessionPersistence(true, 2_001, 2_000)).toBe("write");
+      expect(classifyAccessionPersistence(false, 0, 2_000)).toBe("write");
+    });
   });
 
   afterEach(() => {
@@ -525,7 +544,7 @@ describe("Institutional 13F — Persistence Waterfall", () => {
           return dbChain([]);
         }
         // Accession existence check — all filings already in DB
-        return dbChain([{ id: "existing-filing-id" }]);
+        return dbChain([{ id: "existing-filing-id", holdingCount: 1 }]);
       });
 
       setupInsertReturning();

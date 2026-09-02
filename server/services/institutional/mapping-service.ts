@@ -20,7 +20,7 @@ import {
   institutionalSecurityMappings as mappingsTable,
   institutional13fHoldings,
 } from "@shared/schema";
-import { eq, and, inArray, or, isNull } from "drizzle-orm";
+import { eq, and, gt, inArray, or, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import type { InsertInstitutionalSecurityMapping } from "@shared/schema";
 import { resolveInstitutionalSecurity } from "./security-resolver";
@@ -297,39 +297,50 @@ export async function applyMappingsToHoldings(accessionNumber: string): Promise<
   mappedCount: number;
   unmappedCount: number;
 }> {
-  // Fetch all holdings for this accession that are unmapped
-  const holdings = await db
-    .select({
-      id: institutional13fHoldings.id,
-      cusip: institutional13fHoldings.cusip,
-      figi: institutional13fHoldings.figi,
-      mappingStatus: institutional13fHoldings.mappingStatus,
-    })
-    .from(institutional13fHoldings)
-    .where(eq(institutional13fHoldings.accessionNumber, accessionNumber));
-
-  if (holdings.length === 0) return { mappedCount: 0, unmappedCount: 0 };
-
-  const entries = holdings.map((h) => ({ cusip: h.cusip, figi: h.figi }));
-  const mappings = await resolveMappingsBatch(entries);
-
   let mappedCount = 0;
   let unmappedCount = 0;
+  let lastId: string | null = null;
+  const pageSize = 2_000;
 
-  for (const holding of holdings) {
-    const mapping = mappings.get(holding.cusip);
-    if (!mapping) { unmappedCount++; continue; }
-
-    await db
-      .update(institutional13fHoldings)
-      .set({
-        mappedSymbol: mapping.mappedSymbol,
-        mappingStatus: mapping.mappingStatus,
+  while (true) {
+    const holdings = await db
+      .select({
+        id: institutional13fHoldings.id,
+        cusip: institutional13fHoldings.cusip,
+        figi: institutional13fHoldings.figi,
       })
-      .where(eq(institutional13fHoldings.id, holding.id));
+      .from(institutional13fHoldings)
+      .where(and(
+        eq(institutional13fHoldings.accessionNumber, accessionNumber),
+        ...(lastId ? [gt(institutional13fHoldings.id, lastId)] : []),
+      ))
+      .orderBy(institutional13fHoldings.id)
+      .limit(pageSize);
 
-    if (mapping.mappedSymbol) mappedCount++;
-    else unmappedCount++;
+    if (holdings.length === 0) break;
+    const mappings = await resolveMappingsBatch(
+      holdings.map((holding) => ({ cusip: holding.cusip, figi: holding.figi })),
+    );
+
+    for (const holding of holdings) {
+      const mapping = mappings.get(holding.cusip);
+      if (!mapping) {
+        unmappedCount++;
+        continue;
+      }
+      await db
+        .update(institutional13fHoldings)
+        .set({
+          mappedSymbol: mapping.mappedSymbol,
+          mappingStatus: mapping.mappingStatus,
+        })
+        .where(eq(institutional13fHoldings.id, holding.id));
+      if (mapping.mappedSymbol) mappedCount++;
+      else unmappedCount++;
+    }
+
+    lastId = holdings[holdings.length - 1].id;
+    if (holdings.length < pageSize) break;
   }
 
   return { mappedCount, unmappedCount };

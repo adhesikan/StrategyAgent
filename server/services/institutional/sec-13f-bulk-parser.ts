@@ -226,6 +226,7 @@ export interface BulkStreamResult {
   status: BulkQuarterStatus;
   diagnostics: BulkParseDiagnostics;
   reason?: string;
+  failureCode?: BulkSourceFailureCode;
 }
 
 export interface BulkHoldingStreamOptions {
@@ -2492,17 +2493,20 @@ export async function prepareBulkArchiveFromDescriptor(
         durationMs: Date.now() - startMs,
       },
       reason: `Dataset ${descriptor.fileName} retrieval failed: ${classifySecArchiveFailure(error)}`,
+      failureCode: classifySecArchiveFailure(error),
     };
   }
   const transport = {
     requestedUrl: response.requestedUrl, finalUrl: response.finalUrl, httpStatus: response.status,
     contentType: response.contentType, contentLength: response.contentLength ?? response.byteLength,
   };
-  if (validateSecArchiveResponse(response.contentType, response.buffer)) {
+  const formatFailure = validateSecArchiveResponse(response.contentType, response.buffer);
+  if (formatFailure) {
     return {
       status: "failed",
       diagnostics: { ...EMPTY_DIAGNOSTICS, ...transport, archiveBytes: response.byteLength, durationMs: Date.now() - startMs },
       reason: `Dataset ${descriptor.fileName} response is not a valid ZIP archive`,
+      failureCode: formatFailure,
     };
   }
   return { buffer: response.buffer, transportDiagnostics: transport };

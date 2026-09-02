@@ -201,6 +201,7 @@ async function checkSchema(): Promise<void> {
 async function readExistingQuarterState(periodOfReport: string): Promise<{
   filings: ExistingFilingSnapshot[];
   holdingRows: number;
+  holdingRowsByAccession: Map<string, number>;
 }> {
   const filingsResult = await db.execute(sql`
     SELECT accession_number AS "accessionNumber",
@@ -211,20 +212,38 @@ async function readExistingQuarterState(periodOfReport: string): Promise<{
      WHERE period_of_report = ${periodOfReport}
   `);
   const holdingsResult = await db.execute(sql`
-    SELECT COUNT(*)::int AS "holdingRows"
+    SELECT accession_number AS "accessionNumber",
+           COUNT(*)::int AS "holdingRows"
       FROM institutional_13f_holdings
      WHERE period_of_report = ${periodOfReport}
+     GROUP BY accession_number
   `);
+  const holdingRowsByAccession = new Map<string, number>();
+  let holdingRows = 0;
+  for (const row of holdingsResult.rows as Array<{ accessionNumber: string; holdingRows: number }>) {
+    const count = Number(row.holdingRows ?? 0);
+    holdingRowsByAccession.set(normalizeAccession(row.accessionNumber), count);
+    holdingRows += count;
+  }
   return {
     filings: filingsResult.rows as ExistingFilingSnapshot[],
-    holdingRows: Number((holdingsResult.rows[0] as any)?.holdingRows ?? 0),
+    holdingRows,
+    holdingRowsByAccession,
   };
 }
 
-function buildStreamingDryRunPlan(
+export function buildStreamingDryRunPlan(
   descriptor: DatasetDescriptor,
   existing: { filings: ExistingFilingSnapshot[]; holdingRows: number },
-  source: { status: string; sourceFilings: number; sourceHoldingRows: number; missingAccessions: number; missingHoldingRows: number; missingAmendments: number },
+  source: {
+    status: string;
+    sourceFilings: number;
+    sourceHoldingRows: number;
+    filingsToInsert: number;
+    filingsPotentiallyUpdated: number;
+    holdingRowsToProcess: number;
+    amendmentsToReconcile: number;
+  },
 ): DryRunQuarterPlan {
   if (source.status !== "success" && source.status !== "partial_success") {
     return { quarter: `${descriptor.year}-Q${descriptor.q}`, catalogFile: descriptor.fileName, sourceAvailable: false,
@@ -233,13 +252,16 @@ function buildStreamingDryRunPlan(
       filingsToInsert: null, filingsPotentiallyUpdated: null, amendmentsToReconcile: null, estimatedHoldingRowsToProcess: null,
       downstreamAggregateRebuildRequired: false, downstreamSignalRebuildRequired: false, status: "SOURCE_ERROR" };
   }
-  const filingsAlreadyPresent = source.sourceFilings - source.missingAccessions;
-  const hasWork = source.missingAccessions > 0 || source.missingAmendments > 0;
+  const filingsAlreadyPresent = source.sourceFilings - source.filingsToInsert;
+  const hasWork = source.filingsToInsert > 0 || source.filingsPotentiallyUpdated > 0;
   return { quarter: `${descriptor.year}-Q${descriptor.q}`, catalogFile: descriptor.fileName, sourceAvailable: true,
     existingFilings: existing.filings.length, existingEffectiveFilings: existing.filings.filter((f) => f.isEffective).length,
     existingHoldingRows: existing.holdingRows, sourceFilings: source.sourceFilings, sourceHoldingRows: source.sourceHoldingRows,
-    filingsAlreadyPresent, filingsToInsert: source.missingAccessions, filingsPotentiallyUpdated: 0,
-    amendmentsToReconcile: source.missingAmendments, estimatedHoldingRowsToProcess: source.missingHoldingRows,
+    filingsAlreadyPresent,
+    filingsToInsert: source.filingsToInsert,
+    filingsPotentiallyUpdated: source.filingsPotentiallyUpdated,
+    amendmentsToReconcile: source.amendmentsToReconcile,
+    estimatedHoldingRowsToProcess: source.holdingRowsToProcess,
     downstreamAggregateRebuildRequired: hasWork, downstreamSignalRebuildRequired: hasWork,
     status: !hasWork ? "NO_CHANGE" : existing.filings.length === 0 ? "FULL_BACKFILL_REQUIRED" : "PARTIAL_BACKFILL_REQUIRED" };
 }
@@ -268,8 +290,8 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       let batchCount = 0;
       const existing = await readExistingQuarterState(descriptor.expectedPeriodOfReport);
       const existingAccessions = new Set(existing.filings.map((f) => normalizeAccession(f.accessionNumber)));
-      const seen = new Set<string>();
-      let sourceHoldingRows = 0, missingHoldingRows = 0, missingAmendments = 0;
+      const sourceByAccession = new Map<string, { holdingRows: number; isAmendment: boolean }>();
+      let sourceHoldingRows = 0;
       const source = await streamBulkFromDescriptor(descriptor, {
         onBatch(batch) {
           batchCount++;
@@ -277,17 +299,36 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
           for (const holding of batch) {
             sourceHoldingRows++;
             const accession = normalizeAccession(holding.accessionNumber);
-            if (!existingAccessions.has(accession)) {
-              missingHoldingRows++;
-              if (!seen.has(accession) && holding.isAmendment) missingAmendments++;
-            }
-            seen.add(accession);
+            const current = sourceByAccession.get(accession);
+            if (current) current.holdingRows++;
+            else sourceByAccession.set(accession, { holdingRows: 1, isAmendment: holding.isAmendment });
           }
         },
       });
-      const missingAccessions = [...seen].filter((accession) => !existingAccessions.has(accession)).length;
+      let filingsToInsert = 0;
+      let filingsPotentiallyUpdated = 0;
+      let holdingRowsToProcess = 0;
+      let amendmentsToReconcile = 0;
+      for (const [accession, sourceFiling] of sourceByAccession) {
+        const existingCount = existing.holdingRowsByAccession.get(accession);
+        if (!existingAccessions.has(accession)) {
+          filingsToInsert++;
+          holdingRowsToProcess += sourceFiling.holdingRows;
+          if (sourceFiling.isAmendment) amendmentsToReconcile++;
+        } else if (existingCount !== sourceFiling.holdingRows) {
+          filingsPotentiallyUpdated++;
+          holdingRowsToProcess += sourceFiling.holdingRows;
+          if (sourceFiling.isAmendment) amendmentsToReconcile++;
+        }
+      }
       const plan = buildStreamingDryRunPlan(descriptor, existing, {
-        status: source.status, sourceFilings: seen.size, sourceHoldingRows, missingAccessions, missingHoldingRows, missingAmendments,
+        status: source.status,
+        sourceFilings: sourceByAccession.size,
+        sourceHoldingRows,
+        filingsToInsert,
+        filingsPotentiallyUpdated,
+        holdingRowsToProcess,
+        amendmentsToReconcile,
       });
       plans.push(plan);
       const heapUsedMBEnd = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);

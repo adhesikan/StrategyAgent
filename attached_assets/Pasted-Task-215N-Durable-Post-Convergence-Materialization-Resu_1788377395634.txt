@@ -1,0 +1,209 @@
+Task #215N — Durable Post-Convergence Materialization Resume
+
+Continue from the current Task #215M duplicate convergence implementation.
+
+CURRENT STATE
+
+Duplicate convergence logic is implemented and focused tests pass.
+
+Production APPLY remains blocked for exactly one reason:
+
+If duplicate convergence commits successfully but downstream materialization
+fails afterward, a future duplicate scan may find zero duplicate groups and
+therefore lose the exact rebuild scope needed to resume safely.
+
+DO NOT:
+- change duplicate classification logic
+- change SEC replay semantics
+- reopen contamination analysis
+- run production APPLY
+- run historical backfill
+- modify unrelated institutional modules
+
+OBJECTIVE
+
+Make post-convergence downstream materialization durable and resumable across
+process failure, deploy, restart, or operator retry.
+
+The system must be able to recover after:
+
+1. duplicate convergence database mutation commits
+2. downstream materialization partially or fully fails
+3. process exits
+4. a later invocation resumes exactly the required downstream rebuild
+   without needing duplicate groups to still exist
+
+DESIGN REQUIREMENTS
+
+Introduce a durable convergence journal/checkpoint using existing production
+database infrastructure.
+
+Persist enough information BEFORE or DURING the mutation transaction to
+reconstruct the downstream rebuild scope after commit.
+
+The durable record should include at minimum:
+
+- convergence run id
+- plan hash
+- status
+- created/updated timestamps
+- affected canonical accessions
+- affected periods
+- exact affected symbols
+- exact downstream targets where already supported
+- mutation completion status
+- materialization completion status
+- last completed materialization stage
+- failure stage
+- sanitized failure reason
+- retry count or attempt metadata
+
+Use normalized/bounded storage appropriate for the current schema.
+Do not persist secrets or raw SEC payloads.
+
+STATE MACHINE
+
+Use explicit states such as:
+
+PLANNED
+MUTATION_IN_PROGRESS
+MUTATION_COMMITTED
+MATERIALIZATION_IN_PROGRESS
+COMPLETED
+FAILED_RETRYABLE
+FAILED_TERMINAL
+
+State transitions must be transactional where appropriate.
+
+CRITICAL INVARIANT
+
+Once mutation commits, the rebuild scope must remain durably available even
+if the process crashes immediately afterward.
+
+A rerun must discover the unfinished convergence run from the journal and
+resume materialization from persisted scope.
+
+It must NOT regenerate the scope by rescanning for duplicates.
+
+RESUME BEHAVIOR
+
+On startup/invocation:
+
+- detect unfinished convergence run for the same plan/run
+- validate production identity
+- validate persisted plan hash and scope
+- if mutation already committed, do NOT repeat destructive convergence SQL
+- resume only missing downstream materialization stages
+- make each downstream stage idempotent
+- mark completion only after all required stages succeed
+
+If a retry is safe, resume automatically within the explicit command flow.
+
+If persisted state is inconsistent, fail closed.
+
+DOWNSTREAM STAGES
+
+Use existing canonical materialization paths only.
+
+Persist and resume stage completion for:
+
+- effective filing recomputation
+- quarterly aggregate rebuild
+- signal rebuild
+- sector snapshot rebuild if required
+- theme snapshot rebuild if required
+
+Do not broaden rebuild scope beyond persisted affected targets.
+
+DRY RUN
+
+Dry run must perform zero writes, including zero journal writes.
+
+It should report:
+
+mode
+duplicateGroups
+safeCleanupGroups
+replayGroups
+affectedPeriods
+affectedSymbols
+downstreamTargets
+journalRequired: true
+resumeReady
+productionApplyReady
+planHash
+
+APPLY SAFETY
+
+Keep all current safeguards:
+
+- explicit --apply
+- exact fresh plan hash
+- confirmation phrase
+- production Railway identity
+- DATABASE_URL required
+- EXTERNAL_DATABASE_URL rejected
+- advisory lock
+- idempotent mutation
+- authoritative SEC validation before destructive replay
+- stale plan rejection
+
+Additionally:
+
+- only one active unfinished convergence run may exist for the same operation
+- interrupted run must be resumable
+- completed run rerun must be a no-op or explicit already-completed result
+
+TESTS
+
+Add focused tests for:
+
+1. crash immediately after mutation commit
+2. resume uses persisted scope
+3. resume does not rescan duplicates
+4. resume does not repeat destructive SQL
+5. aggregate failure resumes aggregate+remaining stages correctly
+6. signal failure resumes signal+remaining stages correctly
+7. completed stages are not repeated unnecessarily
+8. rerun after COMPLETED is idempotent
+9. inconsistent journal fails closed
+10. stale plan hash rejected
+11. dry run writes no journal rows
+12. exact symbol-period targets survive restart
+13. journal survives process restart simulation
+14. advisory lock prevents concurrent resume/apply
+15. terminal source-validation failure never mutates
+
+VALIDATION
+
+Run:
+- focused convergence tests
+- relevant ingestion/repair/materialization tests
+- production build
+- git diff --check
+- changed-file TypeScript validation
+
+RETURN ONLY:
+
+ROOT CAUSE
+
+DURABLE RESUME DESIGN
+
+STATE MACHINE
+
+RESUME BEHAVIOR
+
+DRY-RUN OUTPUT SUPPORT
+
+FILES CHANGED
+
+TEST RESULTS
+
+COMMIT SHA
+
+PRODUCTION BLOCKER YES/NO
+
+If blocker is NO, provide exactly ONE production DRY_RUN command.
+
+Do not provide APPLY command.
+Do not provide historical backfill command.

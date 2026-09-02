@@ -13,6 +13,7 @@ import { inspectInfoTableDocument, normalizeSourceHoldingValue, validateInfoTabl
 
 export const DUPLICATE_CONVERGENCE_LOCK_KEY = 774_412_007;
 export const DUPLICATE_CONVERGENCE_CONFIRMATION = "CONVERGE_PRODUCTION_13F_DUPLICATES";
+export const CONVERGENCE_JOURNAL_TABLE = "institutional_convergence_journal";
 
 export interface DuplicateGroup {
   canonicalAccession: string;
@@ -54,6 +55,152 @@ export interface DuplicateConvergencePlan {
   };
   canonicalUniquenessReady: boolean; planHash: string; productionApplyReady: boolean;
   operations: ConvergenceOperation[];
+}
+
+export type ConvergenceJournalStatus =
+  | "PLANNED"
+  | "MUTATION_IN_PROGRESS"
+  | "MUTATION_COMMITTED"
+  | "MATERIALIZATION_IN_PROGRESS"
+  | "COMPLETED"
+  | "FAILED_RETRYABLE"
+  | "FAILED_TERMINAL";
+
+export type ConvergenceMaterializationStage =
+  | "EFFECTIVENESS_RECOMPUTED"
+  | "AGGREGATES"
+  | "SIGNALS"
+  | "SNAPSHOTS";
+
+export interface ConvergenceJournalRecord {
+  id: string;
+  planHash: string;
+  status: ConvergenceJournalStatus;
+  canonicalAccessions: string[];
+  affectedPeriods: string[];
+  affectedSymbols: string[];
+  targets: Array<{ symbol: string; periodOfReport: string }>;
+  mutationCompleted: boolean;
+  materializationCompleted: boolean;
+  lastCompletedStage: ConvergenceMaterializationStage | null;
+  completedAggregateTargets: string[];
+  completedSignalSymbols: string[];
+  failureStage: string | null;
+  failureReason: string | null;
+  attemptCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConvergenceJournalStore {
+  create(record: Omit<ConvergenceJournalRecord, "id" | "createdAt" | "updatedAt">): Promise<ConvergenceJournalRecord>;
+  update(id: string, patch: Partial<ConvergenceJournalRecord>): Promise<ConvergenceJournalRecord>;
+}
+
+export interface ConvergenceMaterializationDependencies {
+  recomputeAggregate: (symbol: string, periodOfReport: string, previousPeriod: string | null) => Promise<unknown>;
+  rebuildSignal: (symbol: string) => Promise<unknown>;
+  refreshSnapshots: (options: { persist: boolean }) => Promise<unknown>;
+}
+
+function targetKey(target: { symbol: string; periodOfReport: string }): string {
+  return `${target.symbol}:${target.periodOfReport}`;
+}
+
+function sanitizeJournalFailure(error: unknown): string {
+  const value = error instanceof Error ? error.message : String(error);
+  return value.replace(/https?:\/\/\S+/gi, "[url]").replace(/\s+/g, " ").slice(0, 200);
+}
+
+function assertJournalScope(record: ConvergenceJournalRecord, plan: DuplicateConvergencePlan): void {
+  if (
+    record.planHash !== plan.planHash ||
+    stable(record.canonicalAccessions) !== stable(
+      plan.operations.filter((operation) => operation.action !== "BLOCKED")
+        .map((operation) => operation.canonicalAccession),
+    ) ||
+    stable(record.targets) !== stable(plan.downstreamRebuildScope.symbolPeriods)
+  ) {
+    throw new Error("CONVERGENCE_JOURNAL_SCOPE_MISMATCH");
+  }
+}
+
+/**
+ * Resume only the post-commit work recorded in the journal. Each target and
+ * symbol is checkpointed before advancing, so a process exit can restart at
+ * the first incomplete item without looking for duplicate filings again.
+ */
+export async function resumeConvergenceMaterialization(
+  journal: ConvergenceJournalRecord,
+  store: ConvergenceJournalStore,
+  dependencies: ConvergenceMaterializationDependencies,
+): Promise<ConvergenceJournalRecord> {
+  if (journal.status === "COMPLETED") return journal;
+  if (!journal.mutationCompleted) throw new Error("CONVERGENCE_MUTATION_NOT_COMMITTED");
+  if (journal.status === "FAILED_TERMINAL") throw new Error("CONVERGENCE_JOURNAL_TERMINAL");
+
+  let current = await store.update(journal.id, {
+    status: "MATERIALIZATION_IN_PROGRESS",
+    failureStage: null,
+    failureReason: null,
+    attemptCount: journal.attemptCount + 1,
+  });
+  try {
+    const aggregateDone = new Set(current.completedAggregateTargets);
+    for (const target of current.targets) {
+      if (aggregateDone.has(targetKey(target))) continue;
+      await dependencies.recomputeAggregate(
+        target.symbol,
+        target.periodOfReport,
+        null,
+      );
+      aggregateDone.add(targetKey(target));
+      current = await store.update(current.id, {
+        status: "MATERIALIZATION_IN_PROGRESS",
+        lastCompletedStage: "AGGREGATES",
+        completedAggregateTargets: Array.from(aggregateDone).sort(),
+      });
+    }
+
+    const signalDone = new Set(current.completedSignalSymbols);
+    for (const symbol of current.affectedSymbols) {
+      if (signalDone.has(symbol)) continue;
+      await dependencies.rebuildSignal(symbol);
+      signalDone.add(symbol);
+      current = await store.update(current.id, {
+        status: "MATERIALIZATION_IN_PROGRESS",
+        lastCompletedStage: "SIGNALS",
+        completedSignalSymbols: Array.from(signalDone).sort(),
+      });
+    }
+
+    if (current.affectedSymbols.length > 0 && current.lastCompletedStage !== "SNAPSHOTS") {
+      await dependencies.refreshSnapshots({ persist: true });
+      current = await store.update(current.id, {
+        status: "COMPLETED",
+        materializationCompleted: true,
+        lastCompletedStage: "SNAPSHOTS",
+        failureStage: null,
+        failureReason: null,
+      });
+    } else {
+      current = await store.update(current.id, {
+        status: "COMPLETED",
+        materializationCompleted: true,
+        failureStage: null,
+        failureReason: null,
+      });
+    }
+    return current;
+  } catch (error) {
+    current = await store.update(current.id, {
+      status: "FAILED_RETRYABLE",
+      failureStage: current.lastCompletedStage ?? "AGGREGATES",
+      failureReason: sanitizeJournalFailure(error),
+      attemptCount: current.attemptCount,
+    });
+    throw error;
+  }
 }
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;

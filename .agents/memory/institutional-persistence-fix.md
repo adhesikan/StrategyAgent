@@ -18,7 +18,11 @@ Before processing each descriptor, `runInstitutionalIngestion` queries `institut
 **How to apply:** Pass `force: true` to override the skip (e.g. after a mapping refresh or schema migration). `--force` flag exists in `run-institutional-backfill.ts`.
 
 ## Idempotency Within the Accession Loop
-Each accession checks `institutional_13f_filings` for existence before inserting. If all accessions are already in DB (`skippedExistingFilings === totalAccessions`), the function returns `status: "completed"` with `filingCount: 0` — not `"partial"`. This is the correct idempotent re-run case.
+An accession is complete only when its persisted holding count exactly matches the bounded validation pass's expected count. A filing row by itself is not proof of completion. Mismatched accessions are made non-effective, their partial holdings are deleted, and the accession is replayed from the validated source; effectiveness is finalized only at the accession-complete boundary.
+
+**Why:** A process crash can commit some batches and leave the filing row behind. Existence-only skipping would permanently misclassify that partial accession as complete.
+
+**How to apply:** DRY_RUN and APPLY must use the same count-based completion rule. Holding counts must be aggregated in the database; never load a quarter's holdings merely to decide resumability.
 
 ## PERSISTENCE_COUNT_MISMATCH
 Raised when: `holdingCount === 0 AND eligibleCommonStockRows > 1000 AND totalAccessions > 0 AND !abortedEarly AND NOT all-existing`. Stored as `errorCode: "PERSISTENCE_COUNT_MISMATCH"` in the run record. Threshold: `MIN_ELIGIBLE_FOR_MISMATCH_CHECK = 1000`.

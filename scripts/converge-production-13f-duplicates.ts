@@ -6,6 +6,7 @@
  * APPLY requires the exact hash from a fresh dry run and validates every
  * authoritative replay source again before deleting legacy rows.
  */
+import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import { sql } from "drizzle-orm";
 import {
@@ -35,6 +36,7 @@ import { fetchDatasetCatalog } from "../server/services/institutional/sec-datase
 
 export interface DuplicateConvergenceArgs {
   apply: boolean;
+  summaryOnly: boolean;
   planHash: string | null;
   confirm: string | null;
 }
@@ -45,14 +47,51 @@ export function parseDuplicateConvergenceArgs(args: string[]): DuplicateConverge
     strict: true,
     options: {
       apply: { type: "boolean", default: false },
+      "summary-only": { type: "boolean", default: false },
       "plan-hash": { type: "string" },
       confirm: { type: "string" },
     },
   });
   return {
     apply: Boolean(parsed.values.apply),
+    summaryOnly: Boolean(parsed.values["summary-only"]),
     planHash: parsed.values["plan-hash"] ? String(parsed.values["plan-hash"]) : null,
     confirm: parsed.values.confirm ? String(parsed.values.confirm) : null,
+  };
+}
+
+export function buildSummaryOnlyReport(
+  groups: DuplicateGroup[],
+  journalPresent: boolean,
+) {
+  const plan = buildDuplicateConvergencePlan(groups, "DRY_RUN");
+  const replayCandidateGroups = plan.operations.filter(
+    (operation) => operation.action === "AUTHORITATIVE_REPLAY",
+  ).length;
+  const blockedIdentityGroups = plan.operations.filter(
+    (operation) => operation.action === "BLOCKED",
+  ).length;
+  const reason = replayCandidateGroups > 0
+    ? "REPLAY_VALIDATION_REQUIRED"
+    : blockedIdentityGroups > 0
+      ? "AUTHORITATIVE_IDENTITY_REQUIRED"
+      : "NO_REPLAY_VALIDATION_REQUIRED";
+  return {
+    mode: "SUMMARY_ONLY",
+    duplicateGroups: plan.totalCanonicalDuplicateGroups,
+    safeCleanupGroups: plan.safeCleanupGroups,
+    replayCandidateGroups,
+    blockedIdentityGroups,
+    affectedPeriodsCount: plan.affectedPeriods.length,
+    affectedSymbolsCount: plan.affectedSymbols.length,
+    downstreamTargetCount: plan.downstreamRebuildScope.targets,
+    replayValidationRequired: replayCandidateGroups,
+    journalPresent,
+    productionApplyReady: false,
+    reason,
+    diagnosticPlanHash: createHash("sha256")
+      .update(`SUMMARY_ONLY:${plan.planHash}`)
+      .digest("hex"),
   };
 }
 
@@ -148,6 +187,7 @@ function publicPlan(
     duplicateGroups: plan.totalCanonicalDuplicateGroups,
     safeCleanupGroups: plan.safeCleanupGroups,
     replayGroups: plan.replayGroups,
+    blockedGroups: plan.blockedGroups,
     affectedPeriods: plan.affectedPeriods,
     affectedSymbols: plan.affectedSymbols,
     downstreamTargets: plan.downstreamRebuildScope.symbolPeriods,
@@ -222,6 +262,9 @@ async function main(): Promise<void> {
   if (environmentIssues.length > 0) {
     throw new Error(`PRODUCTION_RUNTIME_REJECTED:${environmentIssues.join(",")}`);
   }
+  if (args.summaryOnly && args.apply) {
+    throw new Error("SUMMARY_ONLY_APPLY_FORBIDDEN");
+  }
   if (!args.apply) {
     process.env.DATABASE_URL = buildHistoricalAuditReadOnlyUrl(process.env.DATABASE_URL!);
   }
@@ -281,6 +324,12 @@ async function main(): Promise<void> {
       fetchCatalog: () => fetchDatasetCatalog(process.env.SEC_USER_AGENT!),
     });
     const initialGroups = await loadDuplicateGroups(executor, authoritative);
+    if (args.summaryOnly) {
+      const summaryPlan = buildDuplicateConvergencePlan(initialGroups, "DRY_RUN");
+      const journal = await readConvergenceJournal(executor, summaryPlan.planHash);
+      console.log(JSON.stringify(buildSummaryOnlyReport(initialGroups, journal !== null)));
+      return;
+    }
     const replayValidations = await validateReplayGroups(initialGroups);
     const groups = await loadDuplicateGroups(executor, authoritative, replayValidations);
     const plan = buildDuplicateConvergencePlan(

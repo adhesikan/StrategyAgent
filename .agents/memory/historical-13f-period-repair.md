@@ -30,3 +30,9 @@ Post-convergence materialization scope must be journaled in the same transaction
 **Why:** After mutation commits, duplicate groups disappear; a later materialization failure otherwise destroys the only reconstruction path for the required downstream rebuild.
 
 **How to apply:** Treat the committed journal as the recovery authority, lease each resume attempt, skip completed idempotent stages, sanitize bounded failures, and fail closed on inconsistent journal state.
+
+Operational diagnostics should separate lightweight duplicate classification from authoritative replay validation: summary mode may report replay candidates but must emit a distinct non-authorizing hash and never download replay sources.
+
+**Why:** Sequential SEC replay checks can make a diagnostic dry run operationally unusable without reducing the safety required for APPLY.
+
+**How to apply:** Keep summary mode read-only and false for apply readiness; reserve replay downloads and authorization checks for the normal dry-run/APPLY path.

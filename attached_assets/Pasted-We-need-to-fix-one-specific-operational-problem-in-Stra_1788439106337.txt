@@ -1,0 +1,106 @@
+We need to fix one specific operational problem in StrategyAgent duplicate convergence.
+
+Current deployed commit:
+4bb2a7c39b4f3dfce1ef9e76cc44c6a95a5d383b
+
+Repository:
+adhesikan/StrategyAgent
+
+Problem:
+scripts/converge-production-13f-duplicates.ts currently performs expensive sequential authoritative SEC replay validation for all replay groups before printing any dry-run summary.
+
+In production this causes dry runs to take 10+ hours.
+
+The previous completed dry run produced:
+planHash = 395f64c0599ea644924595e8a97476c47874d6269e67e814b086047a136c7747
+journalRequired = true
+resumeReady = false
+productionApplyReady = false
+
+We must NOT loosen APPLY safety.
+We must NOT allow unvalidated replay groups to be applied.
+We must NOT change duplicate-convergence semantics.
+We must NOT perform production writes.
+
+Objective:
+Make dry-run diagnostics fast enough to immediately show WHY productionApplyReady is false, without performing authoritative replay downloads for every replay group.
+
+Implement the smallest possible change.
+
+Requirements:
+
+1. Add a lightweight summary mode to:
+   scripts/converge-production-13f-duplicates.ts
+
+Suggested CLI:
+   --summary-only
+
+2. In --summary-only mode:
+   - keep all production environment guards
+   - keep the read-only DATABASE_URL behavior
+   - load stored filings
+   - load authoritative SEC metadata using the existing bounded metadata path
+   - load duplicate groups
+   - DO NOT call validateReplayGroups()
+   - DO NOT download filing index/info-table replay sources
+   - build a diagnostic plan without requiring replay validation
+   - explicitly report counts that tell us what would require replay validation
+
+3. Output ONLY compact JSON with fields similar to:
+
+{
+  "mode": "SUMMARY_ONLY",
+  "duplicateGroups": ...,
+  "safeCleanupGroups": ...,
+  "replayCandidateGroups": ...,
+  "blockedIdentityGroups": ...,
+  "affectedPeriodsCount": ...,
+  "affectedSymbolsCount": ...,
+  "downstreamTargetCount": ...,
+  "replayValidationRequired": ...,
+  "journalPresent": ...,
+  "productionApplyReady": false,
+  "reason": "...",
+  "diagnosticPlanHash": "..."
+}
+
+Do NOT output the thousands of downstreamTargets.
+
+4. IMPORTANT:
+   productionApplyReady MUST always be false in summary-only mode.
+   This mode is diagnostic only and must never generate an APPLY-authorizing hash.
+
+5. Preserve existing normal DRY_RUN and APPLY behavior unchanged for now.
+
+6. Also improve the normal dry-run publicPlan output so it includes:
+   blockedGroups
+   safeCleanupGroups
+   replayGroups
+
+Do not remove any current safety checks.
+
+7. Add focused automated tests proving:
+   - --summary-only never calls authoritative replay loader
+   - summary-only cannot authorize APPLY
+   - replay candidates are counted correctly
+   - blocked identity groups are distinguished from replay candidates
+   - no write path executes
+   - existing APPLY guard behavior remains unchanged
+
+8. Run focused tests, build/typecheck as appropriate, and git diff --check.
+
+9. Commit the change cleanly.
+
+Do NOT run production dry run.
+Do NOT run APPLY.
+Do NOT run historical backfill.
+Do NOT change schema.
+Do NOT create another diagnostic framework.
+This is one bounded fix to make the existing convergence tool operationally usable.
+
+Report:
+- root cause
+- exact files changed
+- test results
+- commit SHA
+- exact Railway command for the new summary-only mode

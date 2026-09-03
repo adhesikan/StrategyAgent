@@ -1,0 +1,146 @@
+We now have the definitive production duplicate-convergence summary.
+
+Deployed production commit:
+7132c6b19b2002db820e846786780735cfef9ad3
+
+Production --summary-only result:
+
+duplicateGroups: 1195
+safeCleanupGroups: 1067
+replayCandidateGroups: 128
+blockedIdentityGroups: 0
+affectedPeriodsCount: 21
+affectedSymbolsCount: 2422
+downstreamTargetCount: 3222
+replayValidationRequired: 128
+journalPresent: false
+productionApplyReady: false
+reason: REPLAY_VALIDATION_REQUIRED
+
+There is NO identity blocker.
+
+Do not investigate mappings, symbols, security master, historical period
+contamination, OpenFIGI, asset types, or individual tickers.
+
+The only remaining blocker is operational:
+
+validateReplayGroups() validates 128 AUTHORITATIVE_REPLAY groups
+sequentially, causing the normal production dry run to take 10+ hours.
+
+OBJECTIVE
+
+Make authoritative replay validation for these 128 groups bounded,
+resumable and operationally practical without weakening ANY existing
+APPLY safety or authoritative SEC verification.
+
+This is a convergence-completion task, not another diagnostic project.
+
+REQUIREMENTS
+
+1. Inspect the existing authoritative replay loader and determine exactly
+   why validating 128 groups is taking many hours.
+
+2. Reuse existing SEC fetching/parsing infrastructure.
+   Do not create a second SEC ingestion architecture.
+
+3. Eliminate unnecessary repeated SEC requests/downloads where multiple
+   replay candidates can reuse the same SEC source/archive/document.
+
+4. Add bounded concurrency only where safe and respectful of SEC access
+   requirements.
+
+   Use a conservative fixed concurrency limit.
+
+   Preserve SEC_USER_AGENT behavior and existing SEC request controls.
+
+5. Make replay validation resumable.
+
+   Persist validation results/checkpoints so an interrupted validation
+   run does not restart all 128 groups.
+
+   Persist only the minimum necessary authoritative validation evidence:
+   canonical accession
+   source URL
+   source checksum
+   authoritative holding count
+   validation status
+   bounded failure reason
+   timestamps/version if required
+
+6. The validation checkpoint MUST NOT authorize APPLY by itself.
+
+   APPLY must still require:
+   - complete validation of every replay group
+   - fresh exact convergence plan
+   - exact plan hash
+   - explicit APPLY confirmation
+   - existing production environment guards
+   - advisory lock
+   - authoritative replay revalidation before destructive mutation
+   - durable convergence journal/materialization resume
+
+7. Provide a bounded production validation command.
+
+   It must:
+   - have visible progress, e.g. validated 20/128
+   - checkpoint continuously
+   - resume after interruption
+   - fail closed
+   - never mutate filings/holdings/aggregates/signals/snapshots
+   - never perform duplicate cleanup
+   - never perform convergence APPLY
+
+8. Once all 128 replay candidates are validated, the normal convergence
+   planner must be able to consume the persisted validations and produce
+   a fresh APPLY-authorizing DRY_RUN without downloading all 128 sources
+   again.
+
+9. The final normal DRY_RUN should output compact summary by default.
+   Do not dump 3,222 downstream targets unless an explicit verbose flag
+   is supplied.
+
+10. Do not change duplicate classification semantics.
+
+Current expected population:
+1195 duplicate groups
+1067 SAFE_CLEANUP
+128 AUTHORITATIVE_REPLAY
+0 identity blockers
+
+Do not hardcode these counts.
+
+11. Add focused tests for:
+   interruption/resume
+   completed validation reuse
+   failed validation fail-closed
+   stale validation rejection
+   source/checksum drift
+   bounded concurrency
+   APPLY cannot use incomplete validation
+   APPLY guard behavior unchanged
+   no production data mutation during validation
+   compact normal dry-run output
+
+12. Run focused tests, build/typecheck as appropriate, git diff --check,
+   and commit cleanly.
+
+DO NOT:
+- run production validation
+- run normal production dry run
+- run APPLY
+- run historical backfill
+- change canonical mapping/resolver logic
+- create ticker-specific diagnostics
+- weaken replay verification
+- modify production data
+
+REPORT ONLY:
+- exact performance root cause
+- design of bounded/resumable validation
+- files changed
+- tests/results
+- commit SHA
+- expected runtime characteristics
+- exact guarded Railway command for replay validation
+- exact guarded Railway command for the final compact DRY_RUN after
+  validation completes

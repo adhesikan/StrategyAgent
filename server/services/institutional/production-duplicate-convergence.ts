@@ -559,17 +559,22 @@ async function readTargetsForCanonicalAccessions(
   }));
 }
 /** Uses the established strict SEC document selection/parser path; no fuzzy lookup. */
-export async function loadAuthoritativeReplaySource(operation: ConvergenceOperation): Promise<AuthoritativeReplaySource> {
+export type ReplaySourceFetcher = typeof secFetchDetailed;
+
+export async function loadAuthoritativeReplaySource(
+  operation: ConvergenceOperation,
+  fetchDetailed: ReplaySourceFetcher = secFetchDetailed,
+): Promise<AuthoritativeReplaySource> {
   const metadata = operation.authoritative;
   if (!metadata || metadata.canonicalAccession !== operation.canonicalAccession || metadata.filerCik !== operation.canonicalAccession.slice(0, 10)) {
     throw new Error("AUTHORITATIVE_REPLAY_IDENTITY_INVALID");
   }
   const indexUrl = filingIndexUrl(metadata.filerCik, metadata.canonicalAccession);
-  const index = await secFetchDetailed(indexUrl);
+  const index = await fetchDetailed(indexUrl);
   const selection = selectInfoTableDocument(index.text, metadata.filerCik, metadata.canonicalAccession);
   if (!selection.path) throw new Error("AUTHORITATIVE_INFOTABLE_NOT_UNIQUE");
   const sourceUrl = new URL(selection.path, "https://www.sec.gov").toString();
-  const document = await secFetchDetailed(sourceUrl);
+  const document = await fetchDetailed(sourceUrl);
   const diagnostic = inspectInfoTableDocument(document.text, document);
   if (diagnostic.rejectionCode) throw new Error(`AUTHORITATIVE_INFOTABLE_INVALID:${diagnostic.rejectionCode}`);
   const parsed = parseInfoTableXml(document.text);

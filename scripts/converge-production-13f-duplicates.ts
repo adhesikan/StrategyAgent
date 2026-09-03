@@ -22,6 +22,7 @@ import {
   type ConvergenceExecutor,
   type ConvergenceOperation,
   type DuplicateGroup,
+  type ReplaySourceFetcher,
 } from "../server/services/institutional/production-duplicate-convergence";
 import { normalizeAccession } from "../server/services/institutional/sec-13f-bulk-parser";
 import type { AuthoritativeFilingMetadata } from "../server/services/institutional/historical-filing-period-repair";
@@ -33,10 +34,13 @@ import {
   readStoredFilings,
 } from "./audit-repair-production-13f-periods";
 import { fetchDatasetCatalog } from "../server/services/institutional/sec-dataset-catalog";
+import { secFetchDetailed } from "../server/services/institutional/sec-client";
 
 export interface DuplicateConvergenceArgs {
   apply: boolean;
   summaryOnly: boolean;
+  validateReplay: boolean;
+  verbose: boolean;
   planHash: string | null;
   confirm: string | null;
 }
@@ -48,6 +52,8 @@ export function parseDuplicateConvergenceArgs(args: string[]): DuplicateConverge
     options: {
       apply: { type: "boolean", default: false },
       "summary-only": { type: "boolean", default: false },
+      "validate-replay": { type: "boolean", default: false },
+      verbose: { type: "boolean", default: false },
       "plan-hash": { type: "string" },
       confirm: { type: "string" },
     },
@@ -55,9 +61,121 @@ export function parseDuplicateConvergenceArgs(args: string[]): DuplicateConverge
   return {
     apply: Boolean(parsed.values.apply),
     summaryOnly: Boolean(parsed.values["summary-only"]),
+    validateReplay: Boolean(parsed.values["validate-replay"]),
+    verbose: Boolean(parsed.values.verbose),
     planHash: parsed.values["plan-hash"] ? String(parsed.values["plan-hash"]) : null,
     confirm: parsed.values.confirm ? String(parsed.values.confirm) : null,
   };
+}
+
+const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v1";
+const REPLAY_VALIDATION_CONCURRENCY = 2;
+
+export function replayValidationMetadataFingerprint(
+  metadata: AuthoritativeFilingMetadata | null,
+): string {
+  return createHash("sha256").update(JSON.stringify(metadata && {
+    canonicalAccession: metadata.canonicalAccession,
+    filerCik: metadata.filerCik,
+    filingDate: metadata.filingDate,
+    periodOfReport: metadata.periodOfReport,
+    filingType: metadata.filingType,
+    amendmentFlag: metadata.amendmentFlag,
+  })).digest("hex");
+}
+
+export type ReplayCheckpoint = {
+  metadataFingerprint: string; validatorVersion: string; status: string;
+  sourceUrl: string | null; sourceChecksum: string | null; holdingCount: number | null;
+};
+
+async function readReplayCheckpoints(
+  executor: ConvergenceExecutor,
+): Promise<Map<string, ReplayCheckpoint>> {
+  const result = await executor.execute(sql`
+    SELECT canonical_accession AS "canonicalAccession",
+           metadata_fingerprint AS "metadataFingerprint",
+           validator_version AS "validatorVersion", status,
+           source_url AS "sourceUrl", source_checksum AS "sourceChecksum",
+           holding_count AS "holdingCount"
+      FROM institutional_replay_validation_checkpoints
+  `);
+  return new Map(rowsOf(result).map((row) => [String(row.canonicalAccession), {
+    metadataFingerprint: String(row.metadataFingerprint),
+    validatorVersion: String(row.validatorVersion), status: String(row.status),
+    sourceUrl: row.sourceUrl == null ? null : String(row.sourceUrl),
+    sourceChecksum: row.sourceChecksum == null ? null : String(row.sourceChecksum),
+    holdingCount: row.holdingCount == null ? null : Number(row.holdingCount),
+  }]));
+}
+
+export function replayValidationsFromCheckpoints(
+  groups: DuplicateGroup[],
+  checkpoints: ReadonlyMap<string, ReplayCheckpoint>,
+): Map<string, DuplicateGroup["replayValidation"]> {
+  const result = new Map<string, DuplicateGroup["replayValidation"]>();
+  const replayAccessions = new Set(
+    buildDuplicateConvergencePlan(groups, "DRY_RUN").operations
+      .filter((operation) => operation.action === "AUTHORITATIVE_REPLAY")
+      .map((operation) => operation.canonicalAccession),
+  );
+  for (const group of groups) {
+    if (!replayAccessions.has(group.canonicalAccession)) continue;
+    const checkpoint = checkpoints.get(group.canonicalAccession);
+    if (
+      checkpoint?.status === "VALID" &&
+      checkpoint.validatorVersion === REPLAY_VALIDATOR_VERSION &&
+      checkpoint.metadataFingerprint === replayValidationMetadataFingerprint(group.authoritative) &&
+      checkpoint.sourceUrl && checkpoint.sourceChecksum &&
+      Number.isInteger(checkpoint.holdingCount) && checkpoint.holdingCount > 0
+    ) result.set(group.canonicalAccession, {
+      sourceUrl: checkpoint.sourceUrl, sourceChecksum: checkpoint.sourceChecksum,
+      holdingCount: checkpoint.holdingCount,
+    });
+    else result.set(group.canonicalAccession, null);
+  }
+  return result;
+}
+
+export function replayGroupsNeedingValidation(
+  groups: DuplicateGroup[],
+  validations: ReadonlyMap<string, DuplicateGroup["replayValidation"]>,
+): DuplicateGroup[] {
+  const replayAccessions = new Set(
+    buildDuplicateConvergencePlan(groups, "DRY_RUN").operations
+      .filter((operation) => operation.action === "AUTHORITATIVE_REPLAY")
+      .map((operation) => operation.canonicalAccession),
+  );
+  return groups.filter((group) =>
+    replayAccessions.has(group.canonicalAccession) &&
+    !validations.get(group.canonicalAccession));
+}
+
+function replayFailureCode(error: unknown): string {
+  const value = error instanceof Error ? error.message : String(error);
+  return value.split(":")[0].replace(/[^A-Z0-9_]/gi, "_").slice(0, 100) || "REPLAY_VALIDATION_FAILED";
+}
+
+async function saveReplayCheckpoint(
+  executor: ConvergenceExecutor, group: DuplicateGroup, source: AuthoritativeReplaySource | null,
+  failureReason: string | null,
+): Promise<void> {
+  await executor.execute(sql`
+    INSERT INTO institutional_replay_validation_checkpoints (
+      canonical_accession, metadata_fingerprint, validator_version, status,
+      source_url, source_checksum, holding_count, failure_reason, validated_at, updated_at
+    ) VALUES (
+      ${group.canonicalAccession}, ${replayValidationMetadataFingerprint(group.authoritative)},
+      ${REPLAY_VALIDATOR_VERSION}, ${source ? "VALID" : "FAILED"},
+      ${source?.sourceUrl ?? null}, ${source?.sourceChecksum ?? null},
+      ${source?.holdings.length ?? null}, ${failureReason}, NOW(), NOW()
+    ) ON CONFLICT (canonical_accession) DO UPDATE SET
+      metadata_fingerprint = EXCLUDED.metadata_fingerprint,
+      validator_version = EXCLUDED.validator_version, status = EXCLUDED.status,
+      source_url = EXCLUDED.source_url, source_checksum = EXCLUDED.source_checksum,
+      holding_count = EXCLUDED.holding_count, failure_reason = EXCLUDED.failure_reason,
+      validated_at = EXCLUDED.validated_at, updated_at = NOW()
+  `);
 }
 
 export function buildSummaryOnlyReport(
@@ -159,46 +277,87 @@ export async function validateReplayGroups(
   groups: DuplicateGroup[],
   loader: (operation: ConvergenceOperation) => Promise<AuthoritativeReplaySource> =
     loadAuthoritativeReplaySource,
+  options: {
+    checkpoint?: (group: DuplicateGroup, source: AuthoritativeReplaySource | null, failureCode: string | null) => Promise<void>;
+    onProgress?: (completed: number, total: number, accession: string) => void;
+  } = {},
 ): Promise<Map<string, DuplicateGroup["replayValidation"]>> {
   const preliminary = buildDuplicateConvergencePlan(groups, "DRY_RUN");
   const validations = new Map<string, DuplicateGroup["replayValidation"]>();
-  for (const operation of preliminary.operations) {
-    if (operation.action !== "AUTHORITATIVE_REPLAY") continue;
-    try {
-      const source = await loader(operation);
-      validations.set(operation.canonicalAccession, {
-        sourceUrl: source.sourceUrl,
-        sourceChecksum: source.sourceChecksum,
-        holdingCount: source.holdings.length,
-      });
-    } catch {
-      validations.set(operation.canonicalAccession, null);
+  const operations = preliminary.operations.filter((operation) => operation.action === "AUTHORITATIVE_REPLAY");
+  let next = 0;
+  let completed = 0;
+  const worker = async () => {
+    while (next < operations.length) {
+      const operation = operations[next++];
+      const group = groups.find((candidate) => candidate.canonicalAccession === operation.canonicalAccession);
+      if (!group) throw new Error("REPLAY_VALIDATION_GROUP_MISSING");
+      try {
+        const source = await loader(operation);
+        await options.checkpoint?.(group, source, null);
+        validations.set(operation.canonicalAccession, {
+          sourceUrl: source.sourceUrl, sourceChecksum: source.sourceChecksum, holdingCount: source.holdings.length,
+        });
+      } catch (error) {
+        // A failed checkpoint is durable evidence that this accession cannot
+        // authorize APPLY; never retain a prior successful result.
+        await options.checkpoint?.(group, null, replayFailureCode(error));
+        validations.set(operation.canonicalAccession, null);
+      } finally {
+        completed += 1;
+        options.onProgress?.(completed, operations.length, operation.canonicalAccession);
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(REPLAY_VALIDATION_CONCURRENCY, operations.length) }, worker));
   return validations;
 }
 
-function publicPlan(
+/** Per-process cache used only by explicit validation. APPLY calls the loader
+ * directly, intentionally bypassing this cache and the SEC client's cache. */
+export function createValidationCachedLoader(
+  fetchDetailed: ReplaySourceFetcher = secFetchDetailed,
+): (operation: ConvergenceOperation) => Promise<AuthoritativeReplaySource> {
+  const responses = new Map<string, ReturnType<ReplaySourceFetcher>>();
+  const fetcher: ReplaySourceFetcher = (url, _cacheKey, signal) => {
+    let response = responses.get(url);
+    if (!response) {
+      response = fetchDetailed(url, undefined, signal);
+      responses.set(url, response);
+    }
+    return response;
+  };
+  return (operation) => loadAuthoritativeReplaySource(operation, fetcher);
+}
+
+export function buildPublicPlanReport(
   plan: ReturnType<typeof buildDuplicateConvergencePlan>,
   resumeReady: boolean,
+  verbose = false,
 ) {
-  return {
+  const report = {
     mode: plan.mode,
     duplicateGroups: plan.totalCanonicalDuplicateGroups,
     safeCleanupGroups: plan.safeCleanupGroups,
     replayGroups: plan.replayGroups,
     blockedGroups: plan.blockedGroups,
-    affectedPeriods: plan.affectedPeriods,
-    affectedSymbols: plan.affectedSymbols,
-    downstreamTargets: plan.downstreamRebuildScope.symbolPeriods,
+    affectedPeriodsCount: plan.affectedPeriods.length,
+    affectedSymbolsCount: plan.affectedSymbols.length,
+    downstreamTargetCount: plan.downstreamRebuildScope.targets,
     journalRequired: true,
     resumeReady,
     productionApplyReady: plan.productionApplyReady,
     planHash: plan.planHash,
   };
+  return verbose ? {
+    ...report,
+    affectedPeriods: plan.affectedPeriods,
+    affectedSymbols: plan.affectedSymbols,
+    downstreamTargets: plan.downstreamRebuildScope.symbolPeriods,
+  } : report;
 }
 
-async function persistReplaySource(
+export async function persistReplaySource(
   tx: ConvergenceExecutor,
   operation: ConvergenceOperation,
   source: AuthoritativeReplaySource,
@@ -262,17 +421,21 @@ async function main(): Promise<void> {
   if (environmentIssues.length > 0) {
     throw new Error(`PRODUCTION_RUNTIME_REJECTED:${environmentIssues.join(",")}`);
   }
-  if (args.summaryOnly && args.apply) {
-    throw new Error("SUMMARY_ONLY_APPLY_FORBIDDEN");
+  if ((args.summaryOnly && args.apply) || (args.summaryOnly && args.validateReplay)) {
+    throw new Error("SUMMARY_ONLY_MUTATION_OR_VALIDATION_FORBIDDEN");
   }
-  if (!args.apply) {
+  if (args.apply && args.validateReplay) {
+    throw new Error("APPLY_REPLAY_VALIDATION_FORBIDDEN");
+  }
+  // Validation checkpoints are the sole non-APPLY writes permitted here.
+  if (!args.apply && !args.validateReplay) {
     process.env.DATABASE_URL = buildHistoricalAuditReadOnlyUrl(process.env.DATABASE_URL!);
   }
 
   const { db, pool } = await import("../server/db");
   try {
     const executor = db as unknown as ConvergenceExecutor;
-    if (!args.apply) {
+    if (!args.apply && !args.validateReplay) {
       const mode = rowsOf(await executor.execute(sql.raw("SHOW default_transaction_read_only")))[0]
         ?.default_transaction_read_only;
       if (mode !== "on") throw new Error("READ_ONLY_SESSION_REQUIRED");
@@ -330,7 +493,52 @@ async function main(): Promise<void> {
       console.log(JSON.stringify(buildSummaryOnlyReport(initialGroups, journal !== null)));
       return;
     }
-    const replayValidations = await validateReplayGroups(initialGroups);
+    let replayValidations: Map<string, DuplicateGroup["replayValidation"]>;
+    if (args.validateReplay) {
+      const existing = replayValidationsFromCheckpoints(
+        initialGroups, await readReplayCheckpoints(executor),
+      );
+      const preliminary = buildDuplicateConvergencePlan(initialGroups, "DRY_RUN");
+      const replayAccessions = preliminary.operations
+        .filter((operation) => operation.action === "AUTHORITATIVE_REPLAY")
+        .map((operation) => operation.canonicalAccession);
+      const reusedGroups = replayAccessions
+        .filter((accession) => existing.get(accession)).length;
+      const pending = replayGroupsNeedingValidation(initialGroups, existing);
+      // Validation is deliberately bounded to two operations.  Its temporary
+      // response cache is process-local and never reaches the APPLY path.
+       const refreshed = await validateReplayGroups(pending, createValidationCachedLoader(), {
+        checkpoint: (group, source, failureCode) =>
+          saveReplayCheckpoint(executor, group, source, failureCode),
+        onProgress: (completed, total, accession) =>
+          console.error(JSON.stringify({
+            mode: "VALIDATE_REPLAY",
+            completed: reusedGroups + completed,
+            total: replayAccessions.length,
+            attemptedThisRun: completed,
+            pendingThisRun: total,
+            accession,
+          })),
+      });
+      replayValidations = new Map([...existing, ...refreshed]);
+       const failed = replayAccessions.some((accession) => !replayValidations.get(accession));
+      console.log(JSON.stringify({
+        mode: "VALIDATE_REPLAY",
+        replayCandidateGroups: preliminary.operations.filter(
+          (operation) => operation.action === "AUTHORITATIVE_REPLAY",
+        ).length,
+         validatedGroups: replayAccessions.filter((accession) => replayValidations.get(accession)).length,
+         failedGroups: replayAccessions.filter((accession) => !replayValidations.get(accession)).length,
+        complete: !failed,
+      }, null, 2));
+      if (failed) throw new Error("REPLAY_VALIDATION_INCOMPLETE");
+      return;
+    }
+    // Normal DRY_RUN/APPLY never validates by downloading documents.  A
+    // missing, stale, failed, or partial persisted checkpoint blocks replay.
+    replayValidations = replayValidationsFromCheckpoints(
+      initialGroups, await readReplayCheckpoints(executor),
+    );
     const groups = await loadDuplicateGroups(executor, authoritative, replayValidations);
     const plan = buildDuplicateConvergencePlan(
       groups,
@@ -340,7 +548,7 @@ async function main(): Promise<void> {
 
     if (!args.apply) {
       const journal = await readConvergenceJournal(executor, plan.planHash);
-      console.log(JSON.stringify(publicPlan(plan, journal !== null), null, 2));
+      console.log(JSON.stringify(buildPublicPlanReport(plan, journal !== null, args.verbose), null, 2));
       return;
     }
     const guardIssues = getDuplicateConvergenceApplyGuardIssues(plan, args);
@@ -364,7 +572,7 @@ async function main(): Promise<void> {
       materialization: await loadMaterializationDependencies(),
     });
     console.log(JSON.stringify({
-      ...publicPlan(plan, true),
+      ...buildPublicPlanReport(plan, true, args.verbose),
       mode: "APPLIED",
       status: completed.status,
       runId: completed.id,

@@ -3230,6 +3230,26 @@ export const institutionalConvergenceJournal = pgTable("institutional_convergenc
 export type InstitutionalConvergenceJournal = typeof institutionalConvergenceJournal.$inferSelect;
 export type InsertInstitutionalConvergenceJournal = typeof institutionalConvergenceJournal.$inferInsert;
 
+/** Immutable, per-accession SEC replay-validation checkpoints.  These are
+ * deliberately separate from convergence mutation/materialization state. */
+export const institutionalReplayValidationCheckpoints = pgTable("institutional_replay_validation_checkpoints", {
+  canonicalAccession: text("canonical_accession").primaryKey(),
+  metadataFingerprint: text("metadata_fingerprint").notNull(),
+  validatorVersion: text("validator_version").notNull(),
+  status: text("status").notNull(),
+  sourceUrl: text("source_url"),
+  sourceChecksum: text("source_checksum"),
+  holdingCount: integer("holding_count"),
+  failureReason: text("failure_reason"),
+  validatedAt: timestamp("validated_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  idxStatus: index("idx_institutional_replay_validation_status").on(t.status),
+}));
+
+export type InstitutionalReplayValidationCheckpoint =
+  typeof institutionalReplayValidationCheckpoints.$inferSelect;
+
 /**
  * Canonical CUSIP → ticker reference store for the Institutional Intelligence
  * mapping engine. Richer metadata than institutionalSecurityMappings; the review

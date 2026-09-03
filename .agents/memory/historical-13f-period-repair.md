@@ -35,4 +35,4 @@ Operational diagnostics should separate lightweight duplicate classification fro
 
 **Why:** Sequential SEC replay checks can make a diagnostic dry run operationally unusable without reducing the safety required for APPLY.
 
-**How to apply:** Keep summary mode read-only and false for apply readiness; reserve replay downloads and authorization checks for the normal dry-run/APPLY path.
+**How to apply:** Keep summary mode read-only and false for apply readiness. Run replay validation separately with fixed low concurrency and per-accession checkpoints bound to authoritative metadata and validator version. Normal dry-run may consume only complete current checkpoints; APPLY must still refetch every replay source and reject URL, checksum, or holding-count drift before mutation.

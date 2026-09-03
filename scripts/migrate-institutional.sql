@@ -313,6 +313,36 @@ CREATE INDEX IF NOT EXISTS idx_institutional_convergence_status
   ON institutional_convergence_journal (status);
 
 -- ---------------------------------------------------------------------------
+-- 7. institutional_replay_validation_checkpoints
+-- Read/write only for explicit --validate-replay preflight.  It never grants
+-- mutation on its own: APPLY downloads fresh authoritative sources again.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS institutional_replay_validation_checkpoints (
+  canonical_accession  TEXT        PRIMARY KEY,
+  metadata_fingerprint TEXT        NOT NULL,
+  validator_version    TEXT        NOT NULL,
+  status               TEXT        NOT NULL,
+  source_url           TEXT,
+  source_checksum      TEXT,
+  holding_count        INTEGER,
+  failure_reason       TEXT,
+  validated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT institutional_replay_validation_status_check
+    CHECK (status IN ('VALID', 'FAILED')),
+  CONSTRAINT institutional_replay_validation_valid_payload_check CHECK (
+    (status = 'VALID' AND source_url IS NOT NULL AND source_checksum IS NOT NULL
+      AND holding_count IS NOT NULL AND holding_count > 0)
+    OR status = 'FAILED'
+  ),
+  CONSTRAINT institutional_replay_validation_failure_reason_bound CHECK (
+    failure_reason IS NULL OR length(failure_reason) <= 100
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_institutional_replay_validation_status
+  ON institutional_replay_validation_checkpoints (status);
+
+-- ---------------------------------------------------------------------------
 -- Upgrade path: add any columns missing from existing correct-schema tables
 -- (for databases that were created with an intermediate correct schema but
 -- are missing Sprint 2.2.5 checkpoint columns or other additions)

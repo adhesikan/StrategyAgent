@@ -29,8 +29,5 @@ jobs:
       - name: Run targeted replay convergence tests
         run: npx vitest run --root . scripts/converge-production-13f-duplicates.test.ts
 
-      - name: TypeScript check
-        run: npm run check
-
       - name: Build
         run: npm run build

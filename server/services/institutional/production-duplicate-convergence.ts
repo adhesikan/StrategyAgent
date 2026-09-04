@@ -566,7 +566,18 @@ export async function loadAuthoritativeReplaySource(
   fetchDetailed: ReplaySourceFetcher = secFetchDetailed,
 ): Promise<AuthoritativeReplaySource> {
   const metadata = operation.authoritative;
-  if (!metadata || metadata.canonicalAccession !== operation.canonicalAccession || metadata.filerCik !== operation.canonicalAccession.slice(0, 10)) {
+  // Identity is bound to the canonical 18-digit accession.  The accession
+  // prefix is the EDGAR submitter id (frequently a filing agent) and is NOT
+  // guaranteed to equal the 13F filing-manager CIK for agent-submitted
+  // filings, so it must not be asserted against metadata.filerCik.  The
+  // manager CIK only has to be a well-formed 10-digit value, and it remains
+  // the authoritative SEC manager CIK used for the archive URL and the
+  // persisted filing row.
+  if (
+    !metadata ||
+    metadata.canonicalAccession !== operation.canonicalAccession ||
+    !/^\d{10}$/.test(metadata.filerCik)
+  ) {
     throw new Error("AUTHORITATIVE_REPLAY_IDENTITY_INVALID");
   }
   const indexUrl = filingIndexUrl(metadata.filerCik, metadata.canonicalAccession);

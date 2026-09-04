@@ -26,6 +26,7 @@ import {
 } from "../server/services/institutional/production-duplicate-convergence";
 import { normalizeAccession } from "../server/services/institutional/sec-13f-bulk-parser";
 import type { AuthoritativeFilingMetadata } from "../server/services/institutional/historical-filing-period-repair";
+import type { SourceRejectionCode } from "../server/services/institutional/production-source-identity-diagnostic";
 import {
   buildHistoricalAuditReadOnlyUrl,
   createSecMetadataVerificationStatus,
@@ -68,7 +69,11 @@ export function parseDuplicateConvergenceArgs(args: string[]): DuplicateConverge
   };
 }
 
-const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v1";
+// v2: identity validation no longer asserts the accession prefix equals the
+// 13F manager CIK (invalid for agent-submitted filings).  Every replay
+// candidate must be revalidated under v2; v1 checkpoints are automatically
+// stale via the version check in replayValidationsFromCheckpoints().
+const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v2";
 const REPLAY_VALIDATION_CONCURRENCY = 2;
 
 export function replayValidationMetadataFingerprint(
@@ -151,9 +156,66 @@ export function replayGroupsNeedingValidation(
     !validations.get(group.canonicalAccession));
 }
 
-function replayFailureCode(error: unknown): string {
+/**
+ * The exact closed set of sub-codes loadAuthoritativeReplaySource() can emit
+ * as `AUTHORITATIVE_INFOTABLE_INVALID:${diagnostic.rejectionCode}`.  Mirrors
+ * the SourceRejectionCode union: `satisfies` fails to compile if a listed
+ * value is not a SourceRejectionCode, and _UnlistedSourceRejectionCode fails
+ * if the union gains a value that is not listed here — so this stays in sync
+ * deliberately, never by accident.
+ */
+export const SOURCE_REJECTION_CODES = [
+  "RESPONSE_NOT_XML", "SEC_HTML_WRAPPER", "XML_DECLARATION_INVALID", "XML_TRUNCATED",
+  "XML_UNCLOSED_TAG", "XML_MISNESTED_TAG", "INVALID_ENTITY", "ILLEGAL_XML_CHARACTER",
+  "DOCTYPE_PRESENT", "MULTIPLE_ROOT_ELEMENTS", "INVALID_DOCUMENT_ORDER",
+  "UNEXPECTED_SEC_FORMAT", "WRONG_DOCUMENT_SELECTED", "SEC_ERROR_RESPONSE",
+  "CONTENT_ENCODING_ERROR", "OTHER_VALIDATION_FAILURE",
+] as const satisfies readonly SourceRejectionCode[];
+
+// Compile-time completeness guard. If SourceRejectionCode gains a member,
+// this resolves to that member (not `never`) and the assignment errors —
+// add the new value to SOURCE_REJECTION_CODES above.
+type _UnlistedSourceRejectionCode = Exclude<SourceRejectionCode, (typeof SOURCE_REJECTION_CODES)[number]>;
+const _sourceRejectionCodesAreExhaustive: [_UnlistedSourceRejectionCode] extends [never] ? true
+  : _UnlistedSourceRejectionCode = true;
+void _sourceRejectionCodesAreExhaustive;
+
+const SOURCE_REJECTION_CODE_SET: ReadonlySet<string> = new Set(SOURCE_REJECTION_CODES);
+
+/**
+ * Reduce a replay error to a bounded, deterministic failure code safe to
+ * persist in institutional_replay_validation_checkpoints.failure_reason.
+ *
+ * A detailed sub-code is preserved for exactly one known-safe structured
+ * error family produced by our own code: loadAuthoritativeReplaySource()
+ * throws `AUTHORITATIVE_INFOTABLE_INVALID:${diagnostic.rejectionCode}`.  The
+ * sub-code is joined on ONLY when it is one of the exact SourceRejectionCode
+ * values (see SOURCE_REJECTION_CODE_SET); any other value — arbitrary token,
+ * URL, credential, free-form text — collapses to the bare prefix:
+ *   "AUTHORITATIVE_INFOTABLE_INVALID:WRONG_DOCUMENT_SELECTED"
+ *       -> "AUTHORITATIVE_INFOTABLE_INVALID_WRONG_DOCUMENT_SELECTED"
+ *   "AUTHORITATIVE_INFOTABLE_INVALID:ABC123SECRET" -> "AUTHORITATIVE_INFOTABLE_INVALID"
+ *
+ * Every other error keeps only its first colon-delimited segment, and only
+ * when that segment is itself a bare uppercase code token.  URLs, raw SEC
+ * response text, free-form exception messages, and credentials/tokens all
+ * fail that test and fall back to a safe constant — no later colon segments
+ * are ever persisted for non-whitelisted families.
+ *
+ * Output: uppercase A-Z / 0-9 / underscore only, <= 100 chars, deterministic.
+ */
+export function replayFailureCode(error: unknown): string {
   const value = error instanceof Error ? error.message : String(error);
-  return value.split(":")[0].replace(/[^A-Z0-9_]/gi, "_").slice(0, 100) || "REPLAY_VALIDATION_FAILED";
+
+  const infotable = /^AUTHORITATIVE_INFOTABLE_INVALID:([^:]*)/.exec(value);
+  if (infotable) {
+    return SOURCE_REJECTION_CODE_SET.has(infotable[1])
+      ? `AUTHORITATIVE_INFOTABLE_INVALID_${infotable[1]}`.slice(0, 100)
+      : "AUTHORITATIVE_INFOTABLE_INVALID";
+  }
+
+  const top = value.split(":", 1)[0].trim();
+  return /^[A-Z0-9_]{1,60}$/.test(top) ? top : "REPLAY_VALIDATION_FAILED";
 }
 
 async function saveReplayCheckpoint(

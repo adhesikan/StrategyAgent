@@ -1,0 +1,36 @@
+name: 13F Replay Validator CI
+
+on:
+  push:
+    branches:
+      - fix/13f-replay-validator-v2
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run targeted replay convergence tests
+        run: npx vitest run --root . scripts/converge-production-13f-duplicates.test.ts
+
+      - name: TypeScript check
+        run: npm run check
+
+      - name: Build
+        run: npm run build

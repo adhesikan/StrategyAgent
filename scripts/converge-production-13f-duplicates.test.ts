@@ -148,7 +148,7 @@ describe("duplicate convergence summary-only mode", () => {
     const current = replayValidationsFromCheckpoints([first, second], new Map([
       [first.canonicalAccession, {
         metadataFingerprint: replayValidationMetadataFingerprint(first.authoritative),
-        validatorVersion: "13f-replay-validator-v3",
+        validatorVersion: "13f-replay-validator-v4",
         status: "VALID",
         sourceUrl: "https://www.sec.gov/one.xml",
         sourceChecksum: "a".repeat(64),
@@ -447,9 +447,9 @@ describe("authoritative replay identity (validator v2)", () => {
     }
   });
 
-  it("9. an older-generation checkpoint (v1, v2) is stale under validator v3 and must be revalidated", () => {
+  it("9. an older-generation checkpoint (v1, v2, v3) is stale under validator v4 and must be revalidated", () => {
     const group = replayCandidateGroup({ accession: "000111111126000009", managerCik: "0009999999" });
-    for (const staleVersion of ["13f-replay-validator-v1", "13f-replay-validator-v2"]) {
+    for (const staleVersion of ["13f-replay-validator-v1", "13f-replay-validator-v2", "13f-replay-validator-v3"]) {
       const current = replayValidationsFromCheckpoints([group], new Map([
         [group.canonicalAccession, {
           metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
@@ -466,12 +466,12 @@ describe("authoritative replay identity (validator v2)", () => {
     }
   });
 
-  it("10. a current v3 checkpoint with a matching fingerprint remains reusable", () => {
+  it("10. a current v4 checkpoint with a matching fingerprint remains reusable", () => {
     const group = replayCandidateGroup({ accession: "000111111126000010", managerCik: "0009999999" });
     const current = replayValidationsFromCheckpoints([group], new Map([
       [group.canonicalAccession, {
         metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
-        validatorVersion: "13f-replay-validator-v3",
+        validatorVersion: "13f-replay-validator-v4",
         status: "VALID",
         sourceUrl: "https://www.sec.gov/one.xml",
         sourceChecksum: "a".repeat(64),

@@ -88,6 +88,37 @@ describe("production source identity diagnostic", () => {
     }
   });
 
+  it("ignores & and character references inside CDATA sections but still fails closed outside them", () => {
+    const meta = { status: 200, contentType: "application/xml", byteLength: 1 };
+    const wrap = (inner: string) => `<informationTable><infoTable>${inner}</infoTable></informationTable>`;
+
+    // "&" inside CDATA is literal character data — not an entity (XML 1.0 §2.7).
+    expect(inspectInfoTableDocument(
+      wrap(`<nameOfIssuer><![CDATA[BECTON DICKINSON & CO]]></nameOfIssuer>`), meta,
+    ).rejectionCode).toBeNull();
+
+    // Numeric character references inside CDATA are also literal.
+    expect(inspectInfoTableDocument(
+      wrap(`<nameOfIssuer><![CDATA[LEGAL &#0; TEXT]]></nameOfIssuer>`), meta,
+    ).rejectionCode).toBeNull();
+
+    // Multiple CDATA sections are each ignored.
+    expect(inspectInfoTableDocument(
+      wrap(`<nameOfIssuer><![CDATA[A & B]]></nameOfIssuer><otherManager><![CDATA[C & D]]></otherManager>`), meta,
+    ).rejectionCode).toBeNull();
+
+    // Outside CDATA, every prior rejection still fires exactly as before.
+    expect(inspectInfoTableDocument(wrap(`<otherManager>AT&T</otherManager>`), meta))
+      .toMatchObject({ rejectionCode: "INVALID_ENTITY", safeOffset: expect.any(Number) });
+    expect(inspectInfoTableDocument(wrap(`&unknown;`), meta).rejectionCode).toBe("INVALID_ENTITY");
+    expect(inspectInfoTableDocument(wrap(`&#0;`), meta).rejectionCode).toBe("INVALID_ENTITY");
+
+    // A clean CDATA section must not mask a real invalid entity elsewhere.
+    expect(inspectInfoTableDocument(
+      wrap(`<nameOfIssuer><![CDATA[A & B]]></nameOfIssuer><otherManager>P&Q</otherManager>`), meta,
+    ).rejectionCode).toBe("INVALID_ENTITY");
+  });
+
   it("matches persisted material fields exactly, including nulls", () => {
     const group: any = {
       accessionNumber: "a", filerCik: "1", symbol: "AAPL", cusip: "037833100",

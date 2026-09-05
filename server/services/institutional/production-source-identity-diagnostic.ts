@@ -144,7 +144,17 @@ export function inspectInfoTableDocument(content: string, fetch: {
     }
     if (cp > 0xffff) i++;
   }
-  for (const reference of content.matchAll(/&#(?:x[0-9a-f]+|\d+);/gi)) {
+  // CDATA section contents are literal character data — an "&" there is not an
+  // entity and "&#…;" there is not a character reference (XML 1.0 §2.7).  Blank
+  // each section's inner characters (length- and offset-preserving) for the two
+  // entity scans only; the real 13F parser still receives the untouched
+  // document, and the illegal-character / structural / order / encoding checks
+  // above and below continue to run against `content`.
+  const entityScanContent = content.replace(
+    /<!\[CDATA\[[\s\S]*?\]\]>/g,
+    (section) => `<![CDATA[${" ".repeat(Math.max(0, section.length - 12))}]]>`,
+  );
+  for (const reference of entityScanContent.matchAll(/&#(?:x[0-9a-f]+|\d+);/gi)) {
     const token = reference[0];
     const cp = /^&#x/i.test(token) ? Number.parseInt(token.slice(3, -1), 16) : Number(token.slice(2, -1));
     const legal = Number.isSafeInteger(cp) && (cp === 9 || cp === 10 || cp === 13
@@ -152,7 +162,7 @@ export function inspectInfoTableDocument(content: string, fetch: {
       || (cp >= 0x10000 && cp <= 0x10ffff));
     if (!legal) return reject("INVALID_ENTITY", "XML_STRUCTURE", reference.index ?? null);
   }
-  const invalidEntity = /&(?!(?:amp|lt|gt|apos|quot);|#\d+;|#x[0-9a-f]+;)/i.exec(content);
+  const invalidEntity = /&(?!(?:amp|lt|gt|apos|quot);|#\d+;|#x[0-9a-f]+;)/i.exec(entityScanContent);
   if (invalidEntity) return reject("INVALID_ENTITY", "XML_STRUCTURE", invalidEntity.index ?? null);
   const firstMarkup = content.search(/</);
   if (firstMarkup > 0 && content.slice(0, firstMarkup).trim()) return reject("INVALID_DOCUMENT_ORDER", "XML_STRUCTURE", 0);

@@ -74,10 +74,13 @@ export function parseDuplicateConvergenceArgs(args: string[]): DuplicateConverge
 // v3: authoritative info-table fetch now decodes legacy single-byte XML
 //     encodings (ISO-8859-1 / Windows-1252 / strict US-ASCII), which changes
 //     the decoded text, checksum and holdings for those documents.
+// v4: the INVALID_ENTITY diagnostic scan now ignores "&" inside CDATA
+//     sections, so filings with e.g. "<![CDATA[BECTON DICKINSON & CO]]>"
+//     are no longer wrongly rejected.
 // Every replay candidate must be revalidated under the current version;
 // older checkpoints are automatically stale via the version check in
 // replayValidationsFromCheckpoints().
-const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v3";
+const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v4";
 const REPLAY_VALIDATION_CONCURRENCY = 2;
 
 export function replayValidationMetadataFingerprint(

@@ -148,7 +148,7 @@ describe("duplicate convergence summary-only mode", () => {
     const current = replayValidationsFromCheckpoints([first, second], new Map([
       [first.canonicalAccession, {
         metadataFingerprint: replayValidationMetadataFingerprint(first.authoritative),
-        validatorVersion: "13f-replay-validator-v2",
+        validatorVersion: "13f-replay-validator-v3",
         status: "VALID",
         sourceUrl: "https://www.sec.gov/one.xml",
         sourceChecksum: "a".repeat(64),
@@ -447,29 +447,31 @@ describe("authoritative replay identity (validator v2)", () => {
     }
   });
 
-  it("9. a v1 checkpoint is stale under validator v2 and must be revalidated", () => {
+  it("9. an older-generation checkpoint (v1, v2) is stale under validator v3 and must be revalidated", () => {
     const group = replayCandidateGroup({ accession: "000111111126000009", managerCik: "0009999999" });
-    const current = replayValidationsFromCheckpoints([group], new Map([
-      [group.canonicalAccession, {
-        metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
-        validatorVersion: "13f-replay-validator-v1",
-        status: "VALID",
-        sourceUrl: "https://www.sec.gov/one.xml",
-        sourceChecksum: "a".repeat(64),
-        holdingCount: 1,
-      }],
-    ]));
-    expect(current.get(group.canonicalAccession)).toBeNull();
-    expect(replayGroupsNeedingValidation([group], current).map((g) => g.canonicalAccession))
-      .toEqual([group.canonicalAccession]);
+    for (const staleVersion of ["13f-replay-validator-v1", "13f-replay-validator-v2"]) {
+      const current = replayValidationsFromCheckpoints([group], new Map([
+        [group.canonicalAccession, {
+          metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
+          validatorVersion: staleVersion,
+          status: "VALID",
+          sourceUrl: "https://www.sec.gov/one.xml",
+          sourceChecksum: "a".repeat(64),
+          holdingCount: 1,
+        }],
+      ]));
+      expect(current.get(group.canonicalAccession)).toBeNull();
+      expect(replayGroupsNeedingValidation([group], current).map((g) => g.canonicalAccession))
+        .toEqual([group.canonicalAccession]);
+    }
   });
 
-  it("10. a current v2 checkpoint with a matching fingerprint remains reusable", () => {
+  it("10. a current v3 checkpoint with a matching fingerprint remains reusable", () => {
     const group = replayCandidateGroup({ accession: "000111111126000010", managerCik: "0009999999" });
     const current = replayValidationsFromCheckpoints([group], new Map([
       [group.canonicalAccession, {
         metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
-        validatorVersion: "13f-replay-validator-v2",
+        validatorVersion: "13f-replay-validator-v3",
         status: "VALID",
         sourceUrl: "https://www.sec.gov/one.xml",
         sourceChecksum: "a".repeat(64),

@@ -70,10 +70,14 @@ export function parseDuplicateConvergenceArgs(args: string[]): DuplicateConverge
 }
 
 // v2: identity validation no longer asserts the accession prefix equals the
-// 13F manager CIK (invalid for agent-submitted filings).  Every replay
-// candidate must be revalidated under v2; v1 checkpoints are automatically
-// stale via the version check in replayValidationsFromCheckpoints().
-const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v2";
+//     13F manager CIK (invalid for agent-submitted filings).
+// v3: authoritative info-table fetch now decodes legacy single-byte XML
+//     encodings (ISO-8859-1 / Windows-1252 / strict US-ASCII), which changes
+//     the decoded text, checksum and holdings for those documents.
+// Every replay candidate must be revalidated under the current version;
+// older checkpoints are automatically stale via the version check in
+// replayValidationsFromCheckpoints().
+const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v3";
 const REPLAY_VALIDATION_CONCURRENCY = 2;
 
 export function replayValidationMetadataFingerprint(

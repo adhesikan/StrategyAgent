@@ -116,6 +116,23 @@ export async function secFetch(
   return (await secFetchDetailed(url, cacheKey, signal)).legacyText;
 }
 
+/**
+ * Legacy single-byte XML declaration labels (upper-cased) mapped to the
+ * TextDecoder decoder to use.  SEC 13F info tables and filing indexes still
+ * routinely declare these.  The decode below is wrapped in try/catch, so a
+ * runtime that lacks a given decoder fails closed (decodingError=true)
+ * rather than throwing.  US-ASCII is intentionally NOT here — it is handled
+ * separately so a non-ASCII byte fails closed instead of being widened.
+ */
+const LEGACY_TEXT_DECODERS: Record<string, string> = {
+  "ISO-8859-1": "iso-8859-1", "ISO8859-1": "iso-8859-1", "ISO_8859-1": "iso-8859-1",
+  "LATIN1": "iso-8859-1", "L1": "iso-8859-1", "CP819": "iso-8859-1",
+  "WINDOWS-1252": "windows-1252", "CP1252": "windows-1252", "X-CP1252": "windows-1252",
+};
+
+/** Declared labels that mean "7-bit ASCII only". */
+const ASCII_DECLARED_ENCODINGS = new Set(["US-ASCII", "ASCII", "ANSI_X3.4-1968"]);
+
 /** Safe response metadata for read-only diagnostics; existing secFetch callers retain text-only API. */
 export async function secFetchDetailed(
   url: string,
@@ -175,15 +192,30 @@ export async function secFetchDetailed(
       if (declaration && !["UTF-8", "UTF8"].includes(declaration)) detectedEncoding = declaration;
       let decodingError = false;
       let text = legacyText;
+      const asciiDeclared = ASCII_DECLARED_ENCODINGS.has(detectedEncoding);
       const decoderName = detectedEncoding === "UTF-16LE" ? "utf-16le"
         : detectedEncoding === "UTF-16BE" ? "utf-16be"
-          : detectedEncoding === "UTF-8" || detectedEncoding === "UTF8" ? "utf-8" : null;
+          : detectedEncoding === "UTF-8" || detectedEncoding === "UTF8" ? "utf-8"
+            : asciiDeclared ? "utf-8"
+              : LEGACY_TEXT_DECODERS[detectedEncoding] ?? null;
       if (!decoderName) decodingError = true;
-      else {
-        text = new TextDecoder(decoderName, { fatal: false }).decode(bytes);
-        try { new TextDecoder(decoderName, { fatal: true }).decode(bytes); } catch { decodingError = true; }
+      else if (asciiDeclared && bytes.some((b) => b > 0x7f)) {
+        // Declared US-ASCII but carries non-ASCII bytes: fail closed rather
+        // than silently reinterpret under a wider single-byte charset.
+        decodingError = true;
+      } else {
+        try {
+          text = new TextDecoder(decoderName, { fatal: false }).decode(bytes);
+          new TextDecoder(decoderName, { fatal: true }).decode(bytes);
+        } catch {
+          // Unsupported decoder on this runtime, or bytes invalid for it.
+          decodingError = true;
+        }
         const decodedDeclaration = text.slice(0, 300).match(/<\?xml[^>]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1]?.toUpperCase();
-        if (decodedDeclaration && !["UTF-8", "UTF8", "UTF-16", "UTF-16LE", "UTF-16BE"].includes(decodedDeclaration)) {
+        if (decodedDeclaration
+          && !["UTF-8", "UTF8", "UTF-16", "UTF-16LE", "UTF-16BE"].includes(decodedDeclaration)
+          && !ASCII_DECLARED_ENCODINGS.has(decodedDeclaration)
+          && !(decodedDeclaration in LEGACY_TEXT_DECODERS)) {
           detectedEncoding = decodedDeclaration;
           decodingError = true;
         }

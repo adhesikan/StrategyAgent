@@ -27,7 +27,13 @@ export interface DuplicateGroup {
     holdingCount: number;
   } | null;
 }
-export type ConvergenceAction = "SAFE_CLEANUP" | "AUTHORITATIVE_REPLAY" | "BLOCKED";
+export type ConvergenceAction =
+  | "SAFE_CLEANUP"
+  | "AUTHORITATIVE_REPLAY"
+  | "BLOCKED"
+  /** Replay-shaped group that is absent from the frozen validation manifest —
+   * the validated population no longer matches reality, revalidate. */
+  | "PLAN_CHANGED_REVALIDATION_REQUIRED";
 export interface ConvergenceOperation {
   canonicalAccession: string; action: ConvergenceAction; survivorId: string | null;
   survivorRawAccession: string | null;
@@ -45,6 +51,7 @@ export interface ConvergenceOperation {
 export interface DuplicateConvergencePlan {
   mode: "DRY_RUN" | "APPLY";
   totalCanonicalDuplicateGroups: number; safeCleanupGroups: number; replayGroups: number; blockedGroups: number;
+  planChangedGroups: number;
   safeCleanupOperations: number; replayOperations: number; affectedFilings: number; affectedHoldings: number;
   affectedPeriods: string[]; affectedSymbols: string[];
   downstreamRebuildScope: {
@@ -237,7 +244,7 @@ function sameFingerprint(a: HoldingFingerprint, b: HoldingFingerprint) {
 export function buildDuplicateConvergencePlan(
   groups: DuplicateGroup[],
   mode: "DRY_RUN" | "APPLY" = "DRY_RUN",
-  options: { requireReplayValidation?: boolean } = {},
+  options: { requireReplayValidation?: boolean; manifestAccessions?: ReadonlySet<string> } = {},
 ): DuplicateConvergencePlan {
   const operations: ConvergenceOperation[] = [];
   for (const group of [...groups].sort((a, b) => a.canonicalAccession.localeCompare(b.canonicalAccession))) {
@@ -255,11 +262,17 @@ export function buildDuplicateConvergencePlan(
       (nonEmpty.length <= 1 || nonEmpty.every((p) => sameFingerprint(p, nonEmpty[0])));
     const replayCandidate = !safe && !!group.authoritative && /^\d{18}$/.test(accession);
     const replayValidated = !!group.replayValidation;
+    // A manifest gate (DRY_RUN / APPLY): a replay-shaped group that is not in
+    // the frozen validated population is PLAN_CHANGED, not a generic block.
+    const manifestGated = options.manifestAccessions !== undefined;
+    const inManifest = !manifestGated || options.manifestAccessions!.has(accession);
     const action: ConvergenceAction = safe
       ? "SAFE_CLEANUP"
       : replayCandidate && (!options.requireReplayValidation || replayValidated)
         ? "AUTHORITATIVE_REPLAY"
-        : "BLOCKED";
+        : replayCandidate && manifestGated && !inManifest
+          ? "PLAN_CHANGED_REVALIDATION_REQUIRED"
+          : "BLOCKED";
     const holdingSource = safe
       ? rows.find((row) => (group.fingerprints.get(row.rawAccession)?.count ?? 0) > 0) ?? rows[0]
       : null;
@@ -278,9 +291,11 @@ export function buildDuplicateConvergencePlan(
       replayHoldingCount: group.replayValidation?.holdingCount ?? null,
       blocker: action === "BLOCKED"
         ? replayCandidate ? "AUTHORITATIVE_REPLAY_NOT_VALIDATED" : "AUTHORITATIVE_SEC_IDENTITY_REQUIRED"
-        : null });
+        : action === "PLAN_CHANGED_REVALIDATION_REQUIRED"
+          ? "PLAN_CHANGED_REVALIDATION_REQUIRED"
+          : null });
   }
-  const filtered = operations.filter(o => o.action !== "BLOCKED");
+  const filtered = operations.filter(o => o.action === "SAFE_CLEANUP" || o.action === "AUTHORITATIVE_REPLAY");
   const periods = Array.from(new Set(filtered.flatMap(o => o.periods))).sort();
   const symbols = Array.from(new Set(filtered.flatMap(o => o.symbols))).sort();
   const targets = Array.from(new Map(filtered.flatMap((operation) => operation.targets).map((target) => [
@@ -292,11 +307,14 @@ export function buildDuplicateConvergencePlan(
   const safe = operations.filter(o => o.action === "SAFE_CLEANUP");
   const replay = operations.filter(o => o.action === "AUTHORITATIVE_REPLAY");
   const blocked = operations.filter(o => o.action === "BLOCKED");
+  const planChanged = operations.filter(o => o.action === "PLAN_CHANGED_REVALIDATION_REQUIRED");
+  const applyReady = blocked.length === 0 && planChanged.length === 0;
   return { mode, totalCanonicalDuplicateGroups: operations.length, safeCleanupGroups: safe.length, replayGroups: replay.length, blockedGroups: blocked.length,
+    planChangedGroups: planChanged.length,
     safeCleanupOperations: safe.length, replayOperations: replay.length, affectedFilings: filtered.reduce((n,o) => n + o.duplicateIds.length + 1, 0),
     affectedHoldings: filtered.reduce((n,o) => n + o.affectedHoldings, 0), affectedPeriods: periods, affectedSymbols: symbols,
-    downstreamRebuildScope: { targets: targets.length, periods, symbols, symbolPeriods: targets }, canonicalUniquenessReady: blocked.length === 0,
-    planHash: createHash("sha256").update(stable(body)).digest("hex"), productionApplyReady: blocked.length === 0 && operations.length > 0, operations };
+    downstreamRebuildScope: { targets: targets.length, periods, symbols, symbolPeriods: targets }, canonicalUniquenessReady: applyReady,
+    planHash: createHash("sha256").update(stable(body)).digest("hex"), productionApplyReady: applyReady && operations.length > 0, operations };
 }
 
 export function validateDuplicateConvergenceEnvironment(env: NodeJS.ProcessEnv): string[] {
@@ -613,6 +631,7 @@ async function executeConvergenceMutation(
   await hooks.beforeMutation?.();
   for (const operation of plan.operations) {
     if (operation.action === "BLOCKED") throw new Error("BLOCKED_OPERATION");
+    if (operation.action === "PLAN_CHANGED_REVALIDATION_REQUIRED") throw new Error("PLAN_CHANGED_OPERATION");
     if (operation.action === "AUTHORITATIVE_REPLAY") await deps.replay(tx, operation); // validates/persists first
     if (operation.action === "SAFE_CLEANUP") {
       const holdingSource = operation.holdingSourceRawAccession;

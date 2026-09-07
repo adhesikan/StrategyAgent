@@ -13,6 +13,7 @@ import {
   applyDuplicateConvergenceDurable,
   buildDuplicateConvergencePlan,
   DUPLICATE_CONVERGENCE_CONFIRMATION,
+  DUPLICATE_CONVERGENCE_LOCK_KEY,
   getDuplicateConvergenceApplyGuardIssues,
   loadAuthoritativeReplaySource,
   readConvergenceJournal,
@@ -25,16 +26,16 @@ import {
   type ReplaySourceFetcher,
 } from "../server/services/institutional/production-duplicate-convergence";
 import { normalizeAccession } from "../server/services/institutional/sec-13f-bulk-parser";
-import type { AuthoritativeFilingMetadata } from "../server/services/institutional/historical-filing-period-repair";
+import type {
+  AuthoritativeFilingMetadata,
+  StoredFilingMetadata,
+} from "../server/services/institutional/historical-filing-period-repair";
 import type { SourceRejectionCode } from "../server/services/institutional/production-source-identity-diagnostic";
 import {
   buildHistoricalAuditReadOnlyUrl,
-  createSecMetadataVerificationStatus,
-  loadAuthoritativeSecMetadata,
   readDuplicateHoldingFingerprints,
   readStoredFilings,
 } from "./audit-repair-production-13f-periods";
-import { fetchDatasetCatalog } from "../server/services/institutional/sec-dataset-catalog";
 import { secFetchDetailed } from "../server/services/institutional/sec-client";
 
 export interface DuplicateConvergenceArgs {
@@ -77,10 +78,15 @@ export function parseDuplicateConvergenceArgs(args: string[]): DuplicateConverge
 // v4: the INVALID_ENTITY diagnostic scan now ignores "&" inside CDATA
 //     sections, so filings with e.g. "<![CDATA[BECTON DICKINSON & CO]]>"
 //     are no longer wrongly rejected.
+// v5: DRY_RUN and APPLY authorize the replay population against a frozen
+//     validation manifest (institutional_replay_validation_runs / _run_items)
+//     instead of re-resolving SEC identity, eliminating run-to-run population
+//     drift.  The manifest and every checkpoint are version-scoped, so v4
+//     checkpoints and manifests cannot authorize v5.
 // Every replay candidate must be revalidated under the current version;
 // older checkpoints are automatically stale via the version check in
 // replayValidationsFromCheckpoints().
-const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v4";
+const REPLAY_VALIDATOR_VERSION = "13f-replay-validator-v5";
 const REPLAY_VALIDATION_CONCURRENCY = 2;
 
 export function replayValidationMetadataFingerprint(
@@ -161,6 +167,298 @@ export function replayGroupsNeedingValidation(
   return groups.filter((group) =>
     replayAccessions.has(group.canonicalAccession) &&
     !validations.get(group.canonicalAccession));
+}
+
+// ---------------------------------------------------------------------------
+// Frozen replay-validation manifest
+//
+// Group identity is derived deterministically from the already-SEC-verified
+// stored filing rows (deriveStoredIdentity).  --validate-replay still downloads
+// and validates the authoritative SEC replay-source document for every
+// candidate, then (only if all succeeded) publishes ONE COMPLETE run.  DRY_RUN
+// and APPLY reconstruct the duplicate groups from the DB and take replay
+// identity + authorization from that frozen run — no SEC network calls, no
+// run-to-run population drift.
+// ---------------------------------------------------------------------------
+
+export interface ValidationRunItem {
+  canonicalAccession: string;
+  metadataFingerprint: string;
+  filerCik: string;
+  filingDate: string;
+  periodOfReport: string;
+  filingType: string;
+  amendmentFlag: boolean;
+  sourceUrl: string;
+  sourceChecksum: string;
+  holdingCount: number;
+  storedHoldingsFingerprint: string;
+}
+
+export interface ValidationRunHeader {
+  id: string;
+  validatorVersion: string;
+  candidateSetHash: string;
+  completedAt: string;
+}
+
+/** Deterministic identity from the stored, already-SEC-verified filing rows of
+ * one canonical-accession group.  Returns null when the rows disagree — that is
+ * a genuine conflict and must block, not be papered over. */
+export function deriveStoredIdentity(
+  rows: readonly StoredFilingMetadata[],
+): AuthoritativeFilingMetadata | null {
+  if (rows.length === 0) return null;
+  const accession = normalizeAccession(rows[0].rawAccession);
+  if (!/^\d{18}$/.test(accession)) return null;
+  const identity = {
+    filerCik: rows[0].filerCik,
+    filingDate: rows[0].filingDate,
+    periodOfReport: rows[0].periodOfReport,
+    filingType: rows[0].filingType.trim().toUpperCase(),
+    amendmentFlag: rows[0].amendmentFlag,
+  };
+  const agree = rows.every((r) =>
+    r.filerCik === identity.filerCik &&
+    r.filingDate === identity.filingDate &&
+    r.periodOfReport === identity.periodOfReport &&
+    r.filingType.trim().toUpperCase() === identity.filingType &&
+    r.amendmentFlag === identity.amendmentFlag);
+  return agree ? { canonicalAccession: accession, ...identity } : null;
+}
+
+export function sameAuthoritativeIdentity(
+  a: AuthoritativeFilingMetadata,
+  b: AuthoritativeFilingMetadata,
+): boolean {
+  return a.canonicalAccession === b.canonicalAccession &&
+    a.filerCik === b.filerCik &&
+    a.filingDate === b.filingDate &&
+    a.periodOfReport === b.periodOfReport &&
+    a.filingType.trim().toUpperCase() === b.filingType.trim().toUpperCase() &&
+    a.amendmentFlag === b.amendmentFlag;
+}
+
+export function validationRunItemToAuthoritative(
+  item: ValidationRunItem,
+): AuthoritativeFilingMetadata {
+  return {
+    canonicalAccession: item.canonicalAccession,
+    filerCik: item.filerCik,
+    filingDate: item.filingDate,
+    periodOfReport: item.periodOfReport,
+    filingType: item.filingType,
+    amendmentFlag: item.amendmentFlag,
+  };
+}
+
+/** sha256 over sorted `${accession}:${metadataFingerprint}` lines. */
+export function computeCandidateSetHash(
+  items: ReadonlyArray<{ canonicalAccession: string; metadataFingerprint: string }>,
+): string {
+  const lines = items
+    .map((i) => `${i.canonicalAccession}:${i.metadataFingerprint}`)
+    .sort();
+  return createHash("sha256").update(lines.join("\n")).digest("hex");
+}
+
+/** sha256 over the group's stored per-row holding fingerprints (sorted). */
+export function groupHoldingsFingerprint(group: DuplicateGroup): string {
+  const parts = group.rows
+    .map((r) => {
+      const fp = group.fingerprints.get(r.rawAccession);
+      return `${r.rawAccession}:${fp ? `${fp.count}:${fp.digest}` : "none"}`;
+    })
+    .sort();
+  return createHash("sha256").update(parts.join("\n")).digest("hex");
+}
+
+/**
+ * Overlay a frozen manifest onto deterministically-reconstructed duplicate
+ * groups.  Manifest accessions take the frozen identity; their replay
+ * authorization is withheld (replayValidation = null) if the current stored
+ * identity or holdings no longer match what was validated.  Non-manifest
+ * groups get the deterministic stored identity only.
+ */
+export function applyManifestToGroups(
+  groups: DuplicateGroup[],
+  manifestItems: ReadonlyMap<string, ValidationRunItem>,
+): {
+  groups: DuplicateGroup[];
+  manifestAccessions: Set<string>;
+  identityDrift: string[];
+  holdingsChanged: string[];
+} {
+  const manifestAccessions = new Set(manifestItems.keys());
+  const identityDrift: string[] = [];
+  const holdingsChanged: string[] = [];
+  const out = groups.map((group) => {
+    const item = manifestItems.get(group.canonicalAccession);
+    const storedIdentity = deriveStoredIdentity(group.rows);
+    if (!item) {
+      return { ...group, authoritative: storedIdentity, replayValidation: undefined };
+    }
+    const frozen = validationRunItemToAuthoritative(item);
+    const identityIntact = storedIdentity !== null && sameAuthoritativeIdentity(storedIdentity, frozen);
+    const holdingsIntact = groupHoldingsFingerprint(group) === item.storedHoldingsFingerprint;
+    if (!identityIntact) identityDrift.push(group.canonicalAccession);
+    if (!holdingsIntact) holdingsChanged.push(group.canonicalAccession);
+    return {
+      ...group,
+      authoritative: frozen,
+      replayValidation: identityIntact && holdingsIntact
+        ? { sourceUrl: item.sourceUrl, sourceChecksum: item.sourceChecksum, holdingCount: item.holdingCount }
+        : null,
+    };
+  });
+  return { groups: out, manifestAccessions, identityDrift, holdingsChanged };
+}
+
+/** True only when every replay candidate in this run produced a validated
+ * source; interrupted or partially-failed validation must never publish. */
+export function manifestPublicationReady(
+  replayAccessions: readonly string[],
+  validations: ReadonlyMap<string, DuplicateGroup["replayValidation"]>,
+): boolean {
+  return replayAccessions.every((accession) => !!validations.get(accession));
+}
+
+export function buildManifestItems(
+  groups: DuplicateGroup[],
+  replayAccessions: readonly string[],
+  validations: ReadonlyMap<string, DuplicateGroup["replayValidation"]>,
+): ValidationRunItem[] {
+  return replayAccessions.map((accession) => {
+    const group = groups.find((g) => g.canonicalAccession === accession);
+    const validation = validations.get(accession);
+    if (!group?.authoritative || !validation) throw new Error("MANIFEST_ITEM_INCOMPLETE");
+    return {
+      canonicalAccession: accession,
+      metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
+      filerCik: group.authoritative.filerCik,
+      filingDate: group.authoritative.filingDate,
+      periodOfReport: group.authoritative.periodOfReport,
+      filingType: group.authoritative.filingType,
+      amendmentFlag: group.authoritative.amendmentFlag,
+      sourceUrl: validation.sourceUrl,
+      sourceChecksum: validation.sourceChecksum,
+      holdingCount: validation.holdingCount,
+      storedHoldingsFingerprint: groupHoldingsFingerprint(group),
+    };
+  });
+}
+
+export async function readLatestCompleteValidationRun(
+  executor: ConvergenceExecutor,
+  validatorVersion: string,
+): Promise<ValidationRunHeader | null> {
+  const result = await executor.execute(sql`
+    SELECT id, validator_version AS "validatorVersion",
+           candidate_set_hash AS "candidateSetHash",
+           completed_at AS "completedAt"
+      FROM institutional_replay_validation_runs
+     WHERE validator_version = ${validatorVersion} AND status = 'COMPLETE'
+     ORDER BY completed_at DESC, created_at DESC
+     LIMIT 1
+  `);
+  const row = rowsOf(result)[0];
+  return row
+    ? {
+      id: String(row.id),
+      validatorVersion: String(row.validatorVersion),
+      candidateSetHash: String(row.candidateSetHash),
+      completedAt: new Date(row.completedAt).toISOString(),
+    }
+    : null;
+}
+
+export async function readValidationRunItems(
+  executor: ConvergenceExecutor,
+  runId: string,
+): Promise<Map<string, ValidationRunItem>> {
+  const result = await executor.execute(sql`
+    SELECT canonical_accession AS "canonicalAccession",
+           metadata_fingerprint AS "metadataFingerprint",
+           filer_cik AS "filerCik", filing_date AS "filingDate",
+           period_of_report AS "periodOfReport", filing_type AS "filingType",
+           amendment_flag AS "amendmentFlag", source_url AS "sourceUrl",
+           source_checksum AS "sourceChecksum", holding_count AS "holdingCount",
+           stored_holdings_fingerprint AS "storedHoldingsFingerprint"
+      FROM institutional_replay_validation_run_items
+     WHERE run_id = ${runId}
+  `);
+  return new Map(rowsOf(result).map((row) => [String(row.canonicalAccession), {
+    canonicalAccession: String(row.canonicalAccession),
+    metadataFingerprint: String(row.metadataFingerprint),
+    filerCik: String(row.filerCik),
+    filingDate: String(row.filingDate),
+    periodOfReport: String(row.periodOfReport),
+    filingType: String(row.filingType),
+    amendmentFlag: Boolean(row.amendmentFlag),
+    sourceUrl: String(row.sourceUrl),
+    sourceChecksum: String(row.sourceChecksum),
+    holdingCount: Number(row.holdingCount),
+    storedHoldingsFingerprint: String(row.storedHoldingsFingerprint),
+  }]));
+}
+
+/** Atomically publish one COMPLETE manifest run and its items. */
+export async function publishValidationRun(
+  executor: ConvergenceExecutor,
+  validatorVersion: string,
+  items: ReadonlyArray<ValidationRunItem>,
+): Promise<{ runId: string; candidateSetHash: string }> {
+  if (!executor.transaction) throw new Error("CONVERGENCE_TRANSACTION_REQUIRED");
+  const candidateSetHash = computeCandidateSetHash(items);
+  const runId = await executor.transaction(async (tx) => {
+    const runResult = await tx.execute(sql`
+      INSERT INTO institutional_replay_validation_runs
+        (validator_version, candidate_set_hash, status, completed_at)
+      VALUES (${validatorVersion}, ${candidateSetHash}, 'COMPLETE', NOW())
+      RETURNING id
+    `);
+    const id = String(rowsOf(runResult)[0].id);
+    for (let index = 0; index < items.length; index += 100) {
+      const chunk = items.slice(index, index + 100);
+      const values = sql.join(chunk.map((item) => sql`(
+        ${id}, ${item.canonicalAccession}, ${item.metadataFingerprint}, ${item.filerCik},
+        ${item.filingDate}, ${item.periodOfReport}, ${item.filingType}, ${item.amendmentFlag},
+        ${item.sourceUrl}, ${item.sourceChecksum}, ${item.holdingCount},
+        ${item.storedHoldingsFingerprint}
+      )`), sql`, `);
+      await tx.execute(sql`
+        INSERT INTO institutional_replay_validation_run_items (
+          run_id, canonical_accession, metadata_fingerprint, filer_cik, filing_date,
+          period_of_report, filing_type, amendment_flag, source_url, source_checksum,
+          holding_count, stored_holdings_fingerprint
+        ) VALUES ${values}
+      `);
+    }
+    return id;
+  });
+  return { runId, candidateSetHash };
+}
+
+/**
+ * Run DRY_RUN planning reads inside one REPEATABLE READ transaction that also
+ * holds the duplicate-convergence advisory lock, so planning sees one snapshot
+ * and cannot race an APPLY mutation.  No SEC network calls occur inside.
+ */
+export async function withPlanningTransaction<T>(
+  executor: ConvergenceExecutor,
+  fn: (tx: ConvergenceExecutor) => Promise<T>,
+): Promise<T> {
+  if (!executor.transaction) throw new Error("CONVERGENCE_TRANSACTION_REQUIRED");
+  return executor.transaction(async (tx) => {
+    await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
+    const lockResult = await tx.execute(
+      sql`SELECT pg_try_advisory_xact_lock(${DUPLICATE_CONVERGENCE_LOCK_KEY}::bigint) AS locked`,
+    );
+    if (rowsOf(lockResult)[0]?.locked !== true) {
+      throw new Error("CONVERGENCE_MUTATION_IN_PROGRESS");
+    }
+    return fn(tx);
+  });
 }
 
 /**
@@ -342,6 +640,23 @@ export async function loadDuplicateGroups(
     });
 }
 
+/**
+ * Duplicate groups whose identity is derived deterministically from the
+ * already-SEC-verified stored filing rows (see deriveStoredIdentity).  This is
+ * the sole identity source for --summary-only, --validate-replay, DRY_RUN and
+ * APPLY: the live SEC metadata resolver is no longer consulted for convergence
+ * authorization, only the SEC replay-source document is (in --validate-replay
+ * and APPLY), which keeps source/checksum verification intact while making the
+ * candidate population stable run-to-run.
+ */
+export async function loadDeterministicGroups(
+  executor: ConvergenceExecutor,
+  replayValidations: ReadonlyMap<string, DuplicateGroup["replayValidation"]> = new Map(),
+): Promise<DuplicateGroup[]> {
+  const raw = await loadDuplicateGroups(executor, new Map(), replayValidations);
+  return raw.map((group) => ({ ...group, authoritative: deriveStoredIdentity(group.rows) }));
+}
+
 export async function validateReplayGroups(
   groups: DuplicateGroup[],
   loader: (operation: ConvergenceOperation) => Promise<AuthoritativeReplaySource> =
@@ -410,6 +725,7 @@ export function buildPublicPlanReport(
     safeCleanupGroups: plan.safeCleanupGroups,
     replayGroups: plan.replayGroups,
     blockedGroups: plan.blockedGroups,
+    planChangedGroups: plan.planChangedGroups,
     affectedPeriodsCount: plan.affectedPeriods.length,
     affectedSymbolsCount: plan.affectedSymbols.length,
     downstreamTargetCount: plan.downstreamRebuildScope.targets,
@@ -549,21 +865,21 @@ async function main(): Promise<void> {
       }
     }
 
-    const storedRows = await readStoredFilings(executor);
-    const verificationStatus = createSecMetadataVerificationStatus();
-    const authoritative = await loadAuthoritativeSecMetadata(storedRows, {
-      status: verificationStatus,
-      fetchCatalog: () => fetchDatasetCatalog(process.env.SEC_USER_AGENT!),
-    });
-    const initialGroups = await loadDuplicateGroups(executor, authoritative);
-    if (args.summaryOnly) {
-      const summaryPlan = buildDuplicateConvergencePlan(initialGroups, "DRY_RUN");
-      const journal = await readConvergenceJournal(executor, summaryPlan.planHash);
-      console.log(JSON.stringify(buildSummaryOnlyReport(initialGroups, journal !== null)));
-      return;
-    }
-    let replayValidations: Map<string, DuplicateGroup["replayValidation"]>;
-    if (args.validateReplay) {
+    // ── --summary-only and --validate-replay ─────────────────────────────
+    // Identity is deterministic (deriveStoredIdentity over the already-verified
+    // stored filing rows).  --validate-replay still downloads and validates the
+    // authoritative SEC replay-source document for every candidate.
+    if (args.summaryOnly || args.validateReplay) {
+      const initialGroups = await loadDeterministicGroups(executor);
+
+      if (args.summaryOnly) {
+        const summaryPlan = buildDuplicateConvergencePlan(initialGroups, "DRY_RUN");
+        const journal = await readConvergenceJournal(executor, summaryPlan.planHash);
+        console.log(JSON.stringify(buildSummaryOnlyReport(initialGroups, journal !== null)));
+        return;
+      }
+
+      // --validate-replay
       const existing = replayValidationsFromCheckpoints(
         initialGroups, await readReplayCheckpoints(executor),
       );
@@ -576,7 +892,7 @@ async function main(): Promise<void> {
       const pending = replayGroupsNeedingValidation(initialGroups, existing);
       // Validation is deliberately bounded to two operations.  Its temporary
       // response cache is process-local and never reaches the APPLY path.
-       const refreshed = await validateReplayGroups(pending, createValidationCachedLoader(), {
+      const refreshed = await validateReplayGroups(pending, createValidationCachedLoader(), {
         checkpoint: (group, source, failureCode) =>
           saveReplayCheckpoint(executor, group, source, failureCode),
         onProgress: (completed, total, accession) =>
@@ -589,37 +905,99 @@ async function main(): Promise<void> {
             accession,
           })),
       });
-      replayValidations = new Map([...existing, ...refreshed]);
-       const failed = replayAccessions.some((accession) => !replayValidations.get(accession));
+      const replayValidations = new Map([...existing, ...refreshed]);
+      const validatedGroups = replayAccessions.filter((a) => replayValidations.get(a)).length;
+
+      // A COMPLETE manifest is published ONLY after every replay candidate
+      // validated; an interrupted or partly-failed run publishes nothing.
+      if (!manifestPublicationReady(replayAccessions, replayValidations)) {
+        console.log(JSON.stringify({
+          mode: "VALIDATE_REPLAY",
+          replayCandidateGroups: replayAccessions.length,
+          validatedGroups,
+          failedGroups: replayAccessions.length - validatedGroups,
+          complete: false,
+          manifestPublished: false,
+        }, null, 2));
+        throw new Error("REPLAY_VALIDATION_INCOMPLETE");
+      }
+
+      const manifestGroups = await loadDeterministicGroups(executor, replayValidations);
+      const items = buildManifestItems(manifestGroups, replayAccessions, replayValidations);
+      const { runId, candidateSetHash } = await publishValidationRun(
+        executor, REPLAY_VALIDATOR_VERSION, items,
+      );
       console.log(JSON.stringify({
         mode: "VALIDATE_REPLAY",
-        replayCandidateGroups: preliminary.operations.filter(
-          (operation) => operation.action === "AUTHORITATIVE_REPLAY",
-        ).length,
-         validatedGroups: replayAccessions.filter((accession) => replayValidations.get(accession)).length,
-         failedGroups: replayAccessions.filter((accession) => !replayValidations.get(accession)).length,
-        complete: !failed,
+        replayCandidateGroups: replayAccessions.length,
+        validatedGroups,
+        failedGroups: 0,
+        complete: true,
+        manifestPublished: true,
+        validatorVersion: REPLAY_VALIDATOR_VERSION,
+        validationRunId: runId,
+        candidateSetHash,
       }, null, 2));
-      if (failed) throw new Error("REPLAY_VALIDATION_INCOMPLETE");
       return;
     }
-    // Normal DRY_RUN/APPLY never validates by downloading documents.  A
-    // missing, stale, failed, or partial persisted checkpoint blocks replay.
-    replayValidations = replayValidationsFromCheckpoints(
-      initialGroups, await readReplayCheckpoints(executor),
-    );
-    const groups = await loadDuplicateGroups(executor, authoritative, replayValidations);
-    const plan = buildDuplicateConvergencePlan(
-      groups,
-      args.apply ? "APPLY" : "DRY_RUN",
-      { requireReplayValidation: true },
-    );
+
+    // ── Deterministic, manifest-backed path: DRY_RUN and APPLY ────────────
+    // No SEC network calls.  Replay identity and authorization come from the
+    // latest COMPLETE validation run for REPLAY_VALIDATOR_VERSION; every other
+    // group's identity is derived deterministically from stored filing rows.
+    const buildManifestBackedPlan = async (
+      tx: ConvergenceExecutor,
+      mode: "DRY_RUN" | "APPLY",
+      run: ValidationRunHeader,
+      items: ReadonlyMap<string, ValidationRunItem>,
+    ) => {
+      const rawGroups = await loadDuplicateGroups(tx, new Map());
+      const applied = applyManifestToGroups(rawGroups, items);
+      const plan = buildDuplicateConvergencePlan(applied.groups, mode, {
+        requireReplayValidation: true,
+        manifestAccessions: applied.manifestAccessions,
+      });
+      return { plan, applied, run };
+    };
 
     if (!args.apply) {
-      const journal = await readConvergenceJournal(executor, plan.planHash);
-      console.log(JSON.stringify(buildPublicPlanReport(plan, journal !== null, args.verbose), null, 2));
+      const outcome = await withPlanningTransaction(executor, async (tx) => {
+        const run = await readLatestCompleteValidationRun(tx, REPLAY_VALIDATOR_VERSION);
+        if (!run) return { snapshotMissing: true as const };
+        const items = await readValidationRunItems(tx, run.id);
+        const built = await buildManifestBackedPlan(tx, "DRY_RUN", run, items);
+        const journal = await readConvergenceJournal(tx, built.plan.planHash);
+        return { snapshotMissing: false as const, journalPresent: journal !== null, ...built };
+      });
+      if (outcome.snapshotMissing) {
+        console.log(JSON.stringify({
+          mode: "DRY_RUN",
+          productionApplyReady: false,
+          reason: "VALIDATION_SNAPSHOT_MISSING",
+          validatorVersion: REPLAY_VALIDATOR_VERSION,
+        }, null, 2));
+        return;
+      }
+      console.log(JSON.stringify({
+        ...buildPublicPlanReport(outcome.plan, outcome.journalPresent, args.verbose),
+        validatorVersion: REPLAY_VALIDATOR_VERSION,
+        validationRunId: outcome.run.id,
+        candidateSetHash: outcome.run.candidateSetHash,
+        manifestIdentityDrift: outcome.applied.identityDrift.length,
+        manifestHoldingsChanged: outcome.applied.holdingsChanged.length,
+      }, null, 2));
       return;
     }
+
+    // APPLY — authorizes against the SAME latest COMPLETE run; if it (or the DB)
+    // changed since the dry-run, the recomputed planHash no longer matches
+    // --plan-hash and the guard rejects APPLY.
+    const applyRun = await readLatestCompleteValidationRun(executor, REPLAY_VALIDATOR_VERSION);
+    if (!applyRun) throw new Error("VALIDATION_SNAPSHOT_MISSING");
+    const applyItems = await readValidationRunItems(executor, applyRun.id);
+    const built = await buildManifestBackedPlan(executor, "APPLY", applyRun, applyItems);
+    const plan = built.plan;
+
     const guardIssues = getDuplicateConvergenceApplyGuardIssues(plan, args);
     if (guardIssues.length > 0) {
       throw new Error(`DUPLICATE_CONVERGENCE_GUARD_REJECTED:${guardIssues.join(",")}`);
@@ -627,12 +1005,14 @@ async function main(): Promise<void> {
 
     const completed = await applyDuplicateConvergenceDurable(executor, plan, {
       revalidatePlan: async (tx) => {
-        const freshGroups = await loadDuplicateGroups(tx, authoritative, replayValidations);
-        return buildDuplicateConvergencePlan(
-          freshGroups,
-          "APPLY",
-          { requireReplayValidation: true },
-        ).planHash;
+        // Re-plan under the mutation's REPEATABLE READ snapshot against the
+        // SAME manifest run — never silently adopt a newer one.
+        const freshRaw = await loadDuplicateGroups(tx, new Map());
+        const fresh = applyManifestToGroups(freshRaw, applyItems);
+        return buildDuplicateConvergencePlan(fresh.groups, "APPLY", {
+          requireReplayValidation: true,
+          manifestAccessions: fresh.manifestAccessions,
+        }).planHash;
       },
       replay: async (tx, operation) => {
         const source = await loadAuthoritativeReplaySource(operation);
@@ -645,6 +1025,7 @@ async function main(): Promise<void> {
       mode: "APPLIED",
       status: completed.status,
       runId: completed.id,
+      validationRunId: applyRun.id,
     }, null, 2));
   } finally {
     await pool.end();

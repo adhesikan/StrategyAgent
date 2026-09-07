@@ -343,6 +343,47 @@ CREATE INDEX IF NOT EXISTS idx_institutional_replay_validation_status
   ON institutional_replay_validation_checkpoints (status);
 
 -- ---------------------------------------------------------------------------
+-- 8. institutional_replay_validation_runs / _run_items
+-- Frozen replay-validation manifest.  A COMPLETE run is published only after
+-- every replay candidate validated; DRY_RUN and APPLY authorize the replay
+-- population against the latest COMPLETE run for the current validator version
+-- and never re-resolve SEC identity for authorization.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS institutional_replay_validation_runs (
+  id                 TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  validator_version  TEXT        NOT NULL,
+  candidate_set_hash TEXT        NOT NULL,
+  status             TEXT        NOT NULL,
+  completed_at       TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT institutional_replay_run_status_check
+    CHECK (status IN ('COMPLETE', 'INCOMPLETE', 'FAILED')),
+  CONSTRAINT institutional_replay_run_complete_has_timestamp
+    CHECK (status <> 'COMPLETE' OR completed_at IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_institutional_replay_run_version_status
+  ON institutional_replay_validation_runs (validator_version, status, completed_at DESC);
+
+CREATE TABLE IF NOT EXISTS institutional_replay_validation_run_items (
+  id                          TEXT    PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  run_id                      TEXT    NOT NULL
+    REFERENCES institutional_replay_validation_runs(id) ON DELETE CASCADE,
+  canonical_accession         TEXT    NOT NULL,
+  metadata_fingerprint        TEXT    NOT NULL,
+  filer_cik                   TEXT    NOT NULL,
+  filing_date                 TEXT    NOT NULL,
+  period_of_report            TEXT    NOT NULL,
+  filing_type                 TEXT    NOT NULL,
+  amendment_flag              BOOLEAN NOT NULL,
+  source_url                  TEXT    NOT NULL,
+  source_checksum             TEXT    NOT NULL,
+  holding_count               INTEGER NOT NULL,
+  stored_holdings_fingerprint TEXT    NOT NULL,
+  CONSTRAINT institutional_replay_run_item_holding_count_check CHECK (holding_count > 0),
+  CONSTRAINT uniq_institutional_replay_run_item_accession UNIQUE (run_id, canonical_accession)
+);
+
+-- ---------------------------------------------------------------------------
 -- Upgrade path: add any columns missing from existing correct-schema tables
 -- (for databases that were created with an intermediate correct schema but
 -- are missing Sprint 2.2.5 checkpoint columns or other additions)

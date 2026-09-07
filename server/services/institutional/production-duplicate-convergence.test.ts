@@ -120,6 +120,37 @@ describe("production duplicate convergence", () => {
       materialize: async () => undefined,
     })).rejects.toThrow("CANONICAL_ACCESSION_COLLISION_REMAINS");
   });
+  it("routes a replay-shaped group outside the manifest to PLAN_CHANGED and blocks APPLY", async () => {
+    const plan = buildDuplicateConvergencePlan([group(true)], "DRY_RUN", {
+      requireReplayValidation: true,
+      manifestAccessions: new Set<string>(),
+    });
+    expect(plan.operations[0]).toMatchObject({
+      action: "PLAN_CHANGED_REVALIDATION_REQUIRED",
+      blocker: "PLAN_CHANGED_REVALIDATION_REQUIRED",
+    });
+    expect(plan.planChangedGroups).toBe(1);
+    expect(plan.productionApplyReady).toBe(false);
+    expect(plan.canonicalUniquenessReady).toBe(false);
+    const applyPlan = buildDuplicateConvergencePlan([group(true)], "APPLY", {
+      requireReplayValidation: true,
+      manifestAccessions: new Set<string>(),
+    });
+    await expect(applyDuplicateConvergence(executorWithResults([]), applyPlan, {
+      replay: async () => undefined,
+      materialize: async () => undefined,
+    })).rejects.toThrow("PLAN_NOT_APPLY_READY");
+  });
+  it("a group inside the manifest with a replay validation still converges normally", () => {
+    const g = { ...group(true), replayValidation: { sourceUrl: "u", sourceChecksum: "c", holdingCount: 2 } };
+    const plan = buildDuplicateConvergencePlan([g], "DRY_RUN", {
+      requireReplayValidation: true,
+      manifestAccessions: new Set([g.canonicalAccession]),
+    });
+    expect(plan.operations[0].action).toBe("AUTHORITATIVE_REPLAY");
+    expect(plan.planChangedGroups).toBe(0);
+    expect(plan.productionApplyReady).toBe(true);
+  });
   it("fails before writes when in-transaction population changed", async () => {
     const plan = buildDuplicateConvergencePlan([group()], "APPLY");
     let calls = 0;

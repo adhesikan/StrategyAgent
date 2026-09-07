@@ -3251,6 +3251,53 @@ export type InstitutionalReplayValidationCheckpoint =
   typeof institutionalReplayValidationCheckpoints.$inferSelect;
 
 /**
+ * Frozen replay-validation manifest header.  A COMPLETE row is published by
+ * `--validate-replay` only after every replay candidate validated; DRY_RUN and
+ * APPLY authorize the replay population against the latest COMPLETE row for the
+ * current validator version, never re-resolving SEC identity for authorization.
+ */
+export const institutionalReplayValidationRuns = pgTable("institutional_replay_validation_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  validatorVersion: text("validator_version").notNull(),
+  /** sha256 over sorted `${accession}:${metadataFingerprint}` lines. */
+  candidateSetHash: text("candidate_set_hash").notNull(),
+  /** COMPLETE | INCOMPLETE | FAILED — only COMPLETE rows authorize. */
+  status: text("status").notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  idxVersionStatus: index("idx_institutional_replay_run_version_status")
+    .on(t.validatorVersion, t.status, t.completedAt),
+}));
+
+export type InstitutionalReplayValidationRun = typeof institutionalReplayValidationRuns.$inferSelect;
+
+/** Per-accession frozen identity + validated SEC source for one manifest run. */
+export const institutionalReplayValidationRunItems = pgTable("institutional_replay_validation_run_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull()
+    .references(() => institutionalReplayValidationRuns.id, { onDelete: "cascade" }),
+  canonicalAccession: text("canonical_accession").notNull(),
+  metadataFingerprint: text("metadata_fingerprint").notNull(),
+  filerCik: text("filer_cik").notNull(),
+  filingDate: text("filing_date").notNull(),
+  periodOfReport: text("period_of_report").notNull(),
+  filingType: text("filing_type").notNull(),
+  amendmentFlag: boolean("amendment_flag").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  sourceChecksum: text("source_checksum").notNull(),
+  holdingCount: integer("holding_count").notNull(),
+  /** sha256 of the group's stored holding fingerprints at validation time. */
+  storedHoldingsFingerprint: text("stored_holdings_fingerprint").notNull(),
+}, (t) => ({
+  uniqRunAccession: uniqueIndex("uniq_institutional_replay_run_item_accession")
+    .on(t.runId, t.canonicalAccession),
+}));
+
+export type InstitutionalReplayValidationRunItem =
+  typeof institutionalReplayValidationRunItems.$inferSelect;
+
+/**
  * Canonical CUSIP → ticker reference store for the Institutional Intelligence
  * mapping engine. Richer metadata than institutionalSecurityMappings; the review
  * queue operates on this table. Approved entries are synced back to

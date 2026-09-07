@@ -1,20 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyManifestToGroups,
+  buildManifestItems,
   buildSummaryOnlyReport,
   buildPublicPlanReport,
+  computeCandidateSetHash,
   createValidationCachedLoader,
+  deriveStoredIdentity,
+  groupHoldingsFingerprint,
+  manifestPublicationReady,
   parseDuplicateConvergenceArgs,
   persistReplaySource,
+  publishValidationRun,
+  readLatestCompleteValidationRun,
   replayFailureCode,
   SOURCE_REJECTION_CODES,
   replayGroupsNeedingValidation,
   replayValidationMetadataFingerprint,
   replayValidationsFromCheckpoints,
   validateReplayGroups,
+  validationRunItemToAuthoritative,
+  type ValidationRunItem,
 } from "./converge-production-13f-duplicates";
 import {
   buildDuplicateConvergencePlan,
+  DUPLICATE_CONVERGENCE_CONFIRMATION,
+  getDuplicateConvergenceApplyGuardIssues,
   loadAuthoritativeReplaySource,
+  type ConvergenceExecutor,
   type DuplicateGroup,
   type ReplaySourceFetcher,
 } from "../server/services/institutional/production-duplicate-convergence";
@@ -148,7 +161,7 @@ describe("duplicate convergence summary-only mode", () => {
     const current = replayValidationsFromCheckpoints([first, second], new Map([
       [first.canonicalAccession, {
         metadataFingerprint: replayValidationMetadataFingerprint(first.authoritative),
-        validatorVersion: "13f-replay-validator-v4",
+        validatorVersion: "13f-replay-validator-v5",
         status: "VALID",
         sourceUrl: "https://www.sec.gov/one.xml",
         sourceChecksum: "a".repeat(64),
@@ -447,9 +460,9 @@ describe("authoritative replay identity (validator v2)", () => {
     }
   });
 
-  it("9. an older-generation checkpoint (v1, v2, v3) is stale under validator v4 and must be revalidated", () => {
+  it("9. an older-generation checkpoint (v1, v2, v3, v4) is stale under validator v5 and must be revalidated", () => {
     const group = replayCandidateGroup({ accession: "000111111126000009", managerCik: "0009999999" });
-    for (const staleVersion of ["13f-replay-validator-v1", "13f-replay-validator-v2", "13f-replay-validator-v3"]) {
+    for (const staleVersion of ["13f-replay-validator-v1", "13f-replay-validator-v2", "13f-replay-validator-v3", "13f-replay-validator-v4"]) {
       const current = replayValidationsFromCheckpoints([group], new Map([
         [group.canonicalAccession, {
           metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
@@ -466,12 +479,12 @@ describe("authoritative replay identity (validator v2)", () => {
     }
   });
 
-  it("10. a current v4 checkpoint with a matching fingerprint remains reusable", () => {
+  it("10. a current v5 checkpoint with a matching fingerprint remains reusable", () => {
     const group = replayCandidateGroup({ accession: "000111111126000010", managerCik: "0009999999" });
     const current = replayValidationsFromCheckpoints([group], new Map([
       [group.canonicalAccession, {
         metadataFingerprint: replayValidationMetadataFingerprint(group.authoritative),
-        validatorVersion: "13f-replay-validator-v4",
+        validatorVersion: "13f-replay-validator-v5",
         status: "VALID",
         sourceUrl: "https://www.sec.gov/one.xml",
         sourceChecksum: "a".repeat(64),
@@ -483,5 +496,275 @@ describe("authoritative replay identity (validator v2)", () => {
       holdingCount: 1,
     });
     expect(replayGroupsNeedingValidation([group], current)).toEqual([]);
+  });
+});
+
+describe("frozen replay-validation manifest (validator v5)", () => {
+  function dupGroup(opts: {
+    accession: string;
+    filerCik?: string;
+    filingType?: string;
+    amendmentFlag?: boolean;
+    /** true → conflicting non-empty holdings (replay-shaped); false → identical (safe) */
+    conflict?: boolean;
+  }): DuplicateGroup {
+    const cik = opts.filerCik ?? "0001234567";
+    const filingType = opts.filingType ?? "13F-HR";
+    const amendmentFlag = opts.amendmentFlag ?? false;
+    const dashed = `${opts.accession.slice(0, 10)}-${opts.accession.slice(10, 12)}-${opts.accession.slice(12)}`;
+    const raw = [opts.accession, dashed];
+    const rows = raw.map((rawAccession, i) => ({
+      id: i === 0 ? "canonical" : "dashed",
+      rawAccession,
+      filerCik: cik,
+      filingDate: "2026-05-15",
+      periodOfReport: "2026-03-31",
+      filingType,
+      amendmentFlag,
+      isEffective: true,
+      filerName: "Mgr",
+    }));
+    return {
+      canonicalAccession: opts.accession,
+      rows,
+      fingerprints: new Map(raw.map((r, i) => [
+        r,
+        opts.conflict ? { count: 1, digest: i === 0 ? "a" : "b" } : { count: 1, digest: "same" },
+      ])),
+      authoritative: null,
+      targets: [{ symbol: "ABC", periodOfReport: "2026-03-31" }],
+    };
+  }
+
+  function itemFor(group: DuplicateGroup, overrides: Partial<ValidationRunItem> = {}): ValidationRunItem {
+    const id = deriveStoredIdentity(group.rows)!;
+    return {
+      canonicalAccession: id.canonicalAccession,
+      metadataFingerprint: replayValidationMetadataFingerprint(id),
+      filerCik: id.filerCik,
+      filingDate: id.filingDate,
+      periodOfReport: id.periodOfReport,
+      filingType: id.filingType,
+      amendmentFlag: id.amendmentFlag,
+      sourceUrl: `https://www.sec.gov/${id.canonicalAccession}.xml`,
+      sourceChecksum: "c".repeat(64),
+      holdingCount: 5,
+      storedHoldingsFingerprint: groupHoldingsFingerprint(group),
+      ...overrides,
+    };
+  }
+  const confirm = DUPLICATE_CONVERGENCE_CONFIRMATION;
+
+  it("deriveStoredIdentity requires row agreement", () => {
+    const ok = dupGroup({ accession: "000123456726000000", conflict: true });
+    expect(deriveStoredIdentity(ok.rows)).toMatchObject({ canonicalAccession: "000123456726000000", filerCik: "0001234567" });
+    const conflicted = dupGroup({ accession: "000123456726000000", conflict: true });
+    conflicted.rows[1] = { ...conflicted.rows[1], filerCik: "0009999999" };
+    expect(deriveStoredIdentity(conflicted.rows)).toBeNull();
+  });
+
+  it("1. manifestPublicationReady is true only when every candidate validated; buildManifestItems + publishValidationRun write a COMPLETE run", async () => {
+    const has = { sourceUrl: "u", sourceChecksum: "c", holdingCount: 1 };
+    expect(manifestPublicationReady(["x", "y"], new Map([["x", has], ["y", has]]))).toBe(true);
+    expect(manifestPublicationReady(["x", "y"], new Map([["x", has], ["y", null]]))).toBe(false);
+    expect(manifestPublicationReady(["x", "y"], new Map([["x", has]]))).toBe(false);
+
+    const g = dupGroup({ accession: "000123456726000101", conflict: true });
+    const validated = { ...g, authoritative: deriveStoredIdentity(g.rows) };
+    const items = buildManifestItems([validated], [g.canonicalAccession], new Map([[g.canonicalAccession, has]]));
+    let inTransaction = false;
+    let statements = 0;
+    const rec = async () => { statements += 1; return { rows: [{ id: "run-1" }] }; };
+    const executor = {
+      execute: rec,
+      transaction: async (fn: (t: ConvergenceExecutor) => unknown) => {
+        inTransaction = true;
+        return fn({ execute: rec } as ConvergenceExecutor);
+      },
+    } as unknown as ConvergenceExecutor;
+    const { runId, candidateSetHash } = await publishValidationRun(executor, "13f-replay-validator-v5", items);
+    expect(runId).toBe("run-1");
+    expect(candidateSetHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(inTransaction).toBe(true);            // atomic publication
+    expect(statements).toBe(2);                  // one run INSERT + one items INSERT
+  });
+
+  it("2. interrupted validation publishes nothing (buildManifestItems fails closed on a missing validation)", () => {
+    const g = dupGroup({ accession: "000123456726000102", conflict: true });
+    const validated = { ...g, authoritative: deriveStoredIdentity(g.rows) };
+    expect(() => buildManifestItems([validated], [g.canonicalAccession], new Map())).toThrow("MANIFEST_ITEM_INCOMPLETE");
+    expect(manifestPublicationReady([g.canonicalAccession], new Map())).toBe(false);
+  });
+
+  it("3. a manifest candidate with intact identity + holdings authorizes AUTHORITATIVE_REPLAY", () => {
+    const g = dupGroup({ accession: "000123456726000103", conflict: true });
+    const items = new Map([[g.canonicalAccession, itemFor(g)]]);
+    const { groups, manifestAccessions } = applyManifestToGroups([g], items);
+    const plan = buildDuplicateConvergencePlan(groups, "APPLY", { requireReplayValidation: true, manifestAccessions });
+    expect(plan.operations[0].action).toBe("AUTHORITATIVE_REPLAY");
+    expect(plan.operations[0].replaySourceUrl).toBe(items.get(g.canonicalAccession)!.sourceUrl);
+    expect(plan.operations[0].authoritative).toMatchObject({ filerCik: "0001234567" });
+    expect(plan.productionApplyReady).toBe(true);
+    expect(plan.planChangedGroups).toBe(0);
+  });
+
+  it("4 + 10. plan is deterministic for identical DB + manifest and ignores any live resolver output", () => {
+    const planHashFor = (resolverCik: string) => {
+      const g = dupGroup({ accession: "000123456726000104", conflict: true });
+      g.authoritative = {
+        canonicalAccession: g.canonicalAccession, filerCik: resolverCik,
+        filingDate: "1990-01-01", periodOfReport: "1990-01-01", filingType: "13F-HR/A", amendmentFlag: true,
+      };
+      const items = new Map([[g.canonicalAccession, itemFor(dupGroup({ accession: "000123456726000104", conflict: true }))]]);
+      const { groups, manifestAccessions } = applyManifestToGroups([g], items);
+      return buildDuplicateConvergencePlan(groups, "DRY_RUN", { requireReplayValidation: true, manifestAccessions }).planHash;
+    };
+    expect(planHashFor("0000000001")).toBe(planHashFor("0000000009"));
+  });
+
+  it("5. stored identity drift for a manifest accession withholds authorization (fail closed)", () => {
+    const validated = dupGroup({ accession: "000123456726000105", conflict: true, filerCik: "0001234567" });
+    const items = new Map([[validated.canonicalAccession, itemFor(validated)]]);
+    const mutated = dupGroup({ accession: "000123456726000105", conflict: true, filerCik: "0009999999" });
+    const { groups, identityDrift, manifestAccessions } = applyManifestToGroups([mutated], items);
+    expect(identityDrift).toEqual([mutated.canonicalAccession]);
+    expect(groups[0].replayValidation).toBeNull();
+    const plan = buildDuplicateConvergencePlan(groups, "APPLY", { requireReplayValidation: true, manifestAccessions });
+    expect(plan.operations[0].action).toBe("BLOCKED");
+    expect(plan.productionApplyReady).toBe(false);
+  });
+
+  it("6. relevant holdings change for a manifest accession withholds authorization", () => {
+    const validated = dupGroup({ accession: "000123456726000106", conflict: true });
+    const items = new Map([[validated.canonicalAccession, itemFor(validated)]]);
+    const changed = dupGroup({ accession: "000123456726000106", conflict: true });
+    changed.fingerprints = new Map(
+      [...changed.fingerprints.keys()].map((k, i) => [k, { count: 3, digest: i === 0 ? "x" : "y" }]),
+    );
+    const { groups, holdingsChanged, manifestAccessions } = applyManifestToGroups([changed], items);
+    expect(holdingsChanged).toEqual([changed.canonicalAccession]);
+    expect(groups[0].replayValidation).toBeNull();
+    const plan = buildDuplicateConvergencePlan(groups, "APPLY", { requireReplayValidation: true, manifestAccessions });
+    expect(plan.operations[0].action).toBe("BLOCKED");
+  });
+
+  it("7. a new replay candidate absent from the manifest => PLAN_CHANGED_REVALIDATION_REQUIRED", () => {
+    const known = dupGroup({ accession: "000123456726000107", conflict: true });
+    const items = new Map([[known.canonicalAccession, itemFor(known)]]);
+    const fresh = dupGroup({ accession: "000123456726000199", conflict: true });
+    const { groups, manifestAccessions } = applyManifestToGroups([known, fresh], items);
+    const plan = buildDuplicateConvergencePlan(groups, "DRY_RUN", { requireReplayValidation: true, manifestAccessions });
+    const op = plan.operations.find((o) => o.canonicalAccession === "000123456726000199")!;
+    expect(op.action).toBe("PLAN_CHANGED_REVALIDATION_REQUIRED");
+    expect(op.blocker).toBe("PLAN_CHANGED_REVALIDATION_REQUIRED");
+    expect(plan.planChangedGroups).toBe(1);
+    expect(plan.productionApplyReady).toBe(false);
+  });
+
+  it("8. a manifest candidate that vanished or converged drops cleanly", () => {
+    const gone = dupGroup({ accession: "000123456726000108", conflict: true });
+    const goneItems = new Map([[gone.canonicalAccession, itemFor(gone)]]);
+    const vanished = applyManifestToGroups([], goneItems);
+    expect(vanished.groups).toEqual([]);
+    expect(vanished.identityDrift).toEqual([]);
+    const emptyPlan = buildDuplicateConvergencePlan(vanished.groups, "DRY_RUN", {
+      requireReplayValidation: true, manifestAccessions: vanished.manifestAccessions,
+    });
+    expect(emptyPlan.operations).toEqual([]);
+    expect(emptyPlan.blockedGroups).toBe(0);
+
+    const converged = dupGroup({ accession: "000123456726000118", conflict: false });
+    const convergedItems = new Map([[converged.canonicalAccession, itemFor(converged, {
+      storedHoldingsFingerprint: "STALE_IRRELEVANT_ON_SAFE_PATH",
+    })]]);
+    const applied = applyManifestToGroups([converged], convergedItems);
+    const plan = buildDuplicateConvergencePlan(applied.groups, "DRY_RUN", {
+      requireReplayValidation: true, manifestAccessions: applied.manifestAccessions,
+    });
+    expect(plan.operations[0].action).toBe("SAFE_CLEANUP");
+    expect(plan.blockedGroups).toBe(0);
+    expect(plan.planChangedGroups).toBe(0);
+  });
+
+  it("9 + 14. no COMPLETE run for the current version => null (v4 manifest/checkpoint cannot authorize v5)", async () => {
+    const empty = { execute: async () => ({ rows: [] }) } as unknown as ConvergenceExecutor;
+    expect(await readLatestCompleteValidationRun(empty, "13f-replay-validator-v5")).toBeNull();
+
+    // a v4 checkpoint is not honoured under v5 (validator-version gate).
+    const g = dupGroup({ accession: "000123456726000109", conflict: true });
+    const withId = { ...g, authoritative: deriveStoredIdentity(g.rows) };
+    const current = replayValidationsFromCheckpoints([withId], new Map([
+      [g.canonicalAccession, {
+        metadataFingerprint: replayValidationMetadataFingerprint(withId.authoritative),
+        validatorVersion: "13f-replay-validator-v4",
+        status: "VALID",
+        sourceUrl: "https://www.sec.gov/x.xml",
+        sourceChecksum: "a".repeat(64),
+        holdingCount: 1,
+      }],
+    ]));
+    expect(current.get(g.canonicalAccession)).toBeNull();
+  });
+
+  it("11. APPLY requires the exact validation run the dry-run planHash used", () => {
+    const g = dupGroup({ accession: "000123456726000111", conflict: true });
+    const manifestAccessions = new Set([g.canonicalAccession]);
+    const planA = buildDuplicateConvergencePlan(
+      applyManifestToGroups([g], new Map([[g.canonicalAccession, itemFor(g)]])).groups,
+      "APPLY", { requireReplayValidation: true, manifestAccessions },
+    );
+    const planB = buildDuplicateConvergencePlan(
+      applyManifestToGroups([g], new Map([[g.canonicalAccession, itemFor(g, { holdingCount: 99, sourceChecksum: "d".repeat(64) })]])).groups,
+      "APPLY", { requireReplayValidation: true, manifestAccessions },
+    );
+    expect(planA.planHash).not.toBe(planB.planHash);
+    // dry-run produced planA.planHash; APPLY recomputed planB against the newer run → rejected.
+    expect(getDuplicateConvergenceApplyGuardIssues(planB, { apply: true, planHash: planA.planHash, confirm }))
+      .toContain("PLAN_HASH_MISMATCH");
+  });
+
+  it("12. APPLY replay still rejects authoritative source drift on a manifest-backed operation", async () => {
+    const g = dupGroup({ accession: "000123456726000112", conflict: true });
+    const item = itemFor(g);
+    const op = buildDuplicateConvergencePlan(
+      applyManifestToGroups([g], new Map([[g.canonicalAccession, item]])).groups,
+      "APPLY", { requireReplayValidation: true, manifestAccessions: new Set([g.canonicalAccession]) },
+    ).operations[0];
+    expect(op.replaySourceChecksum).toBe(item.sourceChecksum);
+    const execute = vi.fn();
+    await expect(persistReplaySource({ execute } as never, op, {
+      indexUrl: "https://www.sec.gov/i",
+      sourceUrl: item.sourceUrl,
+      sourceChecksum: "f".repeat(64),
+      holdings: Array.from({ length: item.holdingCount }, () => ({})) as never,
+    })).rejects.toThrow("AUTHORITATIVE_REPLAY_SOURCE_DRIFT");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("13. journal/apply gate: apply-ready only without BLOCKED/PLAN_CHANGED ops", () => {
+    const g = dupGroup({ accession: "000123456726000113", conflict: true });
+    const items = new Map([[g.canonicalAccession, itemFor(g)]]);
+    const ready = buildDuplicateConvergencePlan(
+      applyManifestToGroups([g], items).groups,
+      "APPLY", { requireReplayValidation: true, manifestAccessions: new Set([g.canonicalAccession]) },
+    );
+    expect(ready.productionApplyReady).toBe(true);
+    expect(ready.operations.every((o) => o.action === "AUTHORITATIVE_REPLAY" || o.action === "SAFE_CLEANUP")).toBe(true);
+
+    const withNew = applyManifestToGroups([g, dupGroup({ accession: "000123456726000913", conflict: true })], items);
+    const changedPlan = buildDuplicateConvergencePlan(withNew.groups, "APPLY", {
+      requireReplayValidation: true, manifestAccessions: withNew.manifestAccessions,
+    });
+    expect(changedPlan.productionApplyReady).toBe(false);
+    expect(getDuplicateConvergenceApplyGuardIssues(changedPlan, { apply: true, planHash: changedPlan.planHash, confirm }))
+      .toContain("PLAN_NOT_APPLY_READY");
+  });
+
+  it("validationRunItemToAuthoritative + candidateSetHash are deterministic and order-independent", () => {
+    const a = { canonicalAccession: "000000000126000001", metadataFingerprint: "f1" };
+    const b = { canonicalAccession: "000000000126000002", metadataFingerprint: "f2" };
+    expect(computeCandidateSetHash([a, b])).toBe(computeCandidateSetHash([b, a]));
+    expect(validationRunItemToAuthoritative(itemFor(dupGroup({ accession: "000123456726000120", conflict: true }))))
+      .toMatchObject({ canonicalAccession: "000123456726000120", filerCik: "0001234567", filingType: "13F-HR" });
   });
 });
